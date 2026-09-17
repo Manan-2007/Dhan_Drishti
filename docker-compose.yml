@@ -1,0 +1,18 @@
+services:
+  dhan-drishti:
+    build: .
+    image: dhan-drishti:latest
+    container_name: dhan-drishti
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      # Set to "true" only when serving behind HTTPS (enables Secure cookies).
+      SECURE_COOKIES: "false"
+      SESSION_TTL_DAYS: "30"
+    volumes:
+      # SQLite database persists here. Back up this directory to back up everything.
+      - dhan-drishti-data:/data
+
+volumes:
+  dhan-drishti-data:
