@@ -1,0 +1,4 @@
+Date,Time,Name,BuySell,Order,Exchange,Segment,Quantity,TradePrice,TradeValue,Status
+2023-05-05,11:22:44,J & K Bank,BUY,DELIVERY,NSE,Equity,100,60,6000,Traded
+2023-05-08,10:00:00,J & K Bank,SELL,DELIVERY,NSE,Equity,40,70,2800,Traded
+2023-04-28,10:00:58,Nippon India ETF Nifty,BUY,DELIVERY,NSE,Equity,5,28.77,143.85,Traded
