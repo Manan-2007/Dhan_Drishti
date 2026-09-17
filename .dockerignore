@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+**/dist
+**/.vite
+**/*.tsbuildinfo
+.git
+.DS_Store
+*.sqlite
+*.sqlite-*
+data
+coverage
+.env
+.env.*

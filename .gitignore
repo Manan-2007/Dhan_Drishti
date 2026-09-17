@@ -1,0 +1,28 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+build/
+*.tsbuildinfo
+.vite/
+coverage/
+
+# runtime data & logs
+data/
+*.sqlite
+*.sqlite-journal
+*.db
+*.log
+
+# environment
+.env
+.env.*
+!.env.example
+
+# local tooling / OS
+.claude/
+.DS_Store
+
+# internal planning notes (not part of the published project)
+docs/PLANNING_REPORT.md
