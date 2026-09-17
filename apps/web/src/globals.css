@@ -1,0 +1,148 @@
+@import "tailwindcss";
+
+/* Fonts (Flexoki-family look: Inter for UI, JetBrains Mono for figures, Merriweather for display) */
+@import "@fontsource-variable/inter";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+@import "@fontsource/jetbrains-mono/600.css";
+@import "@fontsource/merriweather/700.css";
+
+/* Class-based dark mode */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Dhan Drishti design tokens.
+ * Palette: Flexoki (Steph Ango, MIT) — reused as an open color system, not any product's
+ * branding. Semantic layer follows the shadcn convention. See docs/PLANNING_REPORT.md §L.
+ */
+@theme inline {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Merriweather", ui-serif, Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-border: var(--sidebar-border);
+}
+
+:root {
+  --radius: 0.625rem;
+
+  /* Flexoki light (HSL components) */
+  --flexoki-bg: 48 100% 97%;
+  --flexoki-bg-2: 51 59% 95%;
+  --flexoki-ui: 51 21% 88%;
+  --flexoki-ui-2: 50 14% 83%;
+  --flexoki-ui-3: 55 10% 79%;
+  --flexoki-tx: 0 3% 6%;
+  --flexoki-tx-2: 50 3% 42%;
+  --flexoki-re: 3 62% 42%;   /* red — losses / destructive */
+  --flexoki-gr: 73 84% 27%;  /* green — gains / success */
+  --flexoki-ye: 45 99% 34%;  /* yellow — warning */
+
+  --background: hsl(var(--flexoki-bg));
+  --foreground: hsl(var(--flexoki-tx));
+  --card: hsl(var(--flexoki-bg-2));
+  --card-foreground: hsl(var(--flexoki-tx));
+  --popover: hsl(var(--flexoki-bg-2));
+  --popover-foreground: hsl(var(--flexoki-tx));
+  --primary: hsl(var(--flexoki-tx));
+  --primary-foreground: hsl(var(--flexoki-bg));
+  --secondary: hsl(var(--flexoki-ui-2));
+  --secondary-foreground: hsl(var(--flexoki-tx-2));
+  --muted: hsl(var(--flexoki-ui));
+  --muted-foreground: hsl(var(--flexoki-tx-2));
+  --accent: hsl(var(--flexoki-ui));
+  --accent-foreground: hsl(var(--flexoki-tx-2));
+  --destructive: hsl(var(--flexoki-re));
+  --destructive-foreground: hsl(var(--flexoki-bg));
+  --success: hsl(var(--flexoki-gr));
+  --success-foreground: hsl(var(--flexoki-bg));
+  --warning: hsl(var(--flexoki-ye));
+  --warning-foreground: hsl(var(--flexoki-bg));
+  --border: hsl(var(--flexoki-ui));
+  --input: hsl(var(--flexoki-ui));
+  --ring: hsl(var(--flexoki-ui-3));
+
+  /* Allocation palette: forest / sage / sand / clay / plum */
+  --chart-1: #355c4c;
+  --chart-2: #7e9f8c;
+  --chart-3: #cbba8c;
+  --chart-4: #c08a5f;
+  --chart-5: #9a7e92;
+
+  --sidebar: hsl(var(--flexoki-bg));
+  --sidebar-foreground: hsl(var(--flexoki-tx));
+  --sidebar-accent: hsl(var(--flexoki-ui));
+  --sidebar-border: hsl(var(--flexoki-ui));
+}
+
+.dark {
+  --flexoki-bg: 0 3% 6%;
+  --flexoki-bg-2: 30 4% 11%;
+  --flexoki-ui: 30 3% 15%;
+  --flexoki-ui-2: 40 3% 20%;
+  --flexoki-ui-3: 30 3% 24%;
+  --flexoki-tx: 55 10% 79%;
+  --flexoki-tx-2: 43 3% 52%;
+  --flexoki-re: 5 61% 54%;
+  --flexoki-gr: 72 46% 41%;
+  --flexoki-ye: 45 82% 45%;
+
+  --input: hsl(var(--flexoki-ui-2));
+  --chart-1: hsl(156 28% 44%);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Tabular figures for money so columns align */
+  .font-mono,
+  .tabular {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+}
