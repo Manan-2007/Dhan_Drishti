@@ -30,6 +30,7 @@ export interface NormalizedTx {
   currency: string;
   segment: Segment;
   externalRef?: string; // broker trade/order id — enables reliable dedup
+  quotePrice?: string; // optional current price from a holdings snapshot → seeds a quote on import
 }
 
 export type NormalizedRow =

@@ -1,10 +1,10 @@
 import { randomUUID, createHash } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, gte, lte, inArray } from "drizzle-orm";
 import type { DB } from "../db/index.js";
-import { transactions, importBatches, securities, accounts } from "../db/schema.js";
+import { transactions, importBatches, securities, accounts, quotes } from "../db/schema.js";
 import { BadRequestError, NotFoundError } from "../lib/errors.js";
 import { getPortfolioOwned } from "../domain/portfolios.js";
-import { findOrCreateSecurity } from "../domain/securities.js";
+import { findOrCreateSecurity, reclassifyHeld } from "../domain/securities.js";
 import { parseCsv } from "./csv.js";
 import { getAdapter, detectBest } from "./registry.js";
 import type { GenericMapping } from "./adapters/generic.js";
@@ -17,6 +17,11 @@ export interface ImportParams {
   filename: string;
   content: string;
   mapping?: GenericMapping;
+  /** The period this file covers. When `replace` is set, existing rows from the same source
+   *  in this range are deleted first, so re-uploading an overlapping period overwrites cleanly. */
+  from?: string;
+  to?: string;
+  replace?: boolean;
 }
 
 export interface RowIssue {
@@ -159,6 +164,7 @@ export async function previewImport(db: DB, userId: string, params: ImportParams
 export interface ImportResult extends ImportPreview {
   batchId: string;
   imported: number;
+  replaced: number;
 }
 
 export async function commitImport(db: DB, userId: string, params: ImportParams): Promise<ImportResult> {
@@ -172,6 +178,25 @@ export async function commitImport(db: DB, userId: string, params: ImportParams)
     if (!acc) throw new NotFoundError("Account");
     if (acc.portfolioId !== params.portfolioId)
       throw new BadRequestError("account_portfolio_mismatch", "Account does not belong to that portfolio");
+  }
+
+  // Overwrite mode: clear existing rows from this source within the stated period first, so
+  // re-uploading an overlapping range (e.g. a full-year file over monthly ones) doesn't duplicate.
+  let replaced = 0;
+  if (params.replace && params.from && params.to) {
+    const res = await db
+      .delete(transactions)
+      .where(
+        and(
+          eq(transactions.userId, userId),
+          eq(transactions.portfolioId, params.portfolioId),
+          eq(transactions.sourceBroker, params.broker),
+          gte(transactions.tradeDate, new Date(params.from).toISOString()),
+          lte(transactions.tradeDate, new Date(`${params.to.slice(0, 10)}T23:59:59.999Z`).toISOString()),
+        ),
+      )
+      .run();
+    replaced = res.rowsAffected ?? 0;
   }
 
   const { rows, detected } = parseWithAdapter(params.broker, params.content, params.mapping);
@@ -234,12 +259,31 @@ export async function commitImport(db: DB, userId: string, params: ImportParams)
         sourceBroker: params.broker,
       })
       .run();
+    // A holdings snapshot carries a current price → seed a quote so value shows without a refresh.
+    if (tx.quotePrice && securityId) {
+      await db
+        .insert(quotes)
+        .values({
+          id: randomUUID(),
+          securityId,
+          price: tx.quotePrice,
+          prevClose: null,
+          currency: tx.currency,
+          asOf: new Date().toISOString(),
+          provider: "import",
+        })
+        .run();
+    }
     imported += 1;
   }
+
+  // Auto-classify newly imported securities (sectors, sub-sectors, asset class) — best effort.
+  if (imported > 0) await reclassifyHeld(db, userId);
 
   return {
     batchId,
     imported,
+    replaced,
     broker: params.broker,
     detected,
     rowsTotal: rows.length,

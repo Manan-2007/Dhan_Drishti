@@ -30,6 +30,9 @@ const importSchema = z.object({
   filename: z.string().min(1).max(255),
   content: z.string().min(1).max(20_000_000), // ~20MB cap
   mapping: mappingSchema.optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+  replace: z.boolean().optional(),
 });
 
 export function registerImportRoutes(app: FastifyInstance, db: DB): void {
