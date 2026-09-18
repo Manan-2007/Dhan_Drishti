@@ -44,7 +44,7 @@ async function latestQuotes(db: DB, securityIds: string[]): Promise<Map<string, 
 }
 
 interface SerializedHolding {
-  security: Pick<Security, "id" | "symbol" | "name" | "assetClass" | "sector" | "currency">;
+  security: Pick<Security, "id" | "symbol" | "name" | "assetClass" | "sector" | "subSector" | "currency">;
   netQty: string;
   invested: string;
   avgCost: string | null;
@@ -78,6 +78,7 @@ function serialize(h: Holding, sec: Security, quote: CoreQuote | undefined): Ser
       name: sec.name,
       assetClass: sec.assetClass,
       sector: sec.sector,
+      subSector: sec.subSector,
       currency: sec.currency,
     },
     netQty: h.netQty.toFixed(),
@@ -157,17 +158,20 @@ function allocation(
   basis: "current_value" | "invested";
   byAssetClass: Dim;
   bySector: Dim;
+  bySubSector: Dim;
   byCurrency: Dim;
 } {
   const allPriced = rows.every((r) => r.currentValue !== null || r.netQty === "0");
   const basis = allPriced && rows.some((r) => r.currentValue !== null) ? "current_value" : "invested";
   // Cash is a base-currency value, so only fold it into a value-based allocation.
   const cashAsset = basis === "current_value" && cashBase.greaterThan(0) ? [{ key: "cash", value: cashBase }] : [];
+  const cashSector = basis === "current_value" && cashBase.greaterThan(0) ? [{ key: "Cash", value: cashBase }] : [];
   const cashCcy = basis === "current_value" ? [...cashByCurrency.entries()].map(([key, value]) => ({ key, value })) : [];
   return {
     basis,
     byAssetClass: withExtra(groupBy(rows, basis, (r) => r.security.assetClass), cashAsset),
-    bySector: groupBy(rows, basis, (r) => r.security.sector ?? "Unclassified"),
+    bySector: withExtra(groupBy(rows, basis, (r) => r.security.sector ?? "Unclassified"), cashSector),
+    bySubSector: withExtra(groupBy(rows, basis, (r) => r.security.subSector ?? r.security.sector ?? "Unclassified"), cashSector),
     byCurrency: withExtra(groupBy(rows, basis, (r) => r.security.currency), cashCcy),
   };
 }

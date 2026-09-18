@@ -1,13 +1,40 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, or, like, isNull } from "drizzle-orm";
+import { and, eq, or, like, isNull, inArray } from "drizzle-orm";
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
 import { ASSET_CLASSES } from "@dhan-drishti/core";
 import type { DB } from "../db/index.js";
-import { securities, type Security } from "../db/schema.js";
+import { securities, transactions, type Security } from "../db/schema.js";
 import { NotFoundError } from "../lib/errors.js";
 import { authed } from "../lib/routes.js";
 import { parseCsv, pick } from "../import/csv.js";
+import { classifyInstrument } from "../import/classify-builtin.js";
+
+/**
+ * Apply the built-in classifier to every security the user holds — filling sector / sub-sector
+ * where empty, and correcting the asset class of clearly non-equity instruments (a liquid fund
+ * imported as equity becomes cash/debt, an SGB becomes an SGB…). Never overrides values the
+ * user set themselves (only fills blanks / corrects the import default).
+ */
+export async function reclassifyHeld(db: DB, userId: string): Promise<{ updated: number }> {
+  const idRows = await db.selectDistinct({ securityId: transactions.securityId }).from(transactions).where(eq(transactions.userId, userId)).all();
+  const ids = idRows.map((r) => r.securityId).filter((x): x is string => !!x);
+  if (ids.length === 0) return { updated: 0 };
+  const secs = await db.select().from(securities).where(inArray(securities.id, ids)).all();
+  let updated = 0;
+  for (const s of secs) {
+    const cls = classifyInstrument(s.symbol, s.name);
+    if (!cls) continue;
+    const patch: Record<string, string> = {};
+    if (!s.sector && cls.sector) patch.sector = cls.sector;
+    if (!s.subSector && cls.subSector) patch.subSector = cls.subSector;
+    if (cls.assetClass && cls.assetClass !== "equity" && s.assetClass === "equity") patch.assetClass = cls.assetClass;
+    if (Object.keys(patch).length === 0) continue;
+    await db.update(securities).set({ ...patch, updatedAt: new Date().toISOString() }).where(eq(securities.id, s.id)).run();
+    updated += 1;
+  }
+  return { updated };
+}
 
 const metadataSchema = z.object({
   name: z.string().trim().min(1).max(200).optional(),
@@ -114,6 +141,11 @@ export function registerSecurityRoutes(app: FastifyInstance, db: DB): void {
       .where(eq(securities.id, id))
       .run();
     return { security: await db.select().from(securities).where(eq(securities.id, id)).get() };
+  });
+
+  // Auto-classify held securities with the built-in classifier (sectors, sub-sectors, asset class).
+  app.post("/api/securities/reclassify", opts, async (req) => {
+    return reclassifyHeld(db, req.user!.id);
   });
 
   // Bulk-classify securities from a reference CSV (e.g. an exchange master):
