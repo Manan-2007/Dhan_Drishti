@@ -5,6 +5,7 @@ import { RefreshButton } from "../components/RefreshButton.js";
 import { AllocationCard } from "../components/AllocationCard.js";
 import { NetWorthCard } from "../components/NetWorthCard.js";
 import { TopHoldingsCard } from "../components/TopHoldingsCard.js";
+import { Onboarding } from "../components/Onboarding.js";
 import { Button, Card, EmptyState, Spinner, Badge } from "../components/ui.js";
 import { compactMoney, money, signClass, dateShort, qty } from "../lib/format.js";
 
@@ -30,15 +31,7 @@ export function Dashboard() {
     return (
       <>
         <PageHeader title="Dashboard" showFilter={false} />
-        <EmptyState title="No portfolios yet">
-          Create a portfolio, then import a broker CSV. Dhan Drishti only ever shows real imported
-          data — never placeholder numbers.
-          <div className="mt-4">
-            <Link to="/portfolios">
-              <Button>Create a portfolio</Button>
-            </Link>
-          </div>
-        </EmptyState>
+        <Onboarding />
       </>
     );
   }
