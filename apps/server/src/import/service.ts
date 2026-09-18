@@ -6,9 +6,10 @@ import { BadRequestError, NotFoundError } from "../lib/errors.js";
 import { getPortfolioOwned } from "../domain/portfolios.js";
 import { findOrCreateSecurity, reclassifyHeld } from "../domain/securities.js";
 import { parseCsv } from "./csv.js";
+import { looksLikeXlsx, workbookToCsv } from "./xlsx.js";
 import { getAdapter, detectBest } from "./registry.js";
 import type { GenericMapping } from "./adapters/generic.js";
-import type { NormalizedRow, NormalizedTx } from "./types.js";
+import type { BrokerAdapter, NormalizedRow, NormalizedTx } from "./types.js";
 
 export interface ImportParams {
   portfolioId: string;
@@ -16,6 +17,8 @@ export interface ImportParams {
   broker: string;
   filename: string;
   content: string;
+  /** When "base64", `content` is a base64-encoded upload — an .xlsx workbook or a non-UTF8 CSV. */
+  encoding?: "base64";
   mapping?: GenericMapping;
   /** The period this file covers. When `replace` is set, existing rows from the same source
    *  in this range are deleted first, so re-uploading an overlapping period overwrites cleanly. */
@@ -129,23 +132,32 @@ async function classify(db: DB, userId: string, rows: NormalizedRow[]): Promise<
   return { toInsert, invalidRows, duplicates, newSecuritySymbols };
 }
 
-function parseWithAdapter(broker: string, content: string, mapping?: GenericMapping) {
-  const csv = parseCsv(content);
-  if (csv.rows.length === 0) throw new BadRequestError("empty_csv", "The CSV contains no data rows");
-  if (broker === "generic" && !mapping)
+/** Resolve the upload to CSV text: a base64 .xlsx becomes the best-matching sheet; base64 text is
+ *  decoded; plain text passes through. */
+function resolveCsvText(params: ImportParams, adapter: BrokerAdapter): string {
+  if (params.encoding !== "base64") return params.content;
+  const buf = Buffer.from(params.content, "base64");
+  if (looksLikeXlsx(buf, params.filename)) return workbookToCsv(buf, adapter);
+  return buf.toString("utf8");
+}
+
+function parseWithAdapter(params: ImportParams) {
+  if (params.broker === "generic" && !params.mapping)
     throw new BadRequestError("mapping_required", "A column mapping is required for a generic import");
-  const adapter = getAdapter(broker, mapping);
-  if (!adapter) throw new BadRequestError("unknown_broker", `No importer for broker '${broker}'`);
+  const adapter = getAdapter(params.broker, params.mapping);
+  if (!adapter) throw new BadRequestError("unknown_broker", `No importer for broker '${params.broker}'`);
+  const csv = parseCsv(resolveCsvText(params, adapter));
+  if (csv.rows.length === 0) throw new BadRequestError("empty_csv", "The file contains no data rows");
   const detected = detectBest(csv);
   const detection = adapter.detect(csv);
   if (detection.confidence === 0)
-    throw new BadRequestError("format_unrecognized", `File doesn't look like a ${broker} export: ${detection.reason}`);
+    throw new BadRequestError("format_unrecognized", `File doesn't look like a ${params.broker} export: ${detection.reason}`);
   return { csv, adapter, detected, rows: adapter.normalize(csv) };
 }
 
 export async function previewImport(db: DB, userId: string, params: ImportParams): Promise<ImportPreview> {
   await getPortfolioOwned(db, userId, params.portfolioId);
-  const { rows, detected } = parseWithAdapter(params.broker, params.content, params.mapping);
+  const { rows, detected } = parseWithAdapter(params);
   const c = await classify(db, userId, rows);
   return {
     broker: params.broker,
@@ -199,7 +211,7 @@ export async function commitImport(db: DB, userId: string, params: ImportParams)
     replaced = res.rowsAffected ?? 0;
   }
 
-  const { rows, detected } = parseWithAdapter(params.broker, params.content, params.mapping);
+  const { rows, detected } = parseWithAdapter(params);
   const c = await classify(db, userId, rows);
 
   const fileHash = createHash("sha256").update(params.content).digest("hex");
@@ -232,6 +244,8 @@ export async function commitImport(db: DB, userId: string, params: ImportParams)
         isin: tx.security.isin,
         assetClass: tx.security.assetClass,
         exchange: tx.security.exchange,
+        sector: tx.security.sector,
+        subSector: tx.security.subSector,
         currency: tx.currency,
       });
       securityId = security.id;

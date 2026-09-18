@@ -1,14 +1,14 @@
 import type { BrokerAdapter, ParsedCsv, NormalizedRow, DetectResult } from "../types.js";
 import { pick, hasHeader, rowHash } from "../csv.js";
 
-// Vested (US stocks for Indian investors) — order/transaction history export. USD equities.
-const SYMBOL = ["symbol", "ticker", "stock", "instrument"];
-const SIDE = ["side", "type", "transaction type", "action", "buy/sell", "buysell", "order type"];
+// Vested (US stocks for Indian investors) — the "Trades" sheet of the Transactions export. USD equities.
+const SYMBOL = ["ticker", "symbol", "stock", "instrument"];
+const SIDE = ["activity", "side", "type", "transaction type", "action", "buy/sell", "buysell", "order type"];
 const QTY = ["quantity", "shares", "units", "qty", "no. of shares", "no of shares", "filled qty"];
-const PRICE = ["price", "trade price", "execution price", "avg price", "price (usd)", "share price", "executed price"];
-const AMOUNT = ["amount", "total", "value", "net amount", "total amount", "amount (usd)"];
+const PRICE = ["price per share (in usd)", "price per share", "price", "trade price", "execution price", "avg price", "price (usd)", "share price", "executed price"];
+const AMOUNT = ["cash amount (in usd)", "cash amount", "amount", "total", "value", "net amount", "total amount", "amount (usd)"];
 const DATE = ["date", "trade date", "transaction date", "execution date", "order date", "time", "executed at"];
-const FEES = ["fees", "fee", "commission", "charges"];
+const FEES = ["commission charges (in usd)", "commission charges", "fees", "fee", "commission", "charges"];
 const REF = ["order id", "orderid", "transaction id", "reference", "confirmation"];
 
 function normSide(raw: string | undefined): "buy" | "sell" | null {
@@ -32,7 +32,9 @@ export const vestedAdapter: BrokerAdapter = {
   detect(csv: ParsedCsv): DetectResult {
     const core = hasHeader(csv.headers, SYMBOL) && hasHeader(csv.headers, SIDE) && hasHeader(csv.headers, QTY) && hasHeader(csv.headers, PRICE);
     // US-equity hints that separate it from INR tradebooks (which carry ISIN/trade_id).
-    const hint = hasHeader(csv.headers, ["shares", "no. of shares", "no of shares"]) || hasHeader(csv.headers, ["amount (usd)", "price (usd)"]);
+    const hint =
+      hasHeader(csv.headers, ["shares", "no. of shares", "no of shares"]) ||
+      hasHeader(csv.headers, ["amount (usd)", "price (usd)", "price per share (in usd)", "cash amount (in usd)"]);
     const confidence = core ? (hint ? 0.75 : 0.4) : 0;
     return { broker: "vested", confidence, reason: core ? "Recognized a US-stock order export" : "Missing symbol/side/quantity/price columns" };
   },

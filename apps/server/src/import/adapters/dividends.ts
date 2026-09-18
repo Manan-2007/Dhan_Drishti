@@ -6,16 +6,21 @@ import { pick, hasHeader, rowHash } from "../csv.js";
  * a `dividend` income transaction against the paying security.
  */
 const DATE = ["date", "payment date", "credit date", "pay date"];
-const SCRIP = ["scrip name", "name", "symbol", "security", "instrument", "company"];
-const AMOUNT = ["dividend paid", "dividend amount", "net dividend", "amount", "total dividend", "dividend"];
+const SCRIP = ["scrip name", "name", "symbol", "ticker", "security", "instrument", "company"];
+const AMOUNT = ["dividend paid", "dividend amount", "net dividend", "amount (usd)", "amount", "total dividend", "dividend"];
 const ISIN = ["isin", "isin code"];
 
 function normNum(raw: string | undefined): number | null {
   if (raw == null) return null;
-  const s = raw.replace(/[,"%\s₹]/g, "").trim();
+  const s = raw.replace(/[,"%\s₹$]/g, "").trim();
   if (s === "") return null;
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
+}
+
+/** Vested dividend statements are in USD ("Amount (USD)"); Indian brokers are INR. */
+function currencyOf(headers: string[]): string {
+  return headers.some((h) => /\busd\b|\$/i.test(h)) ? "USD" : "INR";
 }
 
 /** Extract a ticker from a name like "Nippon Gold ETF (GOLDBEES)" → GOLDBEES; else the name. */
@@ -35,6 +40,7 @@ export const dividendsAdapter: BrokerAdapter = {
   },
 
   normalize(csv: ParsedCsv): NormalizedRow[] {
+    const currency = currencyOf(csv.headers);
     return csv.rows.map((raw, i): NormalizedRow => {
       const name = pick(raw, SCRIP);
       const amount = normNum(pick(raw, AMOUNT));
@@ -58,7 +64,7 @@ export const dividendsAdapter: BrokerAdapter = {
           grossAmount: String(amount),
           fees: "0",
           taxes: "0",
-          currency: "INR",
+          currency,
           segment: "equity",
         },
       };

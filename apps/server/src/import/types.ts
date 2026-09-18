@@ -15,6 +15,8 @@ export interface SecurityRef {
   amfiCode?: string;
   assetClass: AssetClass;
   exchange?: string;
+  sector?: string; // some snapshots (e.g. Zerodha holdings) carry a sector/fund-category directly
+  subSector?: string;
 }
 
 /** The broker-independent shape an adapter emits per row (pre-persistence). */
