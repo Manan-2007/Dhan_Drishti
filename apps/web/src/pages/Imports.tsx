@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type BrokerInfo, type ImportPreview, type ImportResult, type SeedPricesResult } from "../lib/api.js";
-import { usePortfolios, useImports } from "../lib/hooks.js";
+import { usePortfolios, useAccounts, useImports } from "../lib/hooks.js";
 import { PageHeader } from "../components/PageHeader.js";
 import { ClassifyCard } from "../components/ClassifyCard.js";
 import { Button, Card, Field, Input, Select, Spinner, Badge } from "../components/ui.js";
@@ -50,6 +50,25 @@ export function Imports() {
   useEffect(() => {
     if (!portfolioId && portfolios && portfolios.length > 0) setPortfolioId(portfolios[0]!.id);
   }, [portfolios, portfolioId]);
+
+  // The portfolio's broker (from its accounts) narrows which exports the wizard offers.
+  const { data: accounts } = useAccounts(portfolioId || null);
+  const portfolioBrokers = useMemo(
+    () => new Set((accounts ?? []).map((a) => a.broker).filter((b) => b && b !== "manual" && b !== "generic")),
+    [accounts],
+  );
+  const visibleBrokers = useMemo(
+    () => (brokers ?? []).filter((b) => portfolioBrokers.size === 0 || b.brokers.includes("*") || b.brokers.some((x) => portfolioBrokers.has(x))),
+    [brokers, portfolioBrokers],
+  );
+  // Keep the selected import type valid for the chosen portfolio; prefer its broker-specific export.
+  useEffect(() => {
+    if (visibleBrokers.length === 0) return;
+    if (!visibleBrokers.some((b) => b.id === broker)) {
+      const specific = visibleBrokers.find((b) => !b.brokers.includes("*"));
+      setBroker((specific ?? visibleBrokers[0]!).id);
+    }
+  }, [visibleBrokers, broker]);
 
   function reset() {
     setStep("select");
@@ -194,12 +213,15 @@ export function Imports() {
                   </Field>
                   <Field label="What are you uploading?">
                     <Select value={broker} onChange={(e) => setBroker(e.target.value)}>
-                      {brokers?.map((b) => (
+                      {visibleBrokers.map((b) => (
                         <option key={b.id} value={b.id}>
                           {b.label}
                         </option>
                       ))}
                     </Select>
+                    {portfolioBrokers.size > 0 && (
+                      <p className="mt-1 text-xs text-muted-foreground">Showing {[...portfolioBrokers].join(", ")} exports for this portfolio.</p>
+                    )}
                   </Field>
                 </div>
                 <p className="-mt-2 text-xs text-muted-foreground">

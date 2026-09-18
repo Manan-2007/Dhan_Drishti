@@ -1,11 +1,20 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, type Portfolio, type HoldingsResponse, type Transaction, type ImportBatch } from "./api.js";
+import { api, type Portfolio, type Account, type HoldingsResponse, type Transaction, type ImportBatch } from "./api.js";
 
 export function usePortfolios() {
   return useQuery({
     queryKey: ["portfolios"],
     queryFn: () => api.get<{ portfolios: Portfolio[] }>("/api/portfolios").then((r) => r.portfolios),
+  });
+}
+
+export function useAccounts(portfolioId: string | null) {
+  const qs = portfolioId ? `?portfolioId=${portfolioId}` : "";
+  return useQuery({
+    enabled: !!portfolioId,
+    queryKey: ["accounts", portfolioId],
+    queryFn: () => api.get<{ accounts: Account[] }>(`/api/accounts${qs}`).then((r) => r.accounts),
   });
 }
 

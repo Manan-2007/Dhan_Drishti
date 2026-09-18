@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError } from "../lib/api.js";
-import { Button, Card, Input } from "./ui.js";
+import { api, ApiError, type Portfolio } from "../lib/api.js";
+import { Button, Card, Input, Select } from "./ui.js";
 
 const BROKERS: { id: string; label: string }[] = [
   { id: "zerodha", label: "Zerodha" },
@@ -22,13 +22,21 @@ export function Onboarding() {
   const qc = useQueryClient();
   const [mode, setMode] = useState<"choose" | "personal" | "family">("choose");
   const [personalName, setPersonalName] = useState("My Portfolio");
+  const [personalBroker, setPersonalBroker] = useState("");
   const [members, setMembers] = useState<Member[]>([{ name: "", brokers: [] }]);
   const [error, setError] = useState<string | null>(null);
 
   const done = () => qc.invalidateQueries();
 
   const createPersonal = useMutation({
-    mutationFn: async () => api.post("/api/portfolios", { name: personalName.trim() || "My Portfolio", kind: "custom" }),
+    mutationFn: async () => {
+      const { portfolio } = await api.post<{ portfolio: Portfolio }>("/api/portfolios", { name: personalName.trim() || "My Portfolio", kind: "custom" });
+      // Tie the portfolio to a broker (as an account) so imports offer only that broker's files.
+      if (personalBroker) {
+        const label = BROKERS.find((b) => b.id === personalBroker)?.label ?? personalBroker;
+        await api.post("/api/accounts", { portfolioId: portfolio.id, name: label, broker: personalBroker });
+      }
+    },
     onSuccess: done,
     onError: (e) => setError(e instanceof ApiError ? e.message : "Could not create"),
   });
@@ -78,6 +86,16 @@ export function Onboarding() {
         <h2 className="font-serif text-xl">Name your portfolio</h2>
         <div className="mt-4 space-y-1.5">
           <Input value={personalName} onChange={(e) => setPersonalName(e.target.value)} placeholder="My Portfolio" />
+        </div>
+        <div className="mt-4 space-y-1.5">
+          <label className="text-sm text-muted-foreground">Broker</label>
+          <Select value={personalBroker} onChange={(e) => setPersonalBroker(e.target.value)}>
+            <option value="">Multiple / other</option>
+            {BROKERS.filter((b) => b.id !== "other").map((b) => (
+              <option key={b.id} value={b.id}>{b.label}</option>
+            ))}
+          </Select>
+          <p className="text-xs text-muted-foreground">Imports will offer only this broker's files. Pick “Multiple / other” to keep all options.</p>
         </div>
         {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
         <Button className="mt-4 w-full" disabled={createPersonal.isPending} onClick={() => createPersonal.mutate()}>

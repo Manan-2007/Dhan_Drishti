@@ -6,20 +6,39 @@ import { PageHeader } from "../components/PageHeader.js";
 import { Button, Card, Field, Input, Select, Spinner, Badge } from "../components/ui.js";
 
 const KINDS = ["broker", "group", "strategy", "geo", "goal", "family", "custom"];
+const BROKERS: { id: string; label: string }[] = [
+  { id: "", label: "Multiple / other" },
+  { id: "zerodha", label: "Zerodha" },
+  { id: "dhan", label: "Dhan" },
+  { id: "vested", label: "Vested (US)" },
+  { id: "ibkr", label: "Interactive Brokers" },
+  { id: "binance", label: "Binance (crypto)" },
+];
 
 export function Portfolios() {
   const qc = useQueryClient();
   const { data: portfolios, isLoading } = usePortfolios();
   const [name, setName] = useState("");
   const [kind, setKind] = useState("broker");
+  const [broker, setBroker] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const create = useMutation({
-    mutationFn: () => api.post<{ portfolio: Portfolio }>("/api/portfolios", { name, kind }),
+    mutationFn: async () => {
+      const { portfolio } = await api.post<{ portfolio: Portfolio }>("/api/portfolios", { name, kind });
+      // Tie the portfolio to a broker (via an account) so the import wizard can show only that
+      // broker's exports. "Multiple / other" leaves it open — imports then show every option.
+      if (broker) {
+        const label = BROKERS.find((b) => b.id === broker)?.label ?? broker;
+        await api.post("/api/accounts", { portfolioId: portfolio.id, name: label, broker });
+      }
+      return portfolio;
+    },
     onSuccess: () => {
       setName("");
       setError(null);
       void qc.invalidateQueries({ queryKey: ["portfolios"] });
+      void qc.invalidateQueries({ queryKey: ["accounts"] });
     },
     onError: (e) => setError(e instanceof ApiError ? e.message : "Failed to create"),
   });
@@ -72,6 +91,16 @@ export function Portfolios() {
           <form onSubmit={submit} className="space-y-3">
             <Field label="Name">
               <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Zerodha, Long Term…" required />
+            </Field>
+            <Field label="Broker">
+              <Select value={broker} onChange={(e) => setBroker(e.target.value)}>
+                {BROKERS.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.label}
+                  </option>
+                ))}
+              </Select>
+              <p className="mt-1 text-xs text-muted-foreground">Imports will offer only this broker's files. Choose “Multiple / other” to keep all options.</p>
             </Field>
             <Field label="Kind">
               <Select value={kind} onChange={(e) => setKind(e.target.value)}>

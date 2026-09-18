@@ -144,6 +144,15 @@ export interface BrokerInfo {
   label: string;
   configurable: boolean;
   kind: "transactions" | "prices";
+  brokers: string[]; // broker families this export applies to; ["*"] = any
+}
+export interface Account {
+  id: string;
+  portfolioId: string;
+  name: string;
+  broker: string;
+  accountRef: string | null;
+  currency: string;
 }
 export interface SeedPricesResult {
   rows: number;

@@ -38,14 +38,34 @@ export interface AdapterInfo {
   configurable: boolean;
   /** "transactions" → the normal import pipeline; "prices" → a price-only seed (no cost basis). */
   kind: "transactions" | "prices";
+  /** Broker families this export belongs to; ["*"] means it applies to any broker (a generic
+   *  snapshot / funds / dividends / custom CSV). The import wizard filters by the portfolio's broker. */
+  brokers: string[];
 }
 
+// Which broker family each adapter belongs to. Keep in sync with the account BROKERS enum.
+const ADAPTER_BROKERS: Record<string, string[]> = {
+  zerodha: ["zerodha"],
+  "zerodha-holdings": ["zerodha"],
+  "dhan-txn": ["dhan"],
+  dhan: ["dhan"],
+  "dhan-holdings": ["dhan"],
+  vested: ["vested"],
+  ibkr: ["ibkr"],
+  binance: ["binance", "crypto"],
+  holdings: ["*"],
+  funds: ["*"],
+  dividends: ["*"],
+  generic: ["*"],
+};
+
 export function listAdapters(): AdapterInfo[] {
-  const fixed: AdapterInfo[] = Object.values(ADAPTERS).map((a) => ({ id: a.id, label: a.label, configurable: false, kind: "transactions" }));
+  const brokersOf = (id: string) => ADAPTER_BROKERS[id] ?? ["*"];
+  const fixed: AdapterInfo[] = Object.values(ADAPTERS).map((a) => ({ id: a.id, label: a.label, configurable: false, kind: "transactions", brokers: brokersOf(a.id) }));
   return [
     ...fixed,
-    { id: "dhan-holdings", label: "Dhan — Holdings (update current prices)", configurable: false, kind: "prices" },
-    { id: "generic", label: "Generic CSV (custom mapping)", configurable: true, kind: "transactions" },
+    { id: "dhan-holdings", label: "Dhan — Holdings (update current prices)", configurable: false, kind: "prices", brokers: brokersOf("dhan-holdings") },
+    { id: "generic", label: "Generic CSV (custom mapping)", configurable: true, kind: "transactions", brokers: ["*"] },
   ];
 }
 
