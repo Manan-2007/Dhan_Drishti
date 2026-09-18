@@ -3,7 +3,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type BrokerInfo, type ImportPreview, type ImportResult, type SeedPricesResult } from "../lib/api.js";
 import { usePortfolios, useAccounts, useImports } from "../lib/hooks.js";
 import { PageHeader } from "../components/PageHeader.js";
-import { ClassifyCard } from "../components/ClassifyCard.js";
 import { Button, Card, Field, Input, Select, Spinner, Badge } from "../components/ui.js";
 import { dateShort } from "../lib/format.js";
 
@@ -29,6 +28,7 @@ export function Imports() {
   });
 
   const [portfolioId, setPortfolioId] = useState("");
+  const [accountId, setAccountId] = useState("");
   const [broker, setBroker] = useState("zerodha");
   const [filename, setFilename] = useState("");
   const [content, setContent] = useState("");
@@ -51,15 +51,18 @@ export function Imports() {
     if (!portfolioId && portfolios && portfolios.length > 0) setPortfolioId(portfolios[0]!.id);
   }, [portfolios, portfolioId]);
 
-  // The portfolio's broker (from its accounts) narrows which exports the wizard offers.
+  // The portfolio's broker (from its accounts) narrows which exports the wizard offers. When a
+  // portfolio has several broker accounts, picking one narrows further to that single broker.
   const { data: accounts } = useAccounts(portfolioId || null);
-  const portfolioBrokers = useMemo(
-    () => new Set((accounts ?? []).map((a) => a.broker).filter((b) => b && b !== "manual" && b !== "generic")),
-    [accounts],
-  );
+  useEffect(() => setAccountId(""), [portfolioId]);
+  const selectedAccount = accounts?.find((a) => a.id === accountId);
+  const filterBrokers = useMemo(() => {
+    if (selectedAccount && selectedAccount.broker !== "manual" && selectedAccount.broker !== "generic") return new Set([selectedAccount.broker]);
+    return new Set((accounts ?? []).map((a) => a.broker).filter((b) => b && b !== "manual" && b !== "generic"));
+  }, [accounts, selectedAccount]);
   const visibleBrokers = useMemo(
-    () => (brokers ?? []).filter((b) => portfolioBrokers.size === 0 || b.brokers.includes("*") || b.brokers.some((x) => portfolioBrokers.has(x))),
-    [brokers, portfolioBrokers],
+    () => (brokers ?? []).filter((b) => filterBrokers.size === 0 || b.brokers.includes("*") || b.brokers.some((x) => filterBrokers.has(x))),
+    [brokers, filterBrokers],
   );
   // Keep the selected import type valid for the chosen portfolio; prefer its broker-specific export.
   useEffect(() => {
@@ -111,7 +114,7 @@ export function Imports() {
 
   function buildPayload() {
     const period = from && to ? { from, to, replace } : {};
-    const base = { portfolioId, broker, filename: filename || "upload.csv", content, encoding, ...period };
+    const base = { portfolioId, accountId: accountId || undefined, broker, filename: filename || "upload.csv", content, encoding, ...period };
     if (!isGeneric) return base;
     return {
       ...base,
@@ -211,6 +214,18 @@ export function Imports() {
                       ))}
                     </Select>
                   </Field>
+                  {(accounts?.length ?? 0) > 1 && (
+                    <Field label="Account">
+                      <Select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+                        <option value="">All accounts</option>
+                        {accounts?.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                  )}
                   <Field label="What are you uploading?">
                     <Select value={broker} onChange={(e) => setBroker(e.target.value)}>
                       {visibleBrokers.map((b) => (
@@ -219,8 +234,8 @@ export function Imports() {
                         </option>
                       ))}
                     </Select>
-                    {portfolioBrokers.size > 0 && (
-                      <p className="mt-1 text-xs text-muted-foreground">Showing {[...portfolioBrokers].join(", ")} exports for this portfolio.</p>
+                    {filterBrokers.size > 0 && (
+                      <p className="mt-1 text-xs text-muted-foreground">Showing {[...filterBrokers].join(", ")} exports{selectedAccount ? ` for ${selectedAccount.name}` : " for this portfolio"}.</p>
                     )}
                   </Field>
                 </div>
@@ -401,7 +416,12 @@ export function Imports() {
           </Card>
 
           <div className="space-y-4">
-          <ClassifyCard />
+          <Card className="h-fit">
+            <p className="text-sm text-muted-foreground">
+              Sectors and sub-sectors are assigned automatically from a built-in NSE / AMFI reference
+              when you import — no manual step needed.
+            </p>
+          </Card>
           <Card className="h-fit">
             <h3 className="mb-3 text-sm font-medium text-muted-foreground">Import history</h3>
             {history && history.length > 0 ? (
