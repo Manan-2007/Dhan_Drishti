@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError, type ImportPreview, type ImportResult } from "../lib/api.js";
+import { api, ApiError, type BrokerInfo, type ImportPreview, type ImportResult, type SeedPricesResult } from "../lib/api.js";
 import { usePortfolios, useImports } from "../lib/hooks.js";
 import { PageHeader } from "../components/PageHeader.js";
 import { ClassifyCard } from "../components/ClassifyCard.js";
@@ -25,13 +25,15 @@ export function Imports() {
   const { data: history } = useImports();
   const { data: brokers } = useQuery({
     queryKey: ["brokers"],
-    queryFn: () => api.get<{ brokers: { id: string; label: string }[] }>("/api/imports/brokers").then((r) => r.brokers),
+    queryFn: () => api.get<{ brokers: BrokerInfo[] }>("/api/imports/brokers").then((r) => r.brokers),
   });
 
   const [portfolioId, setPortfolioId] = useState("");
   const [broker, setBroker] = useState("zerodha");
   const [filename, setFilename] = useState("");
   const [content, setContent] = useState("");
+  const [encoding, setEncoding] = useState<"base64" | undefined>(undefined);
+  const [seedResult, setSeedResult] = useState<SeedPricesResult | null>(null);
   // Generic column mapping (only used when broker === "generic").
   const [map, setMap] = useState<Record<string, string>>({});
   const [buyVals, setBuyVals] = useState("buy");
@@ -53,24 +55,44 @@ export function Imports() {
     setStep("select");
     setPreview(null);
     setResult(null);
+    setSeedResult(null);
     setContent("");
+    setEncoding(undefined);
     setFilename("");
     setError(null);
   }
 
-  async function onFile(file: File) {
-    setFilename(file.name);
-    setContent(await file.text());
+  /** Read an .xlsx as base64 (broker Excel exports), a .csv as UTF-8 text. */
+  function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(((reader.result as string).split(",")[1]) ?? "");
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
   }
 
-  const headers = content ? (content.split(/\r?\n/)[0] ?? "").split(",").map((h) => h.trim()).filter(Boolean) : [];
+  async function onFile(file: File) {
+    setFilename(file.name);
+    if (/\.(xlsx|xlsm|xlsb|xls)$/i.test(file.name)) {
+      setContent(await fileToBase64(file));
+      setEncoding("base64");
+    } else {
+      setContent(await file.text());
+      setEncoding(undefined);
+    }
+  }
+
+  const selectedBroker = brokers?.find((b) => b.id === broker);
+  const isPrices = selectedBroker?.kind === "prices";
   const isGeneric = broker === "generic";
+  const headers = content && !encoding ? (content.split(/\r?\n/)[0] ?? "").split(",").map((h) => h.trim()).filter(Boolean) : [];
   const REQUIRED_MAP = ["symbol", "date", "type", "quantity", "price"] as const;
   const mappingComplete = REQUIRED_MAP.every((f) => map[f]);
 
   function buildPayload() {
     const period = from && to ? { from, to, replace } : {};
-    const base = { portfolioId, broker, filename: filename || "upload.csv", content, ...period };
+    const base = { portfolioId, broker, filename: filename || "upload.csv", content, encoding, ...period };
     if (!isGeneric) return base;
     return {
       ...base,
@@ -119,6 +141,21 @@ export function Imports() {
     }
   }
 
+  async function runSeedPrices() {
+    setError(null);
+    setBusy(true);
+    try {
+      const r = await api.post<SeedPricesResult>("/api/imports/seed-prices", { portfolioId, filename: filename || "holding.csv", content, encoding });
+      setSeedResult(r);
+      setStep("done");
+      void qc.invalidateQueries();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Price update failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const noPortfolios = portfolios && portfolios.length === 0;
 
   return (
@@ -132,13 +169,13 @@ export function Imports() {
           <Card>
             {/* Stepper */}
             <div className="mb-4 flex items-center gap-2 text-xs">
-              {(["select", "preview", "done"] as Step[]).map((s, i) => (
+              {(isPrices ? (["select", "done"] as Step[]) : (["select", "preview", "done"] as Step[])).map((s, i, arr) => (
                 <div key={s} className="flex items-center gap-2">
                   <span className={`grid h-6 w-6 place-items-center rounded-full ${step === s ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>{i + 1}</span>
                   <span className={step === s ? "font-medium" : "text-muted-foreground"}>
                     {s === "select" ? "Choose & upload" : s === "preview" ? "Preview" : "Done"}
                   </span>
-                  {i < 2 && <span className="text-muted-foreground">→</span>}
+                  {i < arr.length - 1 && <span className="text-muted-foreground">→</span>}
                 </div>
               ))}
             </div>
@@ -166,10 +203,17 @@ export function Imports() {
                   </Field>
                 </div>
                 <p className="-mt-2 text-xs text-muted-foreground">
-                  Import each broker export separately — trades (tradebook / transaction report), funds (deposits &
-                  withdrawals) and dividends. Holdings snapshots are supported too.
+                  {isPrices ? (
+                    <>Updates today's price for holdings you've already imported — matched by ISIN or name. It adds no
+                    transactions and no cost basis, so nothing is double-counted. Ideal for Dhan holdings, whose scrips
+                    aren't priced automatically.</>
+                  ) : (
+                    <>Import each broker export separately — trades (tradebook / transaction report), funds (deposits &
+                    withdrawals), dividends and holdings snapshots. CSV and Excel (.xlsx) are both supported.</>
+                  )}
                 </p>
 
+                {!isPrices && (
                 <div className="rounded-md border bg-background p-3">
                   <p className="mb-2 text-sm font-medium">Period covered <span className="font-normal text-muted-foreground">(optional)</span></p>
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -184,18 +228,19 @@ export function Imports() {
                     </span>
                   </label>
                 </div>
+                )}
 
-                <Field label="CSV file">
+                <Field label="CSV or Excel file">
                   <input
                     type="file"
-                    accept=".csv,text/csv"
+                    accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     onChange={(e) => e.target.files?.[0] && void onFile(e.target.files[0])}
                     className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:bg-card file:px-3 file:py-2 file:text-sm"
                   />
                 </Field>
-                {filename && <p className="text-xs text-muted-foreground">Loaded {filename} ({content.length.toLocaleString()} chars)</p>}
+                {filename && <p className="text-xs text-muted-foreground">Loaded {filename}{encoding === "base64" ? " (Excel)" : ` (${content.length.toLocaleString()} chars)`}</p>}
 
-                {isGeneric && content && (
+                {isGeneric && !isPrices && content && (
                   <div className="rounded-md border bg-background p-3">
                     <p className="mb-2 text-sm font-medium">Map your columns</p>
                     <p className="mb-3 text-xs text-muted-foreground">Tell Dhan Drishti which column is which. Required: symbol, date, type, quantity, price.</p>
@@ -237,9 +282,15 @@ export function Imports() {
                 )}
 
                 {error && <p className="text-sm text-destructive">{error}</p>}
-                <Button onClick={runCheck} disabled={!content || !portfolioId || busy || (isGeneric && !mappingComplete)}>
-                  {busy ? "Checking…" : "Preview import"}
-                </Button>
+                {isPrices ? (
+                  <Button onClick={runSeedPrices} disabled={!content || !portfolioId || busy}>
+                    {busy ? "Updating…" : "Update prices"}
+                  </Button>
+                ) : (
+                  <Button onClick={runCheck} disabled={!content || !portfolioId || busy || (isGeneric && !mappingComplete)}>
+                    {busy ? "Checking…" : "Preview import"}
+                  </Button>
+                )}
               </div>
             )}
 
@@ -303,6 +354,26 @@ export function Imports() {
                   </p>
                 </div>
                 <Button onClick={reset}>Import another file</Button>
+              </div>
+            )}
+
+            {step === "done" && seedResult && (
+              <div className="space-y-4 text-center">
+                <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-success/15 text-success">✓</div>
+                <div>
+                  <h3 className="font-serif text-lg">Prices updated</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Seeded current prices for <span className="font-medium text-foreground">{seedResult.seeded}</span> of {seedResult.rows} holdings
+                    {seedResult.unmatchedCount > 0 && ` · ${seedResult.unmatchedCount} not matched to a held security`}.
+                  </p>
+                </div>
+                {seedResult.unmatched.length > 0 && (
+                  <div className="mx-auto max-w-md text-left">
+                    <p className="mb-1 text-xs font-medium text-muted-foreground">Not matched (import their transactions first):</p>
+                    <p className="max-h-28 overflow-y-auto text-xs text-muted-foreground">{seedResult.unmatched.slice(0, 30).join(", ")}{seedResult.unmatchedCount > 30 ? ` +${seedResult.unmatchedCount - 30} more` : ""}</p>
+                  </div>
+                )}
+                <Button onClick={reset}>Update another file</Button>
               </div>
             )}
           </Card>

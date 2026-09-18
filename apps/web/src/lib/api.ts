@@ -139,6 +139,19 @@ export interface ImportResult extends ImportPreview {
   imported: number;
   replaced: number;
 }
+export interface BrokerInfo {
+  id: string;
+  label: string;
+  configurable: boolean;
+  kind: "transactions" | "prices";
+}
+export interface SeedPricesResult {
+  rows: number;
+  seeded: number;
+  matched: string[];
+  unmatched: string[];
+  unmatchedCount: number;
+}
 export interface ImportBatch {
   id: string;
   broker: string;
