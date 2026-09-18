@@ -41,9 +41,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await refresh();
     },
     logout: async () => {
-      await api.post("/api/auth/logout");
-      qc.clear();
-      await qc.invalidateQueries({ queryKey: ["me"] });
+      // End the server session (ignore transient errors — we still log out locally).
+      try {
+        await api.post("/api/auth/logout");
+      } catch {
+        /* ignore */
+      }
+      // Drop every other cached query, then set the current user to null synchronously so the
+      // gate re-renders to the landing page immediately (no dependence on a refetch).
+      qc.removeQueries({ predicate: (q) => q.queryKey[0] !== "me" });
+      qc.setQueryData(["me"], null);
     },
   };
 
