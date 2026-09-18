@@ -43,7 +43,25 @@ export interface ImportPreview {
   toImport: number;
   invalidRows: RowIssue[];
   newSecuritySymbols: string[];
+  /** The date span the file covers, read from its transactions (null if it carries no dates). */
+  period: { from: string; to: string } | null;
 }
+
+/** First and last transaction date in a parsed file — the period it covers. */
+function fileDateRange(rows: NormalizedRow[]): { from: string; to: string } | null {
+  let min: string | null = null;
+  let max: string | null = null;
+  for (const r of rows) {
+    if (!r.ok) continue;
+    const d = r.tx.tradeDate; // ISO-8601, so lexical compare is chronological
+    if (min === null || d < min) min = d;
+    if (max === null || d > max) max = d;
+  }
+  return min !== null && max !== null ? { from: min, to: max } : null;
+}
+
+const dayStart = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00.000Z`).toISOString();
+const dayEnd = (iso: string) => new Date(`${iso.slice(0, 10)}T23:59:59.999Z`).toISOString();
 
 interface Classified {
   toInsert: { tx: NormalizedTx; rawHash: string }[];
@@ -170,6 +188,7 @@ export async function previewImport(db: DB, userId: string, params: ImportParams
     toImport: c.toInsert.length,
     invalidRows: c.invalidRows.slice(0, 50),
     newSecuritySymbols: [...c.newSecuritySymbols].slice(0, 100),
+    period: fileDateRange(rows),
   };
 }
 
@@ -192,10 +211,16 @@ export async function commitImport(db: DB, userId: string, params: ImportParams)
       throw new BadRequestError("account_portfolio_mismatch", "Account does not belong to that portfolio");
   }
 
-  // Overwrite mode: clear existing rows from this source within the stated period first, so
+  const { rows, detected } = parseWithAdapter(params);
+
+  // Overwrite mode: clear existing rows from this source over the period the file covers, so
   // re-uploading an overlapping range (e.g. a full-year file over monthly ones) doesn't duplicate.
+  // The period is read from the file's own transaction dates (an explicit from/to may still
+  // override it for headless callers). Deleting before classify means the new rows aren't treated
+  // as duplicates of the ones they replace.
+  const period = params.from && params.to ? { from: params.from, to: params.to } : fileDateRange(rows);
   let replaced = 0;
-  if (params.replace && params.from && params.to) {
+  if (params.replace && period) {
     const res = await db
       .delete(transactions)
       .where(
@@ -203,15 +228,14 @@ export async function commitImport(db: DB, userId: string, params: ImportParams)
           eq(transactions.userId, userId),
           eq(transactions.portfolioId, params.portfolioId),
           eq(transactions.sourceBroker, params.broker),
-          gte(transactions.tradeDate, new Date(params.from).toISOString()),
-          lte(transactions.tradeDate, new Date(`${params.to.slice(0, 10)}T23:59:59.999Z`).toISOString()),
+          gte(transactions.tradeDate, dayStart(period.from)),
+          lte(transactions.tradeDate, dayEnd(period.to)),
         ),
       )
       .run();
     replaced = res.rowsAffected ?? 0;
   }
 
-  const { rows, detected } = parseWithAdapter(params);
   const c = await classify(db, userId, rows);
 
   const fileHash = createHash("sha256").update(params.content).digest("hex");
@@ -308,6 +332,7 @@ export async function commitImport(db: DB, userId: string, params: ImportParams)
     toImport: c.toInsert.length,
     invalidRows: c.invalidRows.slice(0, 50),
     newSecuritySymbols: [...c.newSecuritySymbols].slice(0, 100),
+    period: fileDateRange(rows),
   };
 }
 

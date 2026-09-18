@@ -133,6 +133,7 @@ export interface ImportPreview {
   toImport: number;
   invalidRows: { rowIndex: number; error: string }[];
   newSecuritySymbols: string[];
+  period: { from: string; to: string } | null;
 }
 export interface ImportResult extends ImportPreview {
   batchId: string;

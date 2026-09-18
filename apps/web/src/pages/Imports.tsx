@@ -38,8 +38,6 @@ export function Imports() {
   const [map, setMap] = useState<Record<string, string>>({});
   const [buyVals, setBuyVals] = useState("buy");
   const [sellVals, setSellVals] = useState("sell");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
   const [replace, setReplace] = useState(false);
   const [step, setStep] = useState<Step>("select");
   const [preview, setPreview] = useState<ImportPreview | null>(null);
@@ -113,8 +111,7 @@ export function Imports() {
   const mappingComplete = REQUIRED_MAP.every((f) => map[f]);
 
   function buildPayload() {
-    const period = from && to ? { from, to, replace } : {};
-    const base = { portfolioId, accountId: accountId || undefined, broker, filename: filename || "upload.csv", content, encoding, ...period };
+    const base = { portfolioId, accountId: accountId || undefined, broker, filename: filename || "upload.csv", content, encoding, replace };
     if (!isGeneric) return base;
     return {
       ...base,
@@ -252,16 +249,11 @@ export function Imports() {
 
                 {!isPrices && (
                 <div className="rounded-md border bg-background p-3">
-                  <p className="mb-2 text-sm font-medium">Period covered <span className="font-normal text-muted-foreground">(optional)</span></p>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <Field label="From"><Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
-                    <Field label="To"><Input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></Field>
-                  </div>
-                  <label className="mt-3 flex items-start gap-2 text-sm">
-                    <input type="checkbox" className="mt-1" checked={replace} disabled={!from || !to} onChange={(e) => setReplace(e.target.checked)} />
+                  <label className="flex items-start gap-2 text-sm">
+                    <input type="checkbox" className="mt-1" checked={replace} onChange={(e) => setReplace(e.target.checked)} />
                     <span>
-                      Replace existing data from this source in this period.
-                      <span className="block text-xs text-muted-foreground">Re-uploading a wider range (e.g. a full year over monthly files) overwrites cleanly — no duplicates.</span>
+                      Replace existing data from this source over the dates this file covers.
+                      <span className="block text-xs text-muted-foreground">The period is read from the file's own transaction dates — re-uploading a wider range (e.g. a full year over monthly files) overwrites cleanly, no duplicates.</span>
                     </span>
                   </label>
                 </div>
@@ -336,6 +328,13 @@ export function Imports() {
                 {preview.detected && (
                   <p className="text-sm text-muted-foreground">
                     Detected <Badge tone="muted">{preview.detected.broker}</Badge> — {preview.detected.reason}
+                  </p>
+                )}
+                {preview.period && (
+                  <p className="text-sm text-muted-foreground">
+                    Covers <span className="font-medium text-foreground">{dateShort(preview.period.from)}</span> to{" "}
+                    <span className="font-medium text-foreground">{dateShort(preview.period.to)}</span>
+                    {replace && " — existing data from this source in that range will be replaced"}.
                   </p>
                 )}
                 <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
