@@ -42,7 +42,8 @@ describe("Excel (.xlsx) import", () => {
         [],
         ["Symbol", "ISIN", "Sector", "Instrument Type", "Quantity Available", "Quantity Discrepant", "Quantity Long Term", "Quantity Pledged (Margin)", "Quantity Pledged (Loan)", "Average Price", "Previous Closing Price", "Unrealized P&L", "Unrealize P&L Pct."],
         ["BAJFINANCE", "INE296A01032", "FINANCIAL SERVICES", "-", 30, 0, 100, 100, 0, 950, 1016, 8580, 6.9],
-        ["LIQUIDCASE", "INF247Y01958", "-", "Debt - Liquid", 0, 0, 0, 500, 0, 1000, 1001, 500, 0.1],
+        // A liquid debt fund not in the reference sheet → classified from its instrument type.
+        ["ACMEDEBTFUND", "INF247Y01958", "-", "Debt - Liquid", 0, 0, 0, 500, 0, 1000, 1001, 500, 0.1],
       ],
     });
 
@@ -63,7 +64,7 @@ describe("Excel (.xlsx) import", () => {
     expect(Number(baj.currentValue)).toBeCloseTo(130 * 1016, 2); // previous close seeded as the quote
 
     // The liquid fund is classified Debt straight from its instrument type.
-    const liq = find(h.holdings, "LIQUIDCASE")!;
+    const liq = find(h.holdings, "ACMEDEBTFUND")!;
     expect(liq.netQty).toBe("500");
     expect(liq.security.assetClass).toBe("mf");
     expect(liq.security.sector).toBe("Debt");

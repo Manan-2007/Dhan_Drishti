@@ -35,8 +35,8 @@ describe("F&O lands in a Derivatives bucket, not Unclassified or its underlying'
     const bank = h.holdings.find((x: { security: { symbol: string } }) => x.security.symbol === "HDFCBANK")!;
     const fno = h.holdings.find((x: { security: { symbol: string } }) => x.security.symbol === "BANKNIFTY")!;
 
-    expect(bank.security.sector).toBe("Financials"); // the cash equity keeps its real sector
-    expect(fno.security.sector).toBe("Derivatives"); // the option is Derivatives, not "Financials"/Unclassified
+    expect(bank.security.sector).toBe("BFSI"); // the cash equity keeps its real sector
+    expect(fno.security.sector).toBe("Derivatives"); // the option is Derivatives, not "BFSI"/Unclassified
     expect(fno.security.assetClass).toBe("other");
 
     // And it surfaces as its own allocation slice.

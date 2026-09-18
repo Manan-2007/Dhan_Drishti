@@ -8,7 +8,7 @@ import { securities, transactions, type Security } from "../db/schema.js";
 import { NotFoundError } from "../lib/errors.js";
 import { authed } from "../lib/routes.js";
 import { parseCsv, pick } from "../import/csv.js";
-import { classifyInstrument } from "../import/classify-builtin.js";
+import { classifyInstrument, type Classification } from "../import/classify-builtin.js";
 
 /**
  * Apply the built-in classifier to every security the user holds — filling sector / sub-sector
@@ -39,14 +39,20 @@ export async function reclassifyHeld(db: DB, userId: string): Promise<{ updated:
     // A security traded only in the F&O segment is a derivative contract, whatever its name echoes.
     const segs = segBySec.get(s.id);
     const derivative = !!segs && segs.has("fno") && !segs.has("equity") && !segs.has("mf");
-    const cls = derivative
-      ? { assetClass: "other" as const, sector: "Derivatives", subSector: /FUT\b/i.test(`${s.symbol} ${s.name}`) ? "Futures" : "Options" }
+    const cls: Classification | null = derivative
+      ? { assetClass: "other", sector: "Derivatives", subSector: /FUT\b/i.test(`${s.symbol} ${s.name}`) ? "Futures" : "Options", source: "derivative" }
       : classifyInstrument(s.symbol, s.name);
     if (!cls) continue;
+    // Reference / derivative results are authoritative and correct an earlier guess; keyword
+    // results only fill blanks so they never clobber a better value already present.
+    const authoritative = cls.source === "reference" || cls.source === "derivative";
     const patch: Record<string, string> = {};
-    if (!s.sector && cls.sector) patch.sector = cls.sector;
-    if (!s.subSector && cls.subSector) patch.subSector = cls.subSector;
-    if (cls.assetClass && cls.assetClass !== "equity" && s.assetClass === "equity") patch.assetClass = cls.assetClass;
+    if (cls.sector && (authoritative || !s.sector) && s.sector !== cls.sector) patch.sector = cls.sector;
+    if (cls.subSector && (authoritative || !s.subSector) && s.subSector !== cls.subSector) patch.subSector = cls.subSector;
+    if (cls.assetClass) {
+      const canSet = authoritative ? cls.assetClass !== s.assetClass : cls.assetClass !== "equity" && s.assetClass === "equity";
+      if (canSet) patch.assetClass = cls.assetClass;
+    }
     if (Object.keys(patch).length === 0) continue;
     await db.update(securities).set({ ...patch, updatedAt: new Date().toISOString() }).where(eq(securities.id, s.id)).run();
     updated += 1;
