@@ -36,6 +36,9 @@ export function Imports() {
   const [map, setMap] = useState<Record<string, string>>({});
   const [buyVals, setBuyVals] = useState("buy");
   const [sellVals, setSellVals] = useState("sell");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [replace, setReplace] = useState(false);
   const [step, setStep] = useState<Step>("select");
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -66,7 +69,8 @@ export function Imports() {
   const mappingComplete = REQUIRED_MAP.every((f) => map[f]);
 
   function buildPayload() {
-    const base = { portfolioId, broker, filename: filename || "upload.csv", content };
+    const period = from && to ? { from, to, replace } : {};
+    const base = { portfolioId, broker, filename: filename || "upload.csv", content, ...period };
     if (!isGeneric) return base;
     return {
       ...base,
@@ -151,7 +155,7 @@ export function Imports() {
                       ))}
                     </Select>
                   </Field>
-                  <Field label="Broker / source">
+                  <Field label="What are you uploading?">
                     <Select value={broker} onChange={(e) => setBroker(e.target.value)}>
                       {brokers?.map((b) => (
                         <option key={b.id} value={b.id}>
@@ -161,6 +165,26 @@ export function Imports() {
                     </Select>
                   </Field>
                 </div>
+                <p className="-mt-2 text-xs text-muted-foreground">
+                  Import each broker export separately — trades (tradebook / transaction report), funds (deposits &
+                  withdrawals) and dividends. Holdings snapshots are supported too.
+                </p>
+
+                <div className="rounded-md border bg-background p-3">
+                  <p className="mb-2 text-sm font-medium">Period covered <span className="font-normal text-muted-foreground">(optional)</span></p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="From"><Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
+                    <Field label="To"><Input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></Field>
+                  </div>
+                  <label className="mt-3 flex items-start gap-2 text-sm">
+                    <input type="checkbox" className="mt-1" checked={replace} disabled={!from || !to} onChange={(e) => setReplace(e.target.checked)} />
+                    <span>
+                      Replace existing data from this source in this period.
+                      <span className="block text-xs text-muted-foreground">Re-uploading a wider range (e.g. a full year over monthly files) overwrites cleanly — no duplicates.</span>
+                    </span>
+                  </label>
+                </div>
+
                 <Field label="CSV file">
                   <input
                     type="file"
@@ -272,6 +296,7 @@ export function Imports() {
                   <h3 className="font-serif text-lg">Import complete</h3>
                   <p className="text-sm text-muted-foreground">
                     Imported <span className="font-medium text-foreground">{result.imported}</span> transactions
+                    {result.replaced > 0 && ` · replaced ${result.replaced} in range`}
                     {result.duplicates > 0 && ` · skipped ${result.duplicates} duplicates`}
                     {result.invalid > 0 && ` · ${result.invalid} invalid`}
                     {result.newSecurities > 0 && ` · ${result.newSecurities} new securities`}.

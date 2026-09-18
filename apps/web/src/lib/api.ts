@@ -62,7 +62,7 @@ export interface Transaction {
   sourceBroker: string | null;
 }
 export interface HoldingRow {
-  security: { id: string; symbol: string; name: string; assetClass: string; sector: string | null; currency: string };
+  security: { id: string; symbol: string; name: string; assetClass: string; sector: string | null; subSector: string | null; currency: string };
   netQty: string;
   invested: string;
   avgCost: string | null;
@@ -117,6 +117,7 @@ export interface HoldingsResponse {
     basis: "current_value" | "invested";
     byAssetClass: AllocationSlice[];
     bySector: AllocationSlice[];
+    bySubSector: AllocationSlice[];
     byCurrency: AllocationSlice[];
   };
   holdings: HoldingRow[];
@@ -136,6 +137,7 @@ export interface ImportPreview {
 export interface ImportResult extends ImportPreview {
   batchId: string;
   imported: number;
+  replaced: number;
 }
 export interface ImportBatch {
   id: string;

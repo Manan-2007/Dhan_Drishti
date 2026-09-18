@@ -1,6 +1,7 @@
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell } from "recharts";
-import { useFilter, usePerformance } from "../lib/hooks.js";
+import { useFilter, usePerformance, useHoldings } from "../lib/hooks.js";
 import { PageHeader } from "../components/PageHeader.js";
+import { AllocationCard } from "../components/AllocationCard.js";
 import { BenchmarkCard } from "../components/BenchmarkCard.js";
 import { FxImpactCard } from "../components/FxImpactCard.js";
 import { TwrCard } from "../components/TwrCard.js";
@@ -22,6 +23,7 @@ function Stat({ label, value, valueClass, hint }: { label: string; value: string
 export function Analytics() {
   const { portfolioId } = useFilter();
   const { data, isLoading } = usePerformance(portfolioId);
+  const { data: holdings } = useHoldings(portfolioId);
 
   if (isLoading) return <Spinner />;
   if (!data) return <EmptyState title="No data" />;
@@ -111,6 +113,11 @@ export function Analytics() {
         </>
       )}
 
+      {holdings?.allocation && (
+        <div className="mt-4">
+          <AllocationCard allocation={holdings.allocation} initialDim="bySector" />
+        </div>
+      )}
       {hasActivity && <BenchmarkCard />}
       {hasActivity && <TwrCard />}
       {hasActivity && <FxImpactCard />}

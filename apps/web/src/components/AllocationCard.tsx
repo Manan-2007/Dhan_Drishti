@@ -13,21 +13,28 @@ const CHART_COLORS = [
   "var(--color-muted-foreground)",
 ];
 
-type Dim = "byAssetClass" | "bySector" | "byCurrency";
+type Dim = "byAssetClass" | "bySector" | "bySubSector" | "byCurrency";
 const TABS: { key: Dim; label: string }[] = [
   { key: "byAssetClass", label: "Asset class" },
   { key: "bySector", label: "Sector" },
+  { key: "bySubSector", label: "Sub-sector" },
   { key: "byCurrency", label: "Currency" },
 ];
 
-export function AllocationCard({ allocation }: { allocation: HoldingsResponse["allocation"] }) {
-  const [dim, setDim] = useState<Dim>("byAssetClass");
+export function AllocationCard({ allocation, initialDim = "byAssetClass" }: { allocation: HoldingsResponse["allocation"]; initialDim?: Dim }) {
+  const [dim, setDim] = useState<Dim>(initialDim);
   const slices = allocation[dim];
-  const data = slices.map((a) => ({
+  const mapped = slices.map((a) => ({
     name: dim === "byAssetClass" ? assetClassLabel(a.key) : a.key,
     value: Number(a.value),
-    weight: a.weight,
+    weight: Number(a.weight),
   }));
+  // Keep the chart legible: top 8, roll the rest into "Other".
+  const TOP = 8;
+  const data =
+    mapped.length > TOP
+      ? [...mapped.slice(0, TOP), mapped.slice(TOP).reduce((acc, s) => ({ name: "Other", value: acc.value + s.value, weight: acc.weight + s.weight }), { name: "Other", value: 0, weight: 0 })]
+      : mapped;
 
   return (
     <Card>

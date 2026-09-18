@@ -23,13 +23,25 @@ export function ClassifyCard() {
     onError: (e) => setMsg(e instanceof ApiError ? e.message : "Classification failed"),
   });
 
+  const auto = useMutation({
+    mutationFn: () => api.post<{ updated: number }>("/api/securities/reclassify", {}),
+    onSuccess: (r) => {
+      setMsg(`Auto-classified ${r.updated} securities`);
+      void qc.invalidateQueries({ queryKey: ["holdings"] });
+    },
+    onError: (e) => setMsg(e instanceof ApiError ? e.message : "Auto-classify failed"),
+  });
+
   return (
     <Card className="h-fit">
       <h3 className="text-sm font-medium text-muted-foreground">Classify securities</h3>
       <p className="mb-3 mt-1 text-xs text-muted-foreground">
-        Enrich sectors & names from a reference CSV (columns: symbol, name, asset_class, sector). This adds
-        market metadata on top of imported data — it never changes your transactions.
+        Sectors & sub-sectors power your allocation breakdown. Apply the built-in classifier, or upload a
+        reference CSV (columns: symbol, name, asset_class, sector) to enrich further.
       </p>
+      <Button variant="secondary" className="mb-3 w-full" disabled={auto.isPending} onClick={() => auto.mutate()}>
+        {auto.isPending ? "Classifying…" : "Auto-classify my holdings"}
+      </Button>
       <input
         type="file"
         accept=".csv,text/csv"
