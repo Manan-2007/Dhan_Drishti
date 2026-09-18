@@ -58,6 +58,13 @@ export function classifyInstrument(symbolRaw: string, nameRaw?: string): Classif
   const name = (nameRaw ?? "").toUpperCase().trim();
   const both = `${symbol} ${name}`;
 
+  // 0. Derivatives (options/futures) first — an F&O contract's name may echo its underlying (a
+  // BANKNIFTY option contains "BANK"), so it must be caught before the sector keywords. Futures
+  // symbols end in FUT (not "FUTURE", a real company word); options carry a numeric strike + CE/PE.
+  if (/FUT\b/.test(both) || /\d{3,}\s?(?:CE|PE)\b/.test(both)) {
+    return { assetClass: "other", sector: "Derivatives", subSector: /FUT\b/.test(both) ? "Futures" : "Options" };
+  }
+
   // 1. Pattern rules for ETFs / commodities / debt / REITs (highest priority).
   if (has(both, "SGB", "SOVEREIGN GOLD")) return { assetClass: "sgb", sector: "Commodity", subSector: "Sovereign Gold Bond" };
   if (has(both, "SILVER")) return { assetClass: "etf", sector: "Commodity", subSector: "Silver" };

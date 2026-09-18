@@ -28,6 +28,16 @@ describe("built-in instrument classifier", () => {
     expect(classifyInstrument("APL APOLLO TUBES", "APL Apollo Tubes")).toMatchObject({ sector: "Metals" });
   });
 
+  it("classifies F&O contracts as Derivatives, even when the name echoes the underlying", () => {
+    expect(classifyInstrument("NIFTY25JAN25000CE")).toMatchObject({ assetClass: "other", sector: "Derivatives", subSector: "Options" });
+    expect(classifyInstrument("BANKNIFTY2511250000PE")).toMatchObject({ sector: "Derivatives", subSector: "Options" }); // not Banks
+    expect(classifyInstrument("RELIANCE25NOVFUT")).toMatchObject({ sector: "Derivatives", subSector: "Futures" }); // not Energy
+  });
+
+  it("does not mistake a company with 'Future' in its name for a derivative", () => {
+    expect(classifyInstrument("FUTURERETAIL", "Future Retail")).not.toMatchObject({ sector: "Derivatives" });
+  });
+
   it("returns null for a truly unknown symbol", () => {
     expect(classifyInstrument("ZZZUNKNOWN123")).toBeNull();
   });

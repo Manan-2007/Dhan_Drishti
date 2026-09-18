@@ -17,13 +17,31 @@ import { classifyInstrument } from "../import/classify-builtin.js";
  * user set themselves (only fills blanks / corrects the import default).
  */
 export async function reclassifyHeld(db: DB, userId: string): Promise<{ updated: number }> {
-  const idRows = await db.selectDistinct({ securityId: transactions.securityId }).from(transactions).where(eq(transactions.userId, userId)).all();
-  const ids = idRows.map((r) => r.securityId).filter((x): x is string => !!x);
+  // Pull each held security with the segments it trades in — the segment ("fno") is the
+  // authoritative signal for a derivative, more reliable than the contract name.
+  const segRows = await db
+    .select({ securityId: transactions.securityId, segment: transactions.segment })
+    .from(transactions)
+    .where(eq(transactions.userId, userId))
+    .all();
+  const segBySec = new Map<string, Set<string>>();
+  for (const r of segRows) {
+    if (!r.securityId) continue;
+    const set = segBySec.get(r.securityId) ?? new Set<string>();
+    set.add(r.segment);
+    segBySec.set(r.securityId, set);
+  }
+  const ids = [...segBySec.keys()];
   if (ids.length === 0) return { updated: 0 };
   const secs = await db.select().from(securities).where(inArray(securities.id, ids)).all();
   let updated = 0;
   for (const s of secs) {
-    const cls = classifyInstrument(s.symbol, s.name);
+    // A security traded only in the F&O segment is a derivative contract, whatever its name echoes.
+    const segs = segBySec.get(s.id);
+    const derivative = !!segs && segs.has("fno") && !segs.has("equity") && !segs.has("mf");
+    const cls = derivative
+      ? { assetClass: "other" as const, sector: "Derivatives", subSector: /FUT\b/i.test(`${s.symbol} ${s.name}`) ? "Futures" : "Options" }
+      : classifyInstrument(s.symbol, s.name);
     if (!cls) continue;
     const patch: Record<string, string> = {};
     if (!s.sector && cls.sector) patch.sector = cls.sector;
