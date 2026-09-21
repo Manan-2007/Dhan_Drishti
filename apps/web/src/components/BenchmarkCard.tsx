@@ -67,16 +67,19 @@ export function BenchmarkCard() {
         <Spinner />
       ) : isError || !data ? (
         <p className="text-sm text-muted-foreground">Couldn't load the benchmark comparison.</p>
-      ) : !data.available || !data.portfolio || !data.index ? (
-        <p className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-foreground">
-          {data.reason ?? "Benchmark comparison isn't available yet."}
-        </p>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-4">
-            <ReturnCell label="Your portfolio (XIRR)" xirr={data.portfolio.xirr} sub={`worth ${compactMoney(data.portfolio.currentValue)}`} />
-            <ReturnCell label={`${data.label} (XIRR)`} xirr={data.index.xirr} sub={`would be ${compactMoney(data.index.currentValue)}`} />
-          </div>
+          {data.available && data.portfolio && data.index ? (
+            <div className="grid grid-cols-2 gap-4">
+              <ReturnCell label="Your portfolio (XIRR)" xirr={data.portfolio.xirr} sub={`worth ${compactMoney(data.portfolio.currentValue)}`} />
+              <ReturnCell label={`${data.label} (XIRR)`} xirr={data.index.xirr} sub={`would be ${compactMoney(data.index.currentValue)}`} />
+            </div>
+          ) : (
+            <p className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-foreground">
+              {data.reason ?? "Benchmark comparison isn't available yet."}
+              {data.series && data.series.length >= 2 && " The chart below still compares your contributions with the same money in the index."}
+            </p>
+          )}
 
           {data.series && data.series.length >= 2 && (
             <div className="mt-4">
@@ -99,7 +102,7 @@ export function BenchmarkCard() {
             </div>
           )}
 
-          {data.portfolio.xirr !== null && data.index.xirr !== null && (
+          {data.available && data.portfolio && data.index && data.portfolio.xirr !== null && data.index.xirr !== null && (
             <p className="mt-3 border-t pt-3 text-sm">
               {data.portfolio.xirr >= data.index.xirr ? (
                 <span>
@@ -119,10 +122,12 @@ export function BenchmarkCard() {
             </p>
           )}
 
-          <p className="mt-3 text-xs text-muted-foreground">
-            Since {data.from} · index as of {data.asOf}
-            {data.index.unmatchedFlows > 0 && ` · ${data.index.unmatchedFlows} early cashflow(s) predate the index data and were skipped`}
-          </p>
+          {data.from && (
+            <p className="mt-3 text-xs text-muted-foreground">
+              Since {data.from} · index as of {data.asOf}
+              {data.index && data.index.unmatchedFlows > 0 && ` · ${data.index.unmatchedFlows} early cashflow(s) predate the index data and were skipped`}
+            </p>
+          )}
           {data.currencyNote && <p className="mt-1 text-xs text-warning">{data.currencyNote}</p>}
         </>
       )}
