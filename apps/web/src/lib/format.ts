@@ -66,6 +66,14 @@ const ASSET_CLASS_LABELS: Record<string, string> = {
   sgb: "SGB",
   crypto: "Crypto",
   cash: "Cash",
+  // Manual / non-market asset classes
+  fd: "Fixed Deposit",
+  ppf: "PPF",
+  epf: "EPF",
+  nps: "NPS",
+  savings: "Savings",
+  gold: "Gold",
+  real_estate: "Real Estate",
   other: "Other",
 };
 export const assetClassLabel = (k: string): string => ASSET_CLASS_LABELS[k] ?? k;

@@ -122,6 +122,32 @@ export interface Diversification {
   topSector: { label: string; weight: number; value: string } | null;
   flags: ConcentrationFlag[];
 }
+export interface ManualAsset {
+  id: string;
+  name: string;
+  assetClass: string;
+  region: string;
+  currency: string;
+  currentValue: string;
+  cost: string | null;
+  baseValue: string | null;
+  baseCost: string | null;
+  gain: string | null;
+  notes: string | null;
+  valueAsOf: string | null;
+  portfolioId: string | null;
+}
+export interface ManualAssetsResult {
+  baseCurrency: string;
+  fxComplete: boolean;
+  unconvertibleCurrencies: string[];
+  total: string;
+  totalCost: string;
+  count: number;
+  byAssetClass: { key: string; value: string }[];
+  byRegion: { key: string; value: string }[];
+  items: ManualAsset[];
+}
 export interface HoldingsResponse {
   baseCurrency: string;
   fxComplete: boolean;
@@ -136,17 +162,20 @@ export interface HoldingsResponse {
     dividends: string;
     netPnl: string;
     cash: string;
+    manualAssets: string;
     netWorth: string;
     openPositions: number;
     pricedPositions: number;
     allPriced: boolean;
   };
+  manualAssets: ManualAsset[];
   allocation: {
     basis: "current_value" | "invested";
     byAssetClass: AllocationSlice[];
     bySector: AllocationSlice[];
     bySubSector: AllocationSlice[];
     byCurrency: AllocationSlice[];
+    byRegion: AllocationSlice[];
   };
   diversification: Diversification;
   holdings: HoldingRow[];
@@ -217,6 +246,7 @@ export interface NetWorthPoint {
   netWorth: string;
   holdingsValue: string;
   cash: string;
+  manualAssets: string;
   invested: string;
 }
 export interface NetWorthSeries {

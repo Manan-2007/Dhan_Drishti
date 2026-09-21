@@ -1,6 +1,14 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, type Portfolio, type Account, type HoldingsResponse, type Transaction, type ImportBatch, type NetWorthSeries, type RebalanceResponse, type RebalanceDimension } from "./api.js";
+import { api, type Portfolio, type Account, type HoldingsResponse, type Transaction, type ImportBatch, type NetWorthSeries, type RebalanceResponse, type RebalanceDimension, type ManualAssetsResult } from "./api.js";
+
+export function useManualAssets(portfolioId: string | null) {
+  const qs = portfolioId ? `?portfolioId=${portfolioId}` : "";
+  return useQuery({
+    queryKey: ["manual-assets", portfolioId],
+    queryFn: () => api.get<ManualAssetsResult>(`/api/manual-assets${qs}`),
+  });
+}
 
 export function useRebalance(portfolioId: string | null, dimension: RebalanceDimension) {
   const search = new URLSearchParams({ dimension });

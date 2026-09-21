@@ -13,11 +13,12 @@ const CHART_COLORS = [
   "var(--color-muted-foreground)",
 ];
 
-type Dim = "byAssetClass" | "bySector" | "bySubSector" | "byCurrency";
+type Dim = "byAssetClass" | "bySector" | "bySubSector" | "byCurrency" | "byRegion";
 const TABS: { key: Dim; label: string }[] = [
   { key: "byAssetClass", label: "Asset class" },
   { key: "bySector", label: "Sector" },
   { key: "bySubSector", label: "Sub-sector" },
+  { key: "byRegion", label: "Region" },
   { key: "byCurrency", label: "Currency" },
 ];
 

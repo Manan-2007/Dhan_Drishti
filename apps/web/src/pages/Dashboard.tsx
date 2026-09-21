@@ -40,14 +40,16 @@ export function Dashboard() {
   const s = data?.summary;
   const alloc = data?.allocation;
   const hasHoldings = (data?.holdings.length ?? 0) > 0;
+  const hasManual = Number(s?.manualAssets ?? "0") > 0;
 
   return (
     <>
       <PageHeader title="Dashboard" subtitle={portfolioId ? undefined : "All portfolios"} actions={<RefreshButton />} />
 
-      {!hasHoldings ? (
+      {!hasHoldings && !hasManual ? (
         <EmptyState title="No holdings yet">
-          This portfolio has no transactions. Import a Zerodha CSV to populate it.
+          This portfolio has no transactions. Import a Zerodha CSV to populate it — or add a manual asset
+          (FD, PPF, gold, real estate) under <Link to="/assets" className="underline">Other assets</Link>.
           <div className="mt-4">
             <Link to="/imports">
               <Button>Import transactions</Button>
@@ -90,6 +92,7 @@ export function Dashboard() {
             <Stat label="Realised P&L" value={compactMoney(s?.realisedPnl)} valueClass={signClass(s?.realisedPnl)} />
             <Stat label="Dividends" value={compactMoney(s?.dividends)} />
             {data?.cashTracked && <Stat label="Cash" value={compactMoney(s?.cash)} hint={money(s?.cash)} />}
+            {hasManual && <Stat label="Manual assets" value={compactMoney(s?.manualAssets)} hint={money(s?.manualAssets)} />}
             <Stat label="Net P&L" value={compactMoney(s?.netPnl)} valueClass={signClass(s?.netPnl)} />
             <Stat label="Open positions" value={String(s?.openPositions ?? 0)} />
           </div>
