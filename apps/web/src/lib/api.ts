@@ -172,6 +172,17 @@ export interface SeedPricesResult {
   unmatched: string[];
   unmatchedCount: number;
 }
+export interface NetWorthPoint {
+  date: string;
+  netWorth: string;
+  holdingsValue: string;
+  cash: string;
+  invested: string;
+}
+export interface NetWorthSeries {
+  currency: string;
+  series: NetWorthPoint[];
+}
 export interface ImportBatch {
   id: string;
   broker: string;

@@ -1,6 +1,16 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, type Portfolio, type Account, type HoldingsResponse, type Transaction, type ImportBatch } from "./api.js";
+import { api, type Portfolio, type Account, type HoldingsResponse, type Transaction, type ImportBatch, type NetWorthSeries } from "./api.js";
+
+export type NetWorthRange = "1m" | "3m" | "6m" | "1y" | "max";
+export function useNetWorth(portfolioId: string | null, range: NetWorthRange) {
+  const search = new URLSearchParams({ range });
+  if (portfolioId) search.set("portfolioId", portfolioId);
+  return useQuery({
+    queryKey: ["networth", portfolioId, range],
+    queryFn: () => api.get<NetWorthSeries>(`/api/performance/networth?${search.toString()}`),
+  });
+}
 
 export function usePortfolios() {
   return useQuery({

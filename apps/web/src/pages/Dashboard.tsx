@@ -4,6 +4,7 @@ import { PageHeader } from "../components/PageHeader.js";
 import { RefreshButton } from "../components/RefreshButton.js";
 import { AllocationCard } from "../components/AllocationCard.js";
 import { NetWorthCard } from "../components/NetWorthCard.js";
+import { NetWorthChart } from "../components/NetWorthChart.js";
 import { TopHoldingsCard } from "../components/TopHoldingsCard.js";
 import { Onboarding } from "../components/Onboarding.js";
 import { Button, Card, EmptyState, Spinner, Badge } from "../components/ui.js";
@@ -69,6 +70,10 @@ export function Dashboard() {
           )}
 
           {data && <NetWorthCard data={data} />}
+
+          <div className="mt-4">
+            <NetWorthChart portfolioId={portfolioId} />
+          </div>
 
           <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Stat label="Invested" value={compactMoney(s?.invested)} hint={money(s?.invested)} />
