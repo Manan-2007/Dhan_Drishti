@@ -59,6 +59,7 @@ export const openApiSpec = {
     { name: "Performance", description: "Realised P&L, XIRR, benchmark comparison" },
     { name: "Dividends", description: "Dividend & interest income, trailing yield & estimated calendar" },
     { name: "Rebalance", description: "Target allocation weights and drift vs the live allocation" },
+    { name: "Manual assets", description: "Non-market assets (FD/PPF/EPF/gold/real estate) that fold into net worth" },
     { name: "Goals", description: "Savings/target goals funded by portfolios" },
     { name: "Account", description: "Data export & account deletion" },
     { name: "Meta", description: "Health, discovery, API schema (no auth)" },
@@ -160,6 +161,16 @@ export const openApiSpec = {
       put: op("Rebalance", "Replace the target weights for a scope + dimension", { requestBody: json({ type: "object", required: ["targets"], properties: { portfolioId: { type: "string" }, dimension: { type: "string", enum: ["asset_class", "sector"], default: "asset_class" }, targets: { type: "array", items: { type: "object", required: ["key", "weight"], properties: { key: { type: "string" }, weight: { type: "string", description: "Fraction 0..1" } } } } } }), responses: { "200": { description: "Updated drift" }, ...AUTH_ERRORS } }),
     },
 
+    "/api/manual-assets": {
+      get: op("Manual assets", "List non-market assets (with base-currency values) for a scope", { parameters: [portfolioIdParam] }),
+      post: op("Manual assets", "Add a manual asset (FD/PPF/gold/real estate/…)", { requestBody: json(ref("ManualAssetInput")), responses: { "201": { description: "Created" }, ...AUTH_ERRORS } }),
+    },
+    "/api/manual-assets/{id}": {
+      parameters: [idPath],
+      put: op("Manual assets", "Update a manual asset (a new value stamps valueAsOf)", { requestBody: json(ref("ManualAssetInput")) }),
+      delete: op("Manual assets", "Delete a manual asset", { responses: { "200": { description: "Deleted", ...json(ref("Ok")) }, ...AUTH_ERRORS } }),
+    },
+
     "/api/goals": {
       get: op("Goals", "List goals with progress"),
       post: op("Goals", "Create a goal", { requestBody: json(ref("GoalInput")), responses: { "201": { description: "Created", ...json(ref("GoalWrap")) }, ...AUTH_ERRORS } }),
@@ -210,6 +221,21 @@ export const openApiSpec = {
       GoalInput: { type: "object", required: ["name", "targetAmount"], properties: { name: { type: "string" }, targetAmount: { type: "string" }, targetDate: { type: ["string", "null"] }, currency: { type: "string" }, portfolioIds: { type: "array", items: { type: "string" } } } },
       Goal: { type: "object", properties: { id: { type: "string" }, name: { type: "string" }, targetAmount: ref("Money"), targetDate: { type: ["string", "null"] }, funded: ref("Money"), remaining: ref("Money"), progress: ref("Money"), basis: { type: "string", enum: ["current_value", "invested"] }, reached: { type: "boolean" } } },
       GoalWrap: { type: "object", properties: { goal: ref("Goal") } },
+      ManualAssetInput: {
+        type: "object",
+        required: ["name", "currentValue"],
+        properties: {
+          name: { type: "string" },
+          assetClass: { type: "string", enum: ["fd", "ppf", "epf", "nps", "savings", "gold", "real_estate", "bond", "other"], default: "other" },
+          region: { type: "string", default: "India" },
+          currency: { type: "string", default: "INR" },
+          currentValue: ref("Money"),
+          cost: { anyOf: [ref("Money"), { type: "null" }] },
+          notes: { type: ["string", "null"] },
+          valueAsOf: { type: ["string", "null"], description: "YYYY-MM-DD" },
+          portfolioId: { type: ["string", "null"] },
+        },
+      },
     },
   },
 } as const;

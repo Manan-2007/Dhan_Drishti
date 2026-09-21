@@ -14,8 +14,9 @@ function snapshotValues(h: HoldingsResult) {
   const s = h.summary;
   const holdingsValue = s.pricedPositions > 0 ? s.currentValue : s.invested;
   const cash = h.cashTracked ? s.cash : "0";
-  const netWorth = d(holdingsValue).plus(d(cash)).toFixed();
-  return { netWorth, holdingsValue, cash, invested: s.invested, currency: h.baseCurrency };
+  const manualAssets = s.manualAssets ?? "0";
+  const netWorth = d(holdingsValue).plus(d(cash)).plus(d(manualAssets)).toFixed();
+  return { netWorth, holdingsValue, cash, manualAssets, invested: s.invested, currency: h.baseCurrency };
 }
 
 /** Upsert today's snapshot for a scope from an already-computed holdings result (no recompute). */
@@ -50,6 +51,7 @@ export interface NetWorthPoint {
   netWorth: string;
   holdingsValue: string;
   cash: string;
+  manualAssets: string;
   invested: string;
 }
 
@@ -61,6 +63,6 @@ export async function getNetWorthSeries(db: DB, userId: string, portfolioId?: st
   const rows = await db.select().from(snapshots).where(and(...clauses)).orderBy(asc(snapshots.date)).all();
   return {
     currency: rows[0]?.currency ?? "INR",
-    series: rows.map((r) => ({ date: r.date, netWorth: r.netWorth, holdingsValue: r.holdingsValue, cash: r.cash, invested: r.invested })),
+    series: rows.map((r) => ({ date: r.date, netWorth: r.netWorth, holdingsValue: r.holdingsValue, cash: r.cash, manualAssets: r.manualAssets, invested: r.invested })),
   };
 }

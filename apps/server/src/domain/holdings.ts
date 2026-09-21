@@ -19,6 +19,7 @@ import { transactions, securities, quotes, type Security } from "../db/schema.js
 import { authed } from "../lib/routes.js";
 import { getPortfolioOwned } from "./portfolios.js";
 import { upsertSnapshotFromHoldings } from "./snapshots.js";
+import { computeManualAssets, regionForCurrency } from "./manual-assets.js";
 import { baseCurrencyOf, rateMap } from "../market/fx.js";
 
 /** Providers whose quotes are model estimates, not exchange-traded prices — flagged in the UI. */
@@ -161,16 +162,22 @@ function withExtra(dim: Dim, extra: { key: string; value: Decimal }[]): Dim {
     .sort((a, b) => Number(b.value) - Number(a.value));
 }
 
+/** Base-currency slices for a non-security bucket (cash / manual assets), as Decimal extras. */
+type Extra = { key: string; value: Decimal }[];
+
 function allocation(
   rows: SerializedHolding[],
   cashByCurrency: Map<string, Decimal>, // cash converted to base, per source currency
   cashBase: Decimal,
+  manualByClass: Extra, // manual assets grouped by asset class (base currency)
+  manualByRegion: Extra, // manual assets grouped by region (base currency)
 ): {
   basis: "current_value" | "invested";
   byAssetClass: Dim;
   bySector: Dim;
   bySubSector: Dim;
   byCurrency: Dim;
+  byRegion: Dim;
 } {
   const allPriced = rows.every((r) => r.currentValue !== null || r.netQty === "0");
   const basis = allPriced && rows.some((r) => r.currentValue !== null) ? "current_value" : "invested";
@@ -178,12 +185,17 @@ function allocation(
   const cashAsset = basis === "current_value" && cashBase.greaterThan(0) ? [{ key: "cash", value: cashBase }] : [];
   const cashSector = basis === "current_value" && cashBase.greaterThan(0) ? [{ key: "Cash", value: cashBase }] : [];
   const cashCcy = basis === "current_value" ? [...cashByCurrency.entries()].map(([key, value]) => ({ key, value })) : [];
+  // Cash's region is that of its currency; manual assets carry their own region already.
+  const cashRegion = cashCcy.map(({ key, value }) => ({ key: regionForCurrency(key), value }));
   return {
     basis,
-    byAssetClass: withExtra(groupBy(rows, basis, (r) => r.security.assetClass), cashAsset),
+    // Manual assets (FD/gold/real estate/…) always represent value, so they fold into every
+    // value-based dimension regardless of basis — a portfolio of only manual assets still allocates.
+    byAssetClass: withExtra(groupBy(rows, basis, (r) => r.security.assetClass), [...cashAsset, ...manualByClass]),
     bySector: withExtra(groupBy(rows, basis, (r) => r.security.sector ?? "Unclassified"), cashSector),
     bySubSector: withExtra(groupBy(rows, basis, (r) => r.security.subSector ?? r.security.sector ?? "Unclassified"), cashSector),
     byCurrency: withExtra(groupBy(rows, basis, (r) => r.security.currency), cashCcy),
+    byRegion: withExtra(groupBy(rows, basis, (r) => regionForCurrency(r.security.currency)), [...cashRegion, ...manualByRegion]),
   };
 }
 
@@ -280,7 +292,14 @@ export async function computePortfolioHoldings(db: DB, userId: string, portfolio
       cashBase = cashBase.plus(inBase);
     }
   }
-  const netWorth = currentValue.plus(cashBase); // holdings value + cash (cash 0 unless tracked)
+  // Manual (non-market) assets — FDs, PPF, gold, real estate, … — fold into net worth & allocation.
+  const manual = await computeManualAssets(db, userId, portfolioId);
+  const manualBase = d(manual.total);
+  for (const ccy of manual.unconvertibleCurrencies) unconvertible.add(ccy);
+  const manualByClass = manual.byAssetClass.map((s) => ({ key: s.key, value: d(s.value) }));
+  const manualByRegion = manual.byRegion.map((s) => ({ key: s.key, value: d(s.value) }));
+
+  const netWorth = currentValue.plus(cashBase).plus(manualBase); // holdings + cash + manual assets
 
   // FX-impact decomposition: for each priced FOREIGN holding, split the base-currency gain
   // into the part from the asset's own price move (valued at cost-time FX) and the part from
@@ -335,12 +354,14 @@ export async function computePortfolioHoldings(db: DB, userId: string, portfolio
       dividends: dividends.toFixed(),
       netPnl: unrealised.plus(realised).plus(dividends).toFixed(),
       cash: cashBase.toFixed(),
+      manualAssets: manual.total,
       netWorth: netWorth.toFixed(),
       openPositions,
       pricedPositions: priced,
       allPriced,
     },
-    allocation: allocation(serialized, cashByCurrency, cashBase),
+    manualAssets: manual.items,
+    allocation: allocation(serialized, cashByCurrency, cashBase, manualByClass, manualByRegion),
     diversification,
     holdings: serialized,
   };

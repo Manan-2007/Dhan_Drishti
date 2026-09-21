@@ -228,6 +228,7 @@ export const snapshots = sqliteTable(
     netWorth: text("net_worth").notNull(),
     holdingsValue: text("holdings_value").notNull(),
     cash: text("cash").notNull(),
+    manualAssets: text("manual_assets").notNull().default("0"), // value of non-market assets (FD/PPF/gold/…)
     invested: text("invested").notNull(),
     currency: text("currency").notNull().default("INR"),
     provider: text("provider").notNull().default("snapshot"),
@@ -256,6 +257,32 @@ export const allocationTargets = sqliteTable(
   (t) => [index("idx_alloc_target_scope").on(t.userId, t.portfolioId, t.dimension)],
 );
 
+// Non-market ("manual") assets whose value the user maintains by hand — FDs, PPF, EPF, NPS,
+// physical gold, real estate, savings, bonds. These fold into net worth and allocation but are
+// NOT part of the transaction ledger (no market prices). portfolioId NULL = unassigned (counts
+// only in the "all portfolios" aggregate).
+export const manualAssets = sqliteTable(
+  "manual_assets",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    portfolioId: text("portfolio_id").references(() => portfolios.id, { onDelete: "set null" }),
+    name: text("name").notNull(),
+    assetClass: text("asset_class").notNull().default("other"), // fd|ppf|epf|nps|savings|gold|real_estate|bond|other
+    region: text("region").notNull().default("India"),
+    currency: text("currency").notNull().default("INR"),
+    currentValue: text("current_value").notNull(), // decimal string, user-maintained
+    cost: text("cost"), // optional amount invested/contributed, for a gain figure
+    notes: text("notes"),
+    valueAsOf: text("value_as_of"), // when currentValue was last set (YYYY-MM-DD)
+    createdAt: text("created_at").notNull().default(now),
+    updatedAt: text("updated_at").notNull().default(now),
+  },
+  (t) => [index("idx_manual_assets_user").on(t.userId)],
+);
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Portfolio = typeof portfolios.$inferSelect;
@@ -264,3 +291,4 @@ export type Security = typeof securities.$inferSelect;
 export type Transaction = typeof transactions.$inferSelect;
 export type Goal = typeof goals.$inferSelect;
 export type AllocationTarget = typeof allocationTargets.$inferSelect;
+export type ManualAsset = typeof manualAssets.$inferSelect;
