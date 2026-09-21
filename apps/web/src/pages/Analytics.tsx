@@ -2,6 +2,7 @@ import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell } from 
 import { useFilter, usePerformance, useHoldings } from "../lib/hooks.js";
 import { PageHeader } from "../components/PageHeader.js";
 import { AllocationCard } from "../components/AllocationCard.js";
+import { DiversificationCard } from "../components/DiversificationCard.js";
 import { BenchmarkCard } from "../components/BenchmarkCard.js";
 import { FxImpactCard } from "../components/FxImpactCard.js";
 import { TwrCard } from "../components/TwrCard.js";
@@ -118,6 +119,7 @@ export function Analytics() {
           <AllocationCard allocation={holdings.allocation} initialDim="bySector" />
         </div>
       )}
+      {holdings?.diversification?.available && <DiversificationCard data={holdings.diversification} />}
       {hasActivity && <BenchmarkCard />}
       {hasActivity && <TwrCard />}
       {hasActivity && <FxImpactCard />}

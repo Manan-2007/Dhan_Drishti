@@ -104,6 +104,24 @@ export interface AllocationSlice {
   value: string;
   weight: string;
 }
+export interface ConcentrationFlag {
+  severity: "info" | "warn" | "high";
+  message: string;
+}
+export interface Diversification {
+  available: boolean;
+  positions: number;
+  hhi: number;
+  effectiveHoldings: number;
+  sectors: number;
+  hhiSector: number;
+  score: number;
+  grade: "Excellent" | "Good" | "Fair" | "Concentrated";
+  top1: { label: string; weight: number; value: string } | null;
+  top5Weight: number;
+  topSector: { label: string; weight: number; value: string } | null;
+  flags: ConcentrationFlag[];
+}
 export interface HoldingsResponse {
   baseCurrency: string;
   fxComplete: boolean;
@@ -130,6 +148,7 @@ export interface HoldingsResponse {
     bySubSector: AllocationSlice[];
     byCurrency: AllocationSlice[];
   };
+  diversification: Diversification;
   holdings: HoldingRow[];
 }
 export interface ImportPreview {

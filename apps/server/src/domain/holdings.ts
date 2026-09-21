@@ -5,6 +5,7 @@ import {
   computeHoldings,
   cashBalances,
   hasCashAccounting,
+  computeDiversification,
   toStore,
   d,
   ZERO,
@@ -249,6 +250,19 @@ export async function computePortfolioHoldings(db: DB, userId: string, portfolio
   const openPositions = serialized.filter((r) => r.netQty !== "0").length;
   const allPriced = priced === openPositions;
 
+  // Concentration read over open positions, valued in base currency (cash excluded — this
+  // measures how the invested money is spread). Uses current value where priced, else cost.
+  const diversification = computeDiversification(
+    serialized
+      .filter((r) => r.netQty !== "0")
+      .map((r) => ({
+        label: r.security.symbol || r.security.name,
+        sector: r.security.sector ?? "Unclassified",
+        value: r.baseCurrentValue ?? r.baseInvested ?? "0",
+      }))
+      .filter((p) => Number(p.value) > 0),
+  );
+
   // Cash balance (base currency), converted per source currency. Only surfaced when the ledger
   // actually records cash movements (deposits/withdrawals) — otherwise it isn't meaningful.
   const cashTracked = hasCashAccounting(txs);
@@ -327,6 +341,7 @@ export async function computePortfolioHoldings(db: DB, userId: string, portfolio
       allPriced,
     },
     allocation: allocation(serialized, cashByCurrency, cashBase),
+    diversification,
     holdings: serialized,
   };
 }
