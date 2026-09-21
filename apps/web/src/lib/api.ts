@@ -253,6 +253,44 @@ export interface NetWorthSeries {
   currency: string;
   series: NetWorthPoint[];
 }
+export interface CapitalGainRow {
+  securityId: string;
+  symbol: string;
+  name: string;
+  assetClass: string;
+  currency: string;
+  buyDate: string;
+  sellDate: string;
+  quantity: string;
+  proceeds: string;
+  cost: string;
+  gain: string;
+  holdingDays: number;
+  term: "short" | "long";
+}
+export interface TermTotals {
+  gain: string;
+  proceeds: string;
+  cost: string;
+  count: number;
+}
+export interface CapitalGainsReport {
+  rows: CapitalGainRow[];
+  byFY: { key: string; shortTerm: TermTotals; longTerm: TermTotals }[];
+  fyList: string[];
+  totals: { shortTerm: TermTotals; longTerm: TermTotals };
+  currencies: string[];
+  currencyNote?: string;
+  disclaimer: string;
+}
+export interface SecurityDetail {
+  security: { id: string; symbol: string; name: string; assetClass: string; sector: string | null; subSector: string | null; isin: string | null; exchange: string | null; currency: string };
+  position: HoldingRow | null;
+  portfolioNetPnl: string;
+  baseCurrency: string;
+  transactions: Transaction[];
+  history: { date: string; close: number }[];
+}
 export interface ImportBatch {
   id: string;
   broker: string;

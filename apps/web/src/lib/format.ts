@@ -57,6 +57,16 @@ export function dateShort(iso: string): string {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString("en-IN", { year: "numeric", month: "short", day: "2-digit" });
 }
 
+/** Indian financial year label for a date (Apr–Mar), e.g. "FY 24-25" — mirrors the server. */
+export function financialYear(iso: string): string {
+  const dt = new Date(iso);
+  if (Number.isNaN(dt.getTime())) return iso;
+  const y = dt.getUTCFullYear();
+  const start = dt.getUTCMonth() >= 3 ? y : y - 1;
+  const two = (n: number) => String(n % 100).padStart(2, "0");
+  return `FY ${two(start)}-${two(start + 1)}`;
+}
+
 const ASSET_CLASS_LABELS: Record<string, string> = {
   equity: "Equity",
   etf: "ETF",

@@ -11,6 +11,8 @@ import { Transactions } from "./pages/Transactions.js";
 import { Analytics } from "./pages/Analytics.js";
 import { Rebalance } from "./pages/Rebalance.js";
 import { Dividends } from "./pages/Dividends.js";
+import { Reports } from "./pages/Reports.js";
+import { SecurityDetail } from "./pages/SecurityDetail.js";
 import { Goals } from "./pages/Goals.js";
 import { ManualAssets } from "./pages/ManualAssets.js";
 import { Portfolios } from "./pages/Portfolios.js";
@@ -39,6 +41,8 @@ function Gate() {
             <Route path="analytics" element={<Analytics />} />
             <Route path="rebalance" element={<Rebalance />} />
             <Route path="dividends" element={<Dividends />} />
+            <Route path="reports" element={<Reports />} />
+            <Route path="security/:id" element={<SecurityDetail />} />
             <Route path="assets" element={<ManualAssets />} />
             <Route path="goals" element={<Goals />} />
             <Route path="portfolios" element={<Portfolios />} />

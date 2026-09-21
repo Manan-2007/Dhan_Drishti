@@ -1,6 +1,25 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, type Portfolio, type Account, type HoldingsResponse, type Transaction, type ImportBatch, type NetWorthSeries, type RebalanceResponse, type RebalanceDimension, type ManualAssetsResult } from "./api.js";
+import { api, type Portfolio, type Account, type HoldingsResponse, type Transaction, type ImportBatch, type NetWorthSeries, type RebalanceResponse, type RebalanceDimension, type ManualAssetsResult, type CapitalGainsReport, type SecurityDetail } from "./api.js";
+
+export function useCapitalGains(portfolioId: string | null) {
+  const qs = portfolioId ? `?portfolioId=${portfolioId}` : "";
+  return useQuery({
+    queryKey: ["capital-gains", portfolioId],
+    queryFn: () => api.get<CapitalGainsReport>(`/api/reports/capital-gains${qs}`),
+  });
+}
+
+export function useSecurityDetail(id: string | undefined, portfolioId: string | null) {
+  const search = new URLSearchParams();
+  if (portfolioId) search.set("portfolioId", portfolioId);
+  const qs = search.toString();
+  return useQuery({
+    enabled: !!id,
+    queryKey: ["security-detail", id, portfolioId],
+    queryFn: () => api.get<SecurityDetail>(`/api/securities/${id}/detail${qs ? `?${qs}` : ""}`),
+  });
+}
 
 export function useManualAssets(portfolioId: string | null) {
   const qs = portfolioId ? `?portfolioId=${portfolioId}` : "";

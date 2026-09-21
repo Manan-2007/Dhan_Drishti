@@ -164,7 +164,9 @@ export function Transactions() {
                       <td className="px-4 py-3">
                         {t.security ? (
                           <>
-                            <div className="font-medium">{t.security.symbol}</div>
+                            <div className="font-medium">
+                              <Link to={`/security/${t.security.id}`} className="hover:underline">{t.security.symbol}</Link>
+                            </div>
                             <div className="text-xs text-muted-foreground">
                               {/* Mutual funds have no short ticker — symbol and name are identical, so
                                   showing the name again would just repeat the line above. */}

@@ -185,7 +185,9 @@ export function Holdings() {
                     >
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2 font-medium">
-                          {h.security.symbol}
+                          <Link to={`/security/${h.security.id}`} className="hover:underline">
+                            {h.security.symbol}
+                          </Link>
                           {/* Net short right now is a position, not a data problem; only flag "check
                               history" when a past sell exceeded holdings but the position isn't short. */}
                           {isShort ? <Badge tone="warning">short</Badge> : h.hasOversell && <Badge tone="warning">check history</Badge>}
