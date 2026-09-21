@@ -34,6 +34,7 @@ export function Imports() {
   const [filename, setFilename] = useState("");
   const [content, setContent] = useState("");
   const [encoding, setEncoding] = useState<"base64" | undefined>(undefined);
+  const [casPassword, setCasPassword] = useState("");
   const [seedResult, setSeedResult] = useState<SeedPricesResult | null>(null);
   // Generic column mapping (only used when broker === "generic").
   const [map, setMap] = useState<Record<string, string>>({});
@@ -79,6 +80,7 @@ export function Imports() {
     setSeedResult(null);
     setContent("");
     setEncoding(undefined);
+    setCasPassword("");
     setFilename("");
     setError(null);
   }
@@ -95,7 +97,7 @@ export function Imports() {
 
   async function onFile(file: File) {
     setFilename(file.name);
-    if (/\.(xlsx|xlsm|xlsb|xls)$/i.test(file.name)) {
+    if (/\.(xlsx|xlsm|xlsb|xls|pdf)$/i.test(file.name)) {
       setContent(await fileToBase64(file));
       setEncoding("base64");
     } else {
@@ -107,12 +109,13 @@ export function Imports() {
   const selectedBroker = brokers?.find((b) => b.id === broker);
   const isPrices = selectedBroker?.kind === "prices";
   const isGeneric = broker === "generic";
+  const isCas = broker === "cas";
   const headers = content && !encoding ? (content.split(/\r?\n/)[0] ?? "").split(",").map((h) => h.trim()).filter(Boolean) : [];
   const REQUIRED_MAP = ["symbol", "date", "type", "quantity", "price"] as const;
   const mappingComplete = REQUIRED_MAP.every((f) => map[f]);
 
   function buildPayload() {
-    const base = { portfolioId, accountId: accountId || undefined, broker, filename: filename || "upload.csv", content, encoding, replace };
+    const base = { portfolioId, accountId: accountId || undefined, broker, filename: filename || "upload.csv", content, encoding, replace, casPassword: isCas ? casPassword || undefined : undefined };
     if (!isGeneric) return base;
     return {
       ...base,
@@ -240,7 +243,10 @@ export function Imports() {
 
                 <ExportHelp broker={broker} />
                 <p className="-mt-2 text-xs text-muted-foreground">
-                  {isPrices ? (
+                  {isCas ? (
+                    <>One Consolidated Account Statement (CAS) PDF covers every mutual fund across all AMCs — upload it
+                    with its password instead of a file per fund house. Import a detailed statement for full history.</>
+                  ) : isPrices ? (
                     <>Updates today's price for holdings you've already imported — matched by ISIN or name. It adds no
                     transactions and no cost basis, so nothing is double-counted. Ideal for Dhan holdings, whose scrips
                     aren't priced automatically.</>
@@ -262,15 +268,22 @@ export function Imports() {
                 </div>
                 )}
 
-                <Field label="CSV or Excel file">
+                <Field label={isCas ? "CAS statement (PDF)" : "CSV or Excel file"}>
                   <input
                     type="file"
-                    accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    accept={isCas ? ".pdf,application/pdf" : ".csv,.xlsx,.xls,.pdf,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
                     onChange={(e) => e.target.files?.[0] && void onFile(e.target.files[0])}
                     className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:bg-card file:px-3 file:py-2 file:text-sm"
                   />
                 </Field>
-                {filename && <p className="text-xs text-muted-foreground">Loaded {filename}{encoding === "base64" ? " (Excel)" : ` (${content.length.toLocaleString()} chars)`}</p>}
+                {filename && <p className="text-xs text-muted-foreground">Loaded {filename}{encoding === "base64" ? "" : ` (${content.length.toLocaleString()} chars)`}</p>}
+
+                {isCas && (
+                  <Field label="Statement password">
+                    <Input type="password" value={casPassword} onChange={(e) => setCasPassword(e.target.value)} placeholder="usually your PAN (e.g. ABCDE1234F)" />
+                    <p className="mt-1 text-xs text-muted-foreground">A CAS PDF is password-protected. The password stays on this machine — it's only used to open the file.</p>
+                  </Field>
+                )}
 
                 {isGeneric && !isPrices && content && (
                   <div className="rounded-md border bg-background p-3">
@@ -319,7 +332,7 @@ export function Imports() {
                     {busy ? "Updating…" : "Update prices"}
                   </Button>
                 ) : (
-                  <Button onClick={runCheck} disabled={!content || !portfolioId || busy || (isGeneric && !mappingComplete)}>
+                  <Button onClick={runCheck} disabled={!content || !portfolioId || busy || (isGeneric && !mappingComplete) || (isCas && !casPassword)}>
                     {busy ? "Checking…" : "Preview import"}
                   </Button>
                 )}

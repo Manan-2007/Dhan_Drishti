@@ -7,6 +7,7 @@ import { getPortfolioOwned } from "../domain/portfolios.js";
 import { findOrCreateSecurity, reclassifyHeld } from "../domain/securities.js";
 import { parseCsv } from "./csv.js";
 import { looksLikeXlsx, workbookToCsv } from "./xlsx.js";
+import { extractCasText, parseCasTransactions } from "./cas.js";
 import { getAdapter, detectBest } from "./registry.js";
 import type { GenericMapping } from "./adapters/generic.js";
 import type { BrokerAdapter, NormalizedRow, NormalizedTx } from "./types.js";
@@ -17,8 +18,10 @@ export interface ImportParams {
   broker: string;
   filename: string;
   content: string;
-  /** When "base64", `content` is a base64-encoded upload — an .xlsx workbook or a non-UTF8 CSV. */
+  /** When "base64", `content` is a base64-encoded upload — an .xlsx workbook, a CAS PDF, or non-UTF8 CSV. */
   encoding?: "base64";
+  /** Password for a CAS PDF import (broker "cas") — usually the investor's PAN. */
+  casPassword?: string;
   mapping?: GenericMapping;
   /** The period this file covers. When `replace` is set, existing rows from the same source
    *  in this range are deleted first, so re-uploading an overlapping period overwrites cleanly. */
@@ -173,9 +176,32 @@ function parseWithAdapter(params: ImportParams) {
   return { csv, adapter, detected, rows: adapter.normalize(csv) };
 }
 
+type Detected = { broker: string; confidence: number; reason: string } | null;
+
+/** Normalized rows for an import — a Consolidated Account Statement PDF, or a broker file adapter. */
+async function resolveRows(params: ImportParams): Promise<{ rows: NormalizedRow[]; detected: Detected }> {
+  if (params.broker === "cas") {
+    const buf = Buffer.from(params.content, "base64");
+    let text: string;
+    try {
+      text = await extractCasText(buf, params.casPassword);
+    } catch (err) {
+      if ((err as { code?: string }).code === "cas_password")
+        throw new BadRequestError("cas_password", (err as Error).message);
+      throw new BadRequestError("cas_unreadable", "Couldn't read this PDF. Please upload the original CAS file.");
+    }
+    const rows = parseCasTransactions(text);
+    if (rows.length === 0)
+      throw new BadRequestError("cas_empty", "No mutual-fund transactions were found. Make sure this is a detailed CAS (not a summary).");
+    return { rows, detected: { broker: "cas", confidence: 1, reason: "Consolidated Account Statement" } };
+  }
+  const { rows, detected } = parseWithAdapter(params);
+  return { rows, detected };
+}
+
 export async function previewImport(db: DB, userId: string, params: ImportParams): Promise<ImportPreview> {
   await getPortfolioOwned(db, userId, params.portfolioId);
-  const { rows, detected } = parseWithAdapter(params);
+  const { rows, detected } = await resolveRows(params);
   const c = await classify(db, userId, rows);
   return {
     broker: params.broker,
@@ -211,7 +237,7 @@ export async function commitImport(db: DB, userId: string, params: ImportParams)
       throw new BadRequestError("account_portfolio_mismatch", "Account does not belong to that portfolio");
   }
 
-  const { rows, detected } = parseWithAdapter(params);
+  const { rows, detected } = await resolveRows(params);
 
   // Overwrite mode: clear existing rows from this source over the period the file covers, so
   // re-uploading an overlapping range (e.g. a full-year file over monthly ones) doesn't duplicate.

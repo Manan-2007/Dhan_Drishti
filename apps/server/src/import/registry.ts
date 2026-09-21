@@ -63,6 +63,7 @@ export function listAdapters(): AdapterInfo[] {
   const brokersOf = (id: string) => ADAPTER_BROKERS[id] ?? ["*"];
   const fixed: AdapterInfo[] = Object.values(ADAPTERS).map((a) => ({ id: a.id, label: a.label, configurable: false, kind: "transactions", brokers: brokersOf(a.id) }));
   return [
+    { id: "cas", label: "Mutual Fund CAS (CAMS / KFintech PDF)", configurable: false, kind: "transactions", brokers: ["*"] },
     ...fixed,
     { id: "dhan-holdings", label: "Dhan — Holdings (update current prices)", configurable: false, kind: "prices", brokers: brokersOf("dhan-holdings") },
     { id: "generic", label: "Generic CSV (custom mapping)", configurable: true, kind: "transactions", brokers: ["*"] },

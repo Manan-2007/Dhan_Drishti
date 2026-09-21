@@ -3,6 +3,15 @@ import { useState } from "react";
 /** Per-upload-type instructions for getting the right file from each broker — the #1 onboarding
  *  hurdle is not the upload but knowing which export to download and where it lives. */
 const GUIDES: Record<string, { where: string; steps: string[]; note?: string }> = {
+  cas: {
+    where: "CAMS / KFintech → Consolidated Account Statement (CAS)",
+    steps: [
+      "Go to camsonline.com (or the MF Central app / KFintech) → 'CAS - CAMS+KFintech'.",
+      "Choose the Detailed statement, period 'Since Inception', and enter your email + a password.",
+      "You'll receive the password-protected PDF by email — upload it here and enter that password (often your PAN).",
+    ],
+    note: "One statement covers every mutual fund across all AMCs — no per-fund files needed.",
+  },
   zerodha: {
     where: "Zerodha Console → Reports → Tradebook",
     steps: [

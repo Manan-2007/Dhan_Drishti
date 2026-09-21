@@ -31,6 +31,7 @@ const importSchema = z.object({
   filename: z.string().min(1).max(255),
   content: z.string().min(1).max(24_000_000), // ~24MB cap (base64 inflates a ~1MB .xlsx to ~1.4MB)
   encoding: z.enum(["base64"]).optional(),
+  casPassword: z.string().max(200).optional(),
   mapping: mappingSchema.optional(),
   from: z.string().optional(),
   to: z.string().optional(),
