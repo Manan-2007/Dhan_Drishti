@@ -49,22 +49,29 @@ export interface Portfolio {
 export interface Transaction {
   id: string;
   portfolioId: string;
+  accountId: string | null;
   securityId: string | null;
   type: string;
   tradeDate: string;
+  settleDate: string | null;
   quantity: string;
   price: string;
   grossAmount: string;
   fees: string;
   taxes: string;
   currency: string;
+  fxRateToBase: string | null;
   segment: string;
   sourceBroker: string | null;
+  notes: string | null;
+  security: { id: string; symbol: string; name: string; isin: string | null; assetClass: string; sector: string | null; exchange: string | null } | null;
+  account: { id: string; name: string; broker: string } | null;
 }
 export interface HoldingRow {
   security: { id: string; symbol: string; name: string; assetClass: string; sector: string | null; subSector: string | null; currency: string };
   netQty: string;
   invested: string;
+  shortProceeds: string;
   avgCost: string | null;
   currentValue: string | null;
   unrealisedPnl: string | null;
@@ -74,9 +81,12 @@ export interface HoldingRow {
   todayChange: string | null;
   netPnl: string | null;
   hasOversell: boolean;
-  quote: { price: string; asOf: string } | null;
+  quote: { price: string; asOf: string; estimated: boolean } | null;
   baseInvested: string | null;
   baseCurrentValue: string | null;
+  baseRealisedPnl: string | null;
+  baseDividends: string | null;
+  baseUnrealisedPnl: string | null;
   investedBaseAtCost: string | null;
   avgFxAtCost: string | null;
   assetReturnBase: string | null;

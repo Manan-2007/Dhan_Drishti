@@ -23,6 +23,7 @@ import { registerGoalRoutes } from "./domain/goals.js";
 import type { MarketDataProvider, FxProvider, BenchmarkProvider, SecurityHistoryProvider } from "./market/types.js";
 import { YahooProvider } from "./market/providers/yahoo.js";
 import { AmfiProvider } from "./market/providers/amfi.js";
+import { DerivativeEstimateProvider } from "./market/providers/derivative-estimate.js";
 import { CompositeProvider } from "./market/composite.js";
 import { FrankfurterProvider } from "./market/providers/frankfurter.js";
 import { YahooBenchmarkProvider } from "./market/providers/yahoo-benchmark.js";
@@ -71,7 +72,7 @@ export function buildApp(db: DB, options: AppOptions = {}): FastifyInstance {
   // 25 MB body limit accommodates large broker-CSV imports (content up to ~20 MB).
   const app = Fastify({ logger: env.isProd, bodyLimit: 25 * 1024 * 1024 });
   const marketProvider =
-    options.marketProvider ?? new CompositeProvider(new YahooProvider(), new AmfiProvider());
+    options.marketProvider ?? new CompositeProvider(new YahooProvider(), new AmfiProvider(), new DerivativeEstimateProvider());
   const fxProvider = options.fxProvider ?? new FrankfurterProvider();
   const benchmarkProvider = options.benchmarkProvider ?? new YahooBenchmarkProvider();
   const historyProvider = options.historyProvider ?? new YahooSecurityHistoryProvider();

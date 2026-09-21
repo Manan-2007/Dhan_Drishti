@@ -1,5 +1,15 @@
 import { Decimal, d, ZERO, safeDiv } from "./money.js";
 import type { CanonicalTx, Quote } from "./types.js";
+import {
+  applyBonus,
+  applyBuy,
+  applySell,
+  applySplit,
+  averageBasis,
+  emptyPosition,
+  markToMarket,
+  type Position,
+} from "./position.js";
 
 /**
  * Average-cost holdings & realised-P&L engine. Pure and deterministic.
@@ -9,21 +19,34 @@ import type { CanonicalTx, Quote } from "./types.js";
 
 export interface Holding {
   securityId: string;
+  /** Signed: > 0 long, < 0 short (sold more than held — an F&O short or missing buy history). */
   netQty: Decimal;
-  /** Cost basis of the currently-held quantity (buy-side charges included). */
+  /** Cost basis of the currently-held quantity (buy-side charges included). Zero for a short. */
   invested: Decimal;
+  /**
+   * Net credit received for an open SHORT quantity (sell-side charges deducted); zero otherwise.
+   * This is the short's basis — P&L against it is realised only when the position is covered.
+   */
+  shortProceeds: Decimal;
+  /** Average cost for a long; average price shorted at for a short (what brokers display). */
   avgCost: Decimal | null;
   realisedPnl: Decimal;
   dividends: Decimal;
   feesTotal: Decimal;
   taxesTotal: Decimal;
-  /** Only when a quote is supplied; otherwise null (unknown, never faked to 0). */
+  /**
+   * Only when a quote is supplied; otherwise null (unknown, never faked to 0).
+   * NEGATIVE for a short position — it's a liability (the cost to buy the units back).
+   */
   currentValue: Decimal | null;
   unrealisedPnl: Decimal | null;
   unrealisedPct: Decimal | null;
   todayChange: Decimal | null;
   netPnl: Decimal | null;
-  /** True if sells exceeded known holdings — signals incomplete import history. */
+  /**
+   * True if sells drove the position net short. Expected for F&O (selling to open); for
+   * delivery equity it usually signals buy history that wasn't imported.
+   */
   hasOversell: boolean;
   /**
    * Cost basis of the current holding expressed in the base currency using the FX rate at
@@ -36,8 +59,7 @@ export interface Holding {
 }
 
 interface Running {
-  qty: Decimal;
-  cost: Decimal; // cost basis of current qty (local currency)
+  pos: Position; // signed qty + long cost basis + open short credit (local currency)
   costBase: Decimal; // cost basis in base currency, using FX-at-cost of each buy
   fxCostKnown: boolean; // every contributing buy carried an fxRateToBase
   realised: Decimal;
@@ -57,8 +79,7 @@ function sortTxs(txs: CanonicalTx[]): CanonicalTx[] {
 
 function empty(): Running {
   return {
-    qty: ZERO,
-    cost: ZERO,
+    pos: emptyPosition(),
     costBase: ZERO,
     fxCostKnown: true,
     realised: ZERO,
@@ -78,14 +99,16 @@ function apply(r: Running, tx: CanonicalTx): void {
   switch (tx.type) {
     case "buy":
     case "transfer_in": {
-      const costLocal = qty.times(price).plus(fees).plus(taxes);
-      r.qty = r.qty.plus(qty);
-      r.cost = r.cost.plus(costLocal);
-      // Track base-currency cost using the FX rate at this buy's date (for return decomposition).
-      if (tx.fxRateToBase != null && tx.fxRateToBase !== "") {
-        r.costBase = r.costBase.plus(costLocal.times(d(tx.fxRateToBase)));
-      } else {
-        r.fxCostKnown = false; // a buy without a known rate → can't decompose FX
+      // Covers any open short first; only the remainder opens a long and carries an FX basis.
+      const out = applyBuy(r.pos, qty, price, fees, taxes);
+      r.pos = out.position;
+      r.realised = r.realised.plus(out.realised);
+      if (out.openedLongCost.greaterThan(0)) {
+        if (tx.fxRateToBase != null && tx.fxRateToBase !== "") {
+          r.costBase = r.costBase.plus(out.openedLongCost.times(d(tx.fxRateToBase)));
+        } else {
+          r.fxCostKnown = false; // a buy without a known rate → can't decompose FX
+        }
       }
       r.fees = r.fees.plus(fees);
       r.taxes = r.taxes.plus(taxes);
@@ -93,37 +116,30 @@ function apply(r: Running, tx: CanonicalTx): void {
     }
     case "bonus": {
       // Extra shares at zero incremental cost → average cost falls (cost basis unchanged).
-      r.qty = r.qty.plus(qty);
+      r.pos = applyBonus(r.pos, qty);
       break;
     }
     case "split": {
       // Stock split / consolidation: `price` is the ratio (new shares per old share).
       // Quantity scales; total cost basis is unchanged, so average cost adjusts automatically.
-      if (price.greaterThan(0)) r.qty = r.qty.times(price);
+      r.pos = applySplit(r.pos, price);
       break;
     }
     case "sell":
     case "transfer_out": {
-      const avg = safeDiv(r.cost, r.qty); // avg cost at time of sale
-      let costRemoved = ZERO;
-      if (avg === null || qty.greaterThan(r.qty)) {
-        // Selling more than we know we hold: use what cost we have, flag it.
-        if (qty.greaterThan(r.qty)) r.oversell = true;
-        costRemoved = r.cost; // remove all remaining known cost
-      } else {
-        costRemoved = avg.times(qty);
-      }
-      const proceeds = qty.times(price);
-      r.realised = r.realised.plus(proceeds.minus(costRemoved).minus(fees).minus(taxes));
+      // Closes long inventory first; any excess opens a short (credited, not booked as profit).
+      const costBefore = r.pos.cost;
+      const out = applySell(r.pos, qty, price, fees, taxes);
+      r.pos = out.position;
+      r.realised = r.realised.plus(out.realised);
+      if (out.wentShort) r.oversell = true;
       // Reduce base-currency cost proportionally so avg FX-at-cost is preserved.
-      if (r.cost.greaterThan(0)) r.costBase = r.costBase.times(r.cost.minus(costRemoved).div(r.cost));
-      r.qty = r.qty.minus(qty);
-      r.cost = r.cost.minus(costRemoved);
-      if (r.qty.lessThanOrEqualTo(0)) {
-        r.qty = r.qty.isNegative() ? r.qty : ZERO;
-        r.cost = ZERO;
+      if (costBefore.greaterThan(0)) {
+        r.costBase = r.costBase.times(costBefore.minus(out.basisReleased).div(costBefore));
+      }
+      if (!r.pos.qty.greaterThan(0)) {
         r.costBase = ZERO;
-        r.fxCostKnown = true; // position closed → a fresh re-entry can decompose again
+        r.fxCostKnown = true; // long closed → a fresh re-entry can decompose again
       }
       r.fees = r.fees.plus(fees);
       r.taxes = r.taxes.plus(taxes);
@@ -169,11 +185,11 @@ export function computeHoldings(
 
   const holdings: Holding[] = [];
   for (const [securityId, r] of bySecurity) {
-    const invested = r.cost;
-    const avgCost = safeDiv(r.cost, r.qty);
-    const canDecompose = r.fxCostKnown && r.qty.greaterThan(0);
+    const invested = r.pos.cost;
+    const avgCost = averageBasis(r.pos);
+    const canDecompose = r.fxCostKnown && r.pos.qty.greaterThan(0);
     const investedBaseAtCost = canDecompose ? r.costBase : null;
-    const avgFxAtCost = canDecompose ? safeDiv(r.costBase, r.cost) : null;
+    const avgFxAtCost = canDecompose ? safeDiv(r.costBase, r.pos.cost) : null;
 
     let currentValue: Decimal | null = null;
     let unrealisedPnl: Decimal | null = null;
@@ -181,13 +197,19 @@ export function computeHoldings(
     let todayChange: Decimal | null = null;
 
     const quote = options.quotes?.get(securityId);
-    if (quote && r.qty.greaterThan(0)) {
+    if (quote) {
       const price = d(quote.price);
-      currentValue = r.qty.times(price);
-      unrealisedPnl = currentValue.minus(invested);
-      unrealisedPct = safeDiv(unrealisedPnl, invested);
-      if (quote.prevClose != null && quote.prevClose !== "") {
-        todayChange = r.qty.times(price.minus(d(quote.prevClose)));
+      // Marks LONG and SHORT alike: a short's value is negative (a buy-back liability) and its
+      // unrealised P&L is the credit received less that liability, so a falling price is a gain.
+      const mark = markToMarket(r.pos, price);
+      if (mark) {
+        currentValue = mark.currentValue;
+        unrealisedPnl = mark.unrealisedPnl;
+        unrealisedPct = safeDiv(unrealisedPnl, mark.basis);
+        if (quote.prevClose != null && quote.prevClose !== "") {
+          // Signed qty makes this correct both ways: a short loses when the price rises.
+          todayChange = r.pos.qty.times(price.minus(d(quote.prevClose)));
+        }
       }
     }
 
@@ -198,8 +220,9 @@ export function computeHoldings(
 
     holdings.push({
       securityId,
-      netQty: r.qty,
+      netQty: r.pos.qty,
       invested,
+      shortProceeds: r.pos.shortProceeds,
       avgCost,
       realisedPnl: r.realised,
       dividends: r.dividends,

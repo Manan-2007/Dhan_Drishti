@@ -19,6 +19,9 @@ import { authed } from "../lib/routes.js";
 import { getPortfolioOwned } from "./portfolios.js";
 import { baseCurrencyOf, rateMap } from "../market/fx.js";
 
+/** Providers whose quotes are model estimates, not exchange-traded prices — flagged in the UI. */
+const ESTIMATE_PROVIDERS = new Set(["derivative-estimate"]);
+
 /** Latest quote per security (most recent as_of). */
 async function latestQuotes(db: DB, securityIds: string[]): Promise<Map<string, CoreQuote>> {
   const map = new Map<string, CoreQuote>();
@@ -37,7 +40,8 @@ async function latestQuotes(db: DB, securityIds: string[]): Promise<Map<string, 
         prevClose: q.prevClose,
         currency: q.currency,
         asOf: q.asOf,
-      });
+        provider: q.provider,
+      } as CoreQuote & { provider: string });
     }
   }
   return map;
@@ -47,6 +51,8 @@ interface SerializedHolding {
   security: Pick<Security, "id" | "symbol" | "name" | "assetClass" | "sector" | "subSector" | "currency">;
   netQty: string;
   invested: string;
+  /** Credit received for an open short (its basis); "0" for long/flat positions. */
+  shortProceeds: string;
   avgCost: string | null;
   currentValue: string | null;
   unrealisedPnl: string | null;
@@ -56,7 +62,7 @@ interface SerializedHolding {
   todayChange: string | null;
   netPnl: string | null;
   hasOversell: boolean;
-  quote: { price: string; asOf: string } | null;
+  quote: { price: string; asOf: string; estimated: boolean } | null;
   // Values converted into the user's base currency (null when no FX rate is available).
   baseInvested: string | null;
   baseCurrentValue: string | null;
@@ -83,6 +89,7 @@ function serialize(h: Holding, sec: Security, quote: CoreQuote | undefined): Ser
     },
     netQty: h.netQty.toFixed(),
     invested: h.invested.toFixed(),
+    shortProceeds: h.shortProceeds.toFixed(),
     avgCost: toStore(h.avgCost),
     currentValue: toStore(h.currentValue),
     unrealisedPnl: toStore(h.unrealisedPnl),
@@ -92,7 +99,9 @@ function serialize(h: Holding, sec: Security, quote: CoreQuote | undefined): Ser
     todayChange: toStore(h.todayChange),
     netPnl: toStore(h.netPnl),
     hasOversell: h.hasOversell,
-    quote: quote ? { price: quote.price, asOf: quote.asOf } : null,
+    quote: quote
+      ? { price: quote.price, asOf: quote.asOf, estimated: ESTIMATE_PROVIDERS.has((quote as CoreQuote & { provider?: string }).provider ?? "") }
+      : null,
     baseInvested: null,
     baseCurrentValue: null,
     baseRealisedPnl: null,
@@ -215,7 +224,8 @@ export async function computePortfolioHoldings(db: DB, userId: string, portfolio
   for (const r of serialized) {
     const rate = r.security.currency === base ? d("1") : rates.get(r.security.currency) ?? null;
     convertToBase(r, rate);
-    if (rate === null && Number(r.currentValue ?? r.invested) > 0) unconvertible.add(r.security.currency);
+    // abs(): a short's value is negative but still needs an FX rate to aggregate.
+    if (rate === null && Math.abs(Number(r.currentValue ?? r.invested)) > 0) unconvertible.add(r.security.currency);
   }
 
   // Summary in base currency (sums over convertible + available figures — no fabrication).
@@ -267,6 +277,7 @@ export async function computePortfolioHoldings(db: DB, userId: string, portfolio
   for (const r of serialized) {
     if (r.security.currency === base) continue; // no currency component for base-currency holdings
     if (r.netQty === "0" || r.currentValue === null) continue; // need a current value
+    if (Number(r.netQty) < 0) continue; // a short has no FX-at-cost basis to decompose against
     const fxNow = rates.get(r.security.currency) ?? null; // base per 1 local, current
     if (fxNow === null) continue; // unpriced FX already flagged as unconvertible
     if (r.avgFxAtCost === null) {

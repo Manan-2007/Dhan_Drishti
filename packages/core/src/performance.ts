@@ -1,5 +1,6 @@
 import { Decimal, d, ZERO, safeDiv } from "./money.js";
 import type { CanonicalTx, Segment } from "./types.js";
+import { applyBonus, applyBuy, applySell, applySplit, emptyPosition, type Position } from "./position.js";
 
 /**
  * Performance engine: realised-P&L events (avg-cost) rolled up by segment / month /
@@ -20,40 +21,57 @@ function sortTxs(txs: CanonicalTx[]): CanonicalTx[] {
   return [...txs].sort((a, b) => (a.tradeDate < b.tradeDate ? -1 : a.tradeDate > b.tradeDate ? 1 : a.id < b.id ? -1 : 1));
 }
 
-/** Walk the ledger per security (average cost) and emit one realised event per sell. */
+/**
+ * Walk the ledger per security (average cost) and emit one realised event per position-closing
+ * trade. Uses the same shared position arithmetic as the holdings engine, so realised P&L here
+ * always matches Holdings — including short positions, where P&L is realised on the COVERING
+ * BUY rather than at the moment of shorting.
+ */
 export function realisedEvents(txs: CanonicalTx[]): RealisedEvent[] {
-  const running = new Map<string, { qty: Decimal; cost: Decimal }>();
+  const running = new Map<string, Position>();
   const events: RealisedEvent[] = [];
   for (const tx of sortTxs(txs)) {
     if (!tx.securityId) continue;
-    let r = running.get(tx.securityId);
-    if (!r) {
-      r = { qty: ZERO, cost: ZERO };
-      running.set(tx.securityId, r);
+    let p = running.get(tx.securityId);
+    if (!p) {
+      p = emptyPosition();
+      running.set(tx.securityId, p);
     }
     const qty = d(tx.quantity);
     const price = d(tx.price);
     const fees = d(tx.fees);
     const taxes = d(tx.taxes);
     if (tx.type === "buy" || tx.type === "transfer_in") {
-      r.qty = r.qty.plus(qty);
-      r.cost = r.cost.plus(qty.times(price)).plus(fees).plus(taxes);
+      const out = applyBuy(p, qty, price, fees, taxes);
+      running.set(tx.securityId, out.position);
+      if (out.closedSomething) {
+        // Covering a short realises (credit received − buy-back cost).
+        events.push({
+          date: tx.tradeDate,
+          securityId: tx.securityId,
+          segment: tx.segment,
+          proceeds: out.basisReleased,
+          cost: qty.times(price),
+          realised: out.realised,
+        });
+      }
     } else if (tx.type === "bonus") {
-      r.qty = r.qty.plus(qty);
+      running.set(tx.securityId, applyBonus(p, qty));
     } else if (tx.type === "split") {
       // `price` = ratio (new shares per old); qty scales, cost basis unchanged.
-      if (price.greaterThan(0)) r.qty = r.qty.times(price);
+      running.set(tx.securityId, applySplit(p, price));
     } else if (tx.type === "sell" || tx.type === "transfer_out") {
-      const avg = safeDiv(r.cost, r.qty);
-      const costRemoved = avg === null || qty.greaterThan(r.qty) ? r.cost : avg.times(qty);
-      const proceeds = qty.times(price);
-      const realised = proceeds.minus(costRemoved).minus(fees).minus(taxes);
-      events.push({ date: tx.tradeDate, securityId: tx.securityId, segment: tx.segment, proceeds, cost: costRemoved, realised });
-      r.qty = r.qty.minus(qty);
-      r.cost = r.cost.minus(costRemoved);
-      if (r.qty.lessThanOrEqualTo(0)) {
-        r.qty = r.qty.isNegative() ? r.qty : ZERO;
-        r.cost = ZERO;
+      const out = applySell(p, qty, price, fees, taxes);
+      running.set(tx.securityId, out.position);
+      if (out.closedSomething) {
+        events.push({
+          date: tx.tradeDate,
+          securityId: tx.securityId,
+          segment: tx.segment,
+          proceeds: out.proceeds,
+          cost: out.basisReleased,
+          realised: out.realised,
+        });
       }
     }
   }

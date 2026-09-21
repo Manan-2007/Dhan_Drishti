@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, gte, lte, desc, sql } from "drizzle-orm";
+import { and, eq, gte, lte, desc, sql, inArray } from "drizzle-orm";
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
 import { TX_TYPES, SEGMENTS, QTY_AFFECTING, d } from "@dhan-drishti/core";
@@ -173,7 +173,36 @@ export function registerTransactionRoutes(app: FastifyInstance, db: DB, fxProvid
       .where(where)
       .all();
     const total = countRows[0]?.count ?? 0;
-    return { transactions: rows, total, limit: q.limit, offset: q.offset };
+
+    // Enrich with the security and account each row refers to — a raw securityId/accountId
+    // tells you nothing about what was actually bought or sold. Follows the ledger's own
+    // fetch-then-map pattern (see holdings.ts) rather than a SQL join.
+    const secIds = [...new Set(rows.map((r) => r.securityId).filter((x): x is string => !!x))];
+    const acctIds = [...new Set(rows.map((r) => r.accountId).filter((x): x is string => !!x))];
+    const [secRows, acctRows] = await Promise.all([
+      secIds.length ? db.select().from(securities).where(inArray(securities.id, secIds)).all() : Promise.resolve([]),
+      acctIds.length ? db.select().from(accounts).where(inArray(accounts.id, acctIds)).all() : Promise.resolve([]),
+    ]);
+    const secById = new Map(secRows.map((s) => [s.id, s]));
+    const acctById = new Map(acctRows.map((a) => [a.id, a]));
+
+    const enriched = rows.map((t) => ({
+      ...t,
+      security: t.securityId
+        ? (() => {
+            const s = secById.get(t.securityId!);
+            return s ? { id: s.id, symbol: s.symbol, name: s.name, isin: s.isin, assetClass: s.assetClass, sector: s.sector, exchange: s.exchange } : null;
+          })()
+        : null,
+      account: t.accountId
+        ? (() => {
+            const a = acctById.get(t.accountId!);
+            return a ? { id: a.id, name: a.name, broker: a.broker } : null;
+          })()
+        : null,
+    }));
+
+    return { transactions: enriched, total, limit: q.limit, offset: q.offset };
   });
 
   app.post("/api/transactions", opts, async (req, reply) => {
