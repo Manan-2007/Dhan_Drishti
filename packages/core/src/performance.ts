@@ -235,6 +235,64 @@ export function simulateBenchmark(cashflows: Cashflow[], bars: BenchmarkBar[], l
   };
 }
 
+/** One point on the benchmark-overlay chart: net contributed vs the index-mirror's value. */
+export interface BenchmarkSeriesPoint {
+  date: string; // YYYY-MM-DD
+  invested: number; // cumulative net cash contributed to date (matched flows only)
+  index: number; // value of the index units bought by those same flows, at this date's close
+}
+
+/** Month-end sample dates from `from` to `to` (inclusive of both endpoints), ascending. */
+function monthlySamples(from: string, to: string): string[] {
+  const dates: string[] = [from];
+  const start = new Date(`${from}T00:00:00Z`);
+  let y = start.getUTCFullYear();
+  let m = start.getUTCMonth();
+  for (let i = 0; i < 600; i++) {
+    // Last day of month (y, m): day 0 of the next month.
+    const end = new Date(Date.UTC(y, m + 1, 0)).toISOString().slice(0, 10);
+    if (end >= to) break;
+    if (end > from) dates.push(end);
+    m += 1;
+    if (m > 11) {
+      m = 0;
+      y += 1;
+    }
+  }
+  if (to > from) dates.push(to);
+  return [...new Set(dates)].sort();
+}
+
+/**
+ * A time series for the "your money in an index instead" overlay. At each sample date it plots
+ * the cumulative net cash contributed (matched flows only) against the value of the index units
+ * those same flows would have bought, valued at that date's index close. The final `index` value
+ * lines up with {@link simulateBenchmark}'s currentValue. Pure & deterministic; index-currency.
+ */
+export function benchmarkSeries(cashflows: Cashflow[], bars: BenchmarkBar[]): BenchmarkSeriesPoint[] {
+  if (cashflows.length === 0 || bars.length === 0) return [];
+  const sorted = [...cashflows].sort((a, b) => (a.date < b.date ? -1 : 1));
+  const from = sorted[0]!.date.slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
+  const to = today > from ? today : from;
+
+  const points: BenchmarkSeriesPoint[] = [];
+  for (const date of monthlySamples(from, to)) {
+    let units = 0;
+    let invested = 0;
+    for (const cf of sorted) {
+      if (cf.date.slice(0, 10) > date) break;
+      const px = priceAsOf(bars, cf.date.slice(0, 10));
+      if (px == null || px <= 0) continue; // flow predates index data → skipped (as in the stat)
+      units += -cf.amount / px;
+      invested += -cf.amount;
+    }
+    const px = priceAsOf(bars, date);
+    points.push({ date, invested, index: px == null ? invested : units * px });
+  }
+  return points;
+}
+
 // ---------- Time-weighted return (TWR) ----------
 
 /** A valuation of the portfolio at a date, with the external flow occurring at that date. */

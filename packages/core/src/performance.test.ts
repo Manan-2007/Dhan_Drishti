@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { realisedEvents, rollupRealised, financialYear, xirr, ledgerCashflows, priceAsOf, simulateBenchmark, linkedTwr } from "./performance.js";
+import { realisedEvents, rollupRealised, financialYear, xirr, ledgerCashflows, priceAsOf, simulateBenchmark, benchmarkSeries, linkedTwr } from "./performance.js";
 import type { CanonicalTx, TxType } from "./types.js";
 
 let seq = 0;
@@ -181,6 +181,46 @@ describe("simulateBenchmark (index-equivalent mirror)", () => {
     );
     expect(r.units).toBe(8); // 10 - 2
     expect(r.currentValue).toBe(1600); // 8 * 200
+  });
+});
+
+describe("benchmarkSeries (overlay points)", () => {
+  const bars = [
+    { date: "2023-01-01", close: 100 },
+    { date: "2023-06-30", close: 150 },
+    { date: "2024-01-01", close: 200 },
+  ];
+
+  it("starts at the first flow and tracks invested vs the index units' value", () => {
+    const pts = benchmarkSeries([{ date: "2023-01-01", amount: -1000 }], bars);
+    expect(pts.length).toBeGreaterThanOrEqual(2);
+    // First point is the first flow date: contributed = index value (bought at that close).
+    expect(pts[0]!.date).toBe("2023-01-01");
+    expect(pts[0]!.invested).toBe(1000);
+    expect(pts[0]!.index).toBe(1000);
+    // A mid sample at/after 2023-06-30 values 10 units @150 = 1500 while invested stays 1000.
+    const mid = pts.find((p) => p.date >= "2023-06-30" && p.date < "2024-01-01");
+    expect(mid).toBeTruthy();
+    expect(mid!.invested).toBe(1000);
+    expect(mid!.index).toBeCloseTo(1500, 6);
+  });
+
+  it("returns nothing without cashflows or bars", () => {
+    expect(benchmarkSeries([], bars)).toEqual([]);
+    expect(benchmarkSeries([{ date: "2023-01-01", amount: -1000 }], [])).toEqual([]);
+  });
+
+  it("excludes flows that predate the index data from the contributed line", () => {
+    const pts = benchmarkSeries(
+      [
+        { date: "2022-06-01", amount: -500 }, // before any bar → skipped
+        { date: "2023-01-01", amount: -1000 },
+      ],
+      bars,
+    );
+    // First matched flow is 2023-01-01; the pre-index flow never adds to invested.
+    const last = pts[pts.length - 1]!;
+    expect(last.invested).toBe(1000);
   });
 });
 

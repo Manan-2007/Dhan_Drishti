@@ -1,7 +1,29 @@
 import { useState } from "react";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { useBenchmark, useBenchmarks, useFilter } from "../lib/hooks.js";
 import { Card, Spinner } from "./ui.js";
-import { compactMoney, money, pct, signClass } from "../lib/format.js";
+import { compactMoney, money, pct, signClass, dateShort } from "../lib/format.js";
+
+const INVESTED_COLOR = "var(--color-chart-4)";
+const INDEX_COLOR = "var(--color-chart-2)";
+
+interface TipProps {
+  active?: boolean;
+  payload?: { payload: { date: string; invested: number; index: number } }[];
+  indexLabel: string;
+  currency: string;
+}
+function OverlayTooltip({ active, payload, indexLabel, currency }: TipProps) {
+  if (!active || !payload?.length) return null;
+  const p = payload[0]!.payload;
+  return (
+    <div className="rounded-md border bg-card px-3 py-2 text-xs shadow-sm">
+      <div className="mb-1 font-medium">{dateShort(p.date)}</div>
+      <div className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm" style={{ backgroundColor: INVESTED_COLOR }} /> Invested {money(p.invested, currency)}</div>
+      <div className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm" style={{ backgroundColor: INDEX_COLOR }} /> {indexLabel} {money(p.index, currency)}</div>
+    </div>
+  );
+}
 
 function ReturnCell({ label, xirr, sub }: { label: string; xirr: number | null; sub: string }) {
   return (
@@ -55,6 +77,27 @@ export function BenchmarkCard() {
             <ReturnCell label="Your portfolio (XIRR)" xirr={data.portfolio.xirr} sub={`worth ${compactMoney(data.portfolio.currentValue)}`} />
             <ReturnCell label={`${data.label} (XIRR)`} xirr={data.index.xirr} sub={`would be ${compactMoney(data.index.currentValue)}`} />
           </div>
+
+          {data.series && data.series.length >= 2 && (
+            <div className="mt-4">
+              <div className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={data.series} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
+                    <XAxis dataKey="date" tickFormatter={dateShort} tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }} minTickGap={40} />
+                    <YAxis tickFormatter={(v) => compactMoney(v, data.currency)} tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }} width={52} />
+                    <Tooltip content={<OverlayTooltip indexLabel={data.label} currency={data.currency ?? "INR"} />} />
+                    <Line type="monotone" dataKey="index" name={data.label} stroke={INDEX_COLOR} strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="invested" name="Invested" stroke={INVESTED_COLOR} strokeWidth={1.5} strokeDasharray="4 3" dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm" style={{ backgroundColor: INDEX_COLOR }} /> Your cashflows in {data.label}</span>
+                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm" style={{ backgroundColor: INVESTED_COLOR }} /> Amount you contributed</span>
+              </div>
+            </div>
+          )}
 
           {data.portfolio.xirr !== null && data.index.xirr !== null && (
             <p className="mt-3 border-t pt-3 text-sm">

@@ -1,7 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
-import { rollupRealised, ledgerCashflows, xirr, simulateBenchmark, linkedTwr, priceAsOf, cashDeltas, cashBalanceAsOf, hasCashAccounting, d, ZERO, toStore, type CanonicalTx, type TwrPoint } from "@dhan-drishti/core";
+import { rollupRealised, ledgerCashflows, xirr, simulateBenchmark, benchmarkSeries, linkedTwr, priceAsOf, cashDeltas, cashBalanceAsOf, hasCashAccounting, d, ZERO, toStore, type CanonicalTx, type TwrPoint } from "@dhan-drishti/core";
 import type { DB } from "../db/index.js";
 import { transactions, securities } from "../db/schema.js";
 import { authed } from "../lib/routes.js";
@@ -102,6 +102,7 @@ export async function computeBenchmark(
 
   const latest = bars[bars.length - 1]!;
   const bench = simulateBenchmark(flows, bars, latest.close);
+  const series = benchmarkSeries(flows, bars);
 
   // Cashflows are in each transaction's own currency; the comparison is exact only when they
   // share the index's currency (typically an all-INR portfolio vs an Indian index).
@@ -117,6 +118,9 @@ export async function computeBenchmark(
     from,
     asOf: latest.date,
     currencyNote,
+    currency: benchmark.currency,
+    // Overlay: net contributed vs the index-mirror's value over time (index currency).
+    series: series.map((p) => ({ date: p.date, invested: p.invested, index: p.index })),
     portfolio: {
       xirr: perf.xirr,
       currentValue: perf.summary.currentValue,

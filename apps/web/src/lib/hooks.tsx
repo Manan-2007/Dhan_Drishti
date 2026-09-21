@@ -83,6 +83,8 @@ export interface BenchmarkComparison {
   from?: string;
   asOf?: string;
   currencyNote?: string;
+  currency?: string;
+  series?: { date: string; invested: number; index: number }[];
   portfolio: { xirr: number | null; currentValue: string; investedNet: string } | null;
   index: {
     xirr: number | null;
