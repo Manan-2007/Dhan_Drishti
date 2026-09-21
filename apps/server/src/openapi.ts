@@ -60,6 +60,7 @@ export const openApiSpec = {
     { name: "Dividends", description: "Dividend & interest income, trailing yield & estimated calendar" },
     { name: "Rebalance", description: "Target allocation weights and drift vs the live allocation" },
     { name: "Manual assets", description: "Non-market assets (FD/PPF/EPF/gold/real estate) that fold into net worth" },
+    { name: "Reports", description: "ITR-oriented capital-gains report (FIFO, short/long term)" },
     { name: "Goals", description: "Savings/target goals funded by portfolios" },
     { name: "Account", description: "Data export & account deletion" },
     { name: "Meta", description: "Health, discovery, API schema (no auth)" },
@@ -126,6 +127,8 @@ export const openApiSpec = {
       delete: op("Transactions", "Delete a transaction", { responses: { "200": { description: "Deleted", ...json(ref("Ok")) }, ...AUTH_ERRORS } }),
     },
 
+    "/api/securities/{id}/detail": { parameters: [idPath], get: op("Securities", "Full detail for one held security: position, transactions, price history", { parameters: [portfolioIdParam] }) },
+
     // Holdings responses also carry an allocation breakdown and a diversification/concentration read.
     "/api/holdings": {
       get: op("Holdings", "Derived holdings, allocation, base-currency summary & FX impact", { parameters: [portfolioIdParam], responses: { "200": { description: "Holdings response", ...json(ref("HoldingsResponse")) }, ...AUTH_ERRORS } }),
@@ -170,6 +173,8 @@ export const openApiSpec = {
       put: op("Manual assets", "Update a manual asset (a new value stamps valueAsOf)", { requestBody: json(ref("ManualAssetInput")) }),
       delete: op("Manual assets", "Delete a manual asset", { responses: { "200": { description: "Deleted", ...json(ref("Ok")) }, ...AUTH_ERRORS } }),
     },
+
+    "/api/reports/capital-gains": { get: op("Reports", "FIFO capital gains (short/long term) by financial year — informational, not tax advice", { parameters: [portfolioIdParam] }) },
 
     "/api/goals": {
       get: op("Goals", "List goals with progress"),

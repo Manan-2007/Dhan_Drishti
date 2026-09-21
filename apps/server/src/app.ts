@@ -22,6 +22,8 @@ import { registerAccountManagementRoutes } from "./domain/account.js";
 import { registerGoalRoutes } from "./domain/goals.js";
 import { registerRebalanceRoutes } from "./domain/rebalance.js";
 import { registerManualAssetRoutes } from "./domain/manual-assets.js";
+import { registerReportRoutes } from "./domain/reports.js";
+import { registerSecurityDetailRoutes } from "./domain/security-detail.js";
 import type { MarketDataProvider, FxProvider, BenchmarkProvider, SecurityHistoryProvider } from "./market/types.js";
 import { YahooProvider } from "./market/providers/yahoo.js";
 import { AmfiProvider } from "./market/providers/amfi.js";
@@ -188,6 +190,8 @@ export function buildApp(db: DB, options: AppOptions = {}): FastifyInstance {
   registerGoalRoutes(app, db);
   registerRebalanceRoutes(app, db);
   registerManualAssetRoutes(app, db);
+  registerReportRoutes(app, db);
+  registerSecurityDetailRoutes(app, db, historyProvider);
   registerAccountManagementRoutes(app, db);
 
   // Single-service self-host: serve the built SPA and fall back to index.html for client routes.
