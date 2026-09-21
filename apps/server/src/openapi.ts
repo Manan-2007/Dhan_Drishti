@@ -149,6 +149,7 @@ export const openApiSpec = {
     "/api/performance/benchmarks": { get: op("Performance", "Available benchmarks") },
     "/api/performance/benchmark": { get: op("Performance", "Compare portfolio vs an index on identical cashflows", { parameters: [portfolioIdParam, { name: "benchmark", in: "query", required: true, description: "Benchmark id (e.g. nifty50)", schema: { type: "string" } }] }) },
     "/api/performance/twr": { get: op("Performance", "Time-weighted return (price-based, single-currency holdings)", { parameters: [portfolioIdParam] }) },
+    "/api/performance/networth": { get: op("Performance", "Net-worth-over-time series (from daily snapshots)", { parameters: [portfolioIdParam, { name: "range", in: "query", description: "Window: 1m, 3m, 6m, 1y, max", schema: { type: "string", enum: ["1m", "3m", "6m", "1y", "max"], default: "max" } }] }) },
 
     "/api/dividends": { get: op("Dividends", "Dividend & interest income by FY and security", { parameters: [portfolioIdParam] }) },
 

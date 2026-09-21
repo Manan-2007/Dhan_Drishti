@@ -29,6 +29,8 @@ import { FrankfurterProvider } from "./market/providers/frankfurter.js";
 import { YahooBenchmarkProvider } from "./market/providers/yahoo-benchmark.js";
 import { YahooSecurityHistoryProvider } from "./market/providers/yahoo-security-history.js";
 import { registerFxRoutes } from "./domain/fx.js";
+import { refreshQuotes } from "./market/service.js";
+import { writeAllScopes } from "./domain/snapshots.js";
 import {
   SESSION_COOKIE,
   authenticate,
@@ -151,6 +153,12 @@ export function buildApp(db: DB, options: AppOptions = {}): FastifyInstance {
     const sid = await createSession(db, user.id, env.sessionTtlDays);
     setSessionCookie(reply, sid);
     reply.send({ user: toPublicUser(user) });
+    // Freshen prices and record a snapshot in the background so the dashboard opens up to date.
+    void refreshQuotes(db, user.id, marketProvider)
+      .then(() => writeAllScopes(db, user.id))
+      .catch(() => {
+        /* best-effort; never affects the login response */
+      });
   });
 
   app.post("/api/auth/logout", async (req, reply) => {

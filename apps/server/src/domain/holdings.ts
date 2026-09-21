@@ -17,6 +17,7 @@ import type { DB } from "../db/index.js";
 import { transactions, securities, quotes, type Security } from "../db/schema.js";
 import { authed } from "../lib/routes.js";
 import { getPortfolioOwned } from "./portfolios.js";
+import { upsertSnapshotFromHoldings } from "./snapshots.js";
 import { baseCurrencyOf, rateMap } from "../market/fx.js";
 
 /** Providers whose quotes are model estimates, not exchange-traded prices — flagged in the UI. */
@@ -336,6 +337,13 @@ export function registerHoldingsRoutes(app: FastifyInstance, db: DB): void {
     const { portfolioId } = querySchema.parse(req.query);
     const userId = req.user!.id;
     if (portfolioId) await getPortfolioOwned(db, userId, portfolioId); // ownership guard
-    return computePortfolioHoldings(db, userId, portfolioId);
+    const result = await computePortfolioHoldings(db, userId, portfolioId);
+    // Accrue the net-worth-over-time series just by using the app (a daily cron also records it).
+    try {
+      await upsertSnapshotFromHoldings(db, userId, portfolioId ?? null, result);
+    } catch {
+      /* a snapshot write must never break the holdings response */
+    }
+    return result;
   });
 }

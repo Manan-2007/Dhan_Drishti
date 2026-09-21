@@ -15,6 +15,13 @@
       "when": 1789617978553,
       "tag": "0001_black_talon",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790013512451,
+      "tag": "0002_noisy_stardust",
+      "breakpoints": true
     }
   ]
 }

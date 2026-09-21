@@ -11,8 +11,11 @@ import { BENCHMARKS, getBenchmark } from "../market/benchmarks.js";
 import { baseCurrencyOf } from "../market/fx.js";
 import { getPortfolioOwned } from "./portfolios.js";
 import { computePortfolioHoldings } from "./holdings.js";
+import { getNetWorthSeries } from "./snapshots.js";
 
 const querySchema = z.object({ portfolioId: z.string().optional() });
+const RANGES: Record<string, number | null> = { "1m": 30, "3m": 90, "6m": 182, "1y": 365, max: null };
+const netWorthQuerySchema = z.object({ portfolioId: z.string().optional(), range: z.enum(["1m", "3m", "6m", "1y", "max"]).default("max") });
 const benchmarkQuerySchema = z.object({ portfolioId: z.string().optional(), benchmark: z.string().min(1) });
 
 export async function computePerformance(db: DB, userId: string, portfolioId?: string) {
@@ -250,5 +253,14 @@ export function registerPerformanceRoutes(app: FastifyInstance, db: DB, benchmar
     const { portfolioId } = querySchema.parse(req.query);
     if (portfolioId) await getPortfolioOwned(db, req.user!.id, portfolioId);
     return computeTwr(db, req.user!.id, historyProvider, portfolioId);
+  });
+
+  // Net-worth-over-time series for the dashboard chart + windowed returns.
+  app.get("/api/performance/networth", opts, async (req) => {
+    const { portfolioId, range } = netWorthQuerySchema.parse(req.query);
+    if (portfolioId) await getPortfolioOwned(db, req.user!.id, portfolioId);
+    const days = RANGES[range];
+    const from = days == null ? undefined : new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+    return getNetWorthSeries(db, req.user!.id, portfolioId, from);
   });
 }

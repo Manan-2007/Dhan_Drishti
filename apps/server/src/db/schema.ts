@@ -213,6 +213,29 @@ export const goalPortfolios = sqliteTable(
   (t) => [unique("uq_goal_portfolio").on(t.goalId, t.portfolioId)],
 );
 
+// One net-worth data point per user per portfolio-scope per day, for the value-over-time chart.
+// portfolioId NULL = the "all portfolios" aggregate. Provider "reconstructed" marks a backfilled
+// historical point (valued from price history) vs a live "snapshot" recorded from actual holdings.
+export const snapshots = sqliteTable(
+  "snapshots",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    portfolioId: text("portfolio_id").references(() => portfolios.id, { onDelete: "cascade" }),
+    date: text("date").notNull(), // YYYY-MM-DD
+    netWorth: text("net_worth").notNull(),
+    holdingsValue: text("holdings_value").notNull(),
+    cash: text("cash").notNull(),
+    invested: text("invested").notNull(),
+    currency: text("currency").notNull().default("INR"),
+    provider: text("provider").notNull().default("snapshot"),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [unique("uq_snapshot").on(t.userId, t.portfolioId, t.date), index("idx_snapshot_user_date").on(t.userId, t.date)],
+);
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Portfolio = typeof portfolios.$inferSelect;
