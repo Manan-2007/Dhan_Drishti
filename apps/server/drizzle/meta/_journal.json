@@ -22,6 +22,13 @@
       "when": 1790013512451,
       "tag": "0002_noisy_stardust",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1790021027382,
+      "tag": "0003_far_spacker_dave",
+      "breakpoints": true
     }
   ]
 }

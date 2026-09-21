@@ -57,7 +57,8 @@ export const openApiSpec = {
     { name: "Market data", description: "Price refresh and status" },
     { name: "Exchange rates", description: "FX rates, refresh, backfill" },
     { name: "Performance", description: "Realised P&L, XIRR, benchmark comparison" },
-    { name: "Dividends", description: "Dividend & interest income" },
+    { name: "Dividends", description: "Dividend & interest income, trailing yield & estimated calendar" },
+    { name: "Rebalance", description: "Target allocation weights and drift vs the live allocation" },
     { name: "Goals", description: "Savings/target goals funded by portfolios" },
     { name: "Account", description: "Data export & account deletion" },
     { name: "Meta", description: "Health, discovery, API schema (no auth)" },
@@ -124,6 +125,7 @@ export const openApiSpec = {
       delete: op("Transactions", "Delete a transaction", { responses: { "200": { description: "Deleted", ...json(ref("Ok")) }, ...AUTH_ERRORS } }),
     },
 
+    // Holdings responses also carry an allocation breakdown and a diversification/concentration read.
     "/api/holdings": {
       get: op("Holdings", "Derived holdings, allocation, base-currency summary & FX impact", { parameters: [portfolioIdParam], responses: { "200": { description: "Holdings response", ...json(ref("HoldingsResponse")) }, ...AUTH_ERRORS } }),
     },
@@ -147,11 +149,16 @@ export const openApiSpec = {
 
     "/api/performance/summary": { get: op("Performance", "Realised P&L (FY/month/segment), dividends, XIRR", { parameters: [portfolioIdParam] }) },
     "/api/performance/benchmarks": { get: op("Performance", "Available benchmarks") },
-    "/api/performance/benchmark": { get: op("Performance", "Compare portfolio vs an index on identical cashflows", { parameters: [portfolioIdParam, { name: "benchmark", in: "query", required: true, description: "Benchmark id (e.g. nifty50)", schema: { type: "string" } }] }) },
+    "/api/performance/benchmark": { get: op("Performance", "Compare portfolio vs an index on identical cashflows (with an overlay time series)", { parameters: [portfolioIdParam, { name: "benchmark", in: "query", required: true, description: "Benchmark id (e.g. nifty50)", schema: { type: "string" } }] }) },
     "/api/performance/twr": { get: op("Performance", "Time-weighted return (price-based, single-currency holdings)", { parameters: [portfolioIdParam] }) },
     "/api/performance/networth": { get: op("Performance", "Net-worth-over-time series (from daily snapshots)", { parameters: [portfolioIdParam, { name: "range", in: "query", description: "Window: 1m, 3m, 6m, 1y, max", schema: { type: "string", enum: ["1m", "3m", "6m", "1y", "max"], default: "max" } }] }) },
 
-    "/api/dividends": { get: op("Dividends", "Dividend & interest income by FY and security", { parameters: [portfolioIdParam] }) },
+    "/api/dividends": { get: op("Dividends", "Dividend & interest income by FY and security, plus trailing yield and an estimated forward calendar", { parameters: [portfolioIdParam] }) },
+
+    "/api/rebalance": {
+      get: op("Rebalance", "Target weights vs live allocation, with weight & rupee drift", { parameters: [portfolioIdParam, { name: "dimension", in: "query", description: "Allocation dimension", schema: { type: "string", enum: ["asset_class", "sector"], default: "asset_class" } }] }),
+      put: op("Rebalance", "Replace the target weights for a scope + dimension", { requestBody: json({ type: "object", required: ["targets"], properties: { portfolioId: { type: "string" }, dimension: { type: "string", enum: ["asset_class", "sector"], default: "asset_class" }, targets: { type: "array", items: { type: "object", required: ["key", "weight"], properties: { key: { type: "string" }, weight: { type: "string", description: "Fraction 0..1" } } } } } }), responses: { "200": { description: "Updated drift" }, ...AUTH_ERRORS } }),
+    },
 
     "/api/goals": {
       get: op("Goals", "List goals with progress"),

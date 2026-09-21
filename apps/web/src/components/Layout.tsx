@@ -8,6 +8,7 @@ const NAV = [
   { to: "/holdings", label: "Holdings" },
   { to: "/transactions", label: "Transactions" },
   { to: "/analytics", label: "Analytics" },
+  { to: "/rebalance", label: "Rebalance" },
   { to: "/dividends", label: "Dividends" },
   { to: "/goals", label: "Goals" },
   { to: "/portfolios", label: "Portfolios" },

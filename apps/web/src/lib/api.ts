@@ -151,6 +151,27 @@ export interface HoldingsResponse {
   diversification: Diversification;
   holdings: HoldingRow[];
 }
+export type RebalanceDimension = "asset_class" | "sector";
+export interface RebalanceRow {
+  key: string;
+  currentValue: string;
+  currentWeight: string;
+  targetWeight: string | null;
+  targetValue: string | null;
+  driftWeight: string | null;
+  driftValue: string | null;
+  action: "trim" | "add" | "hold" | null;
+}
+export interface RebalanceResponse {
+  dimension: RebalanceDimension;
+  basis: "current_value" | "invested";
+  baseCurrency: string;
+  totalValue: string;
+  hasTargets: boolean;
+  targetSum: string;
+  untargetedWeight: string;
+  rows: RebalanceRow[];
+}
 export interface ImportPreview {
   broker: string;
   detected: { broker: string; confidence: number; reason: string } | null;

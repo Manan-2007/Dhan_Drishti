@@ -236,6 +236,26 @@ export const snapshots = sqliteTable(
   (t) => [unique("uq_snapshot").on(t.userId, t.portfolioId, t.date), index("idx_snapshot_user_date").on(t.userId, t.date)],
 );
 
+// Target allocation weights for rebalancing. One row per (scope, dimension, key). portfolioId
+// NULL = the "all portfolios" scope. Writes replace the whole (user, scope, dimension) set, so
+// no UNIQUE is needed (and SQLite treats NULL portfolioId rows as distinct under one anyway).
+export const allocationTargets = sqliteTable(
+  "allocation_targets",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    portfolioId: text("portfolio_id").references(() => portfolios.id, { onDelete: "cascade" }),
+    dimension: text("dimension").notNull(), // asset_class | sector
+    key: text("key").notNull(), // e.g. "equity", "BFSI"
+    targetWeight: text("target_weight").notNull(), // decimal string, 0..1
+    createdAt: text("created_at").notNull().default(now),
+    updatedAt: text("updated_at").notNull().default(now),
+  },
+  (t) => [index("idx_alloc_target_scope").on(t.userId, t.portfolioId, t.dimension)],
+);
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Portfolio = typeof portfolios.$inferSelect;
@@ -243,3 +263,4 @@ export type Account = typeof accounts.$inferSelect;
 export type Security = typeof securities.$inferSelect;
 export type Transaction = typeof transactions.$inferSelect;
 export type Goal = typeof goals.$inferSelect;
+export type AllocationTarget = typeof allocationTargets.$inferSelect;

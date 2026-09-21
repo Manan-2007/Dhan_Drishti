@@ -1,6 +1,15 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, type Portfolio, type Account, type HoldingsResponse, type Transaction, type ImportBatch, type NetWorthSeries } from "./api.js";
+import { api, type Portfolio, type Account, type HoldingsResponse, type Transaction, type ImportBatch, type NetWorthSeries, type RebalanceResponse, type RebalanceDimension } from "./api.js";
+
+export function useRebalance(portfolioId: string | null, dimension: RebalanceDimension) {
+  const search = new URLSearchParams({ dimension });
+  if (portfolioId) search.set("portfolioId", portfolioId);
+  return useQuery({
+    queryKey: ["rebalance", portfolioId, dimension],
+    queryFn: () => api.get<RebalanceResponse>(`/api/rebalance?${search.toString()}`),
+  });
+}
 
 export type NetWorthRange = "1m" | "3m" | "6m" | "1y" | "max";
 export function useNetWorth(portfolioId: string | null, range: NetWorthRange) {
