@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type BrokerInfo, type ImportPreview, type ImportResult, type SeedPricesResult } from "../lib/api.js";
 import { usePortfolios, useAccounts, useImports } from "../lib/hooks.js";
 import { PageHeader } from "../components/PageHeader.js";
+import { ExportHelp } from "../components/ExportHelp.js";
 import { Button, Card, Field, Input, Select, Spinner, Badge } from "../components/ui.js";
 import { dateShort } from "../lib/format.js";
 
@@ -236,6 +237,8 @@ export function Imports() {
                     )}
                   </Field>
                 </div>
+
+                <ExportHelp broker={broker} />
                 <p className="-mt-2 text-xs text-muted-foreground">
                   {isPrices ? (
                     <>Updates today's price for holdings you've already imported — matched by ISIN or name. It adds no
