@@ -49,5 +49,30 @@ describe("GET /api/dividends", () => {
     expect(res.json().count).toBe(0);
     expect(res.json().total).toBe("0");
     expect(res.json().events).toEqual([]);
+    expect(res.json().income.ttm).toBe("0");
+    expect(res.json().upcoming).toEqual([]);
+  });
+
+  it("derives trailing-12-month income and an estimated cadence for held payers", async () => {
+    const cookie = await signup("div3");
+    const pid = (await post("/api/portfolios", cookie, { name: "P" })).json().portfolio.id;
+    const sid = (await post("/api/securities", cookie, { symbol: "POWERGRID", name: "Power Grid", assetClass: "equity" })).json().security.id;
+    await post("/api/transactions", cookie, { portfolioId: pid, securityId: sid, type: "buy", tradeDate: "2022-01-01", quantity: "100", price: "200" });
+    // Three recent, roughly-quarterly payouts (relative to today, so they fall inside the TTM window).
+    const iso = (daysAgo: number) => new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10);
+    await post("/api/transactions", cookie, { portfolioId: pid, securityId: sid, type: "dividend", tradeDate: iso(200), grossAmount: "300" });
+    await post("/api/transactions", cookie, { portfolioId: pid, securityId: sid, type: "dividend", tradeDate: iso(110), grossAmount: "300" });
+    await post("/api/transactions", cookie, { portfolioId: pid, securityId: sid, type: "dividend", tradeDate: iso(20), grossAmount: "300" });
+
+    const d = (await get("/api/dividends", cookie)).json();
+    expect(d.income.ttm).toBe("900"); // all three within the trailing 12 months
+    expect(d.upcoming).toHaveLength(1);
+    const u = d.upcoming[0];
+    expect(u.security.symbol).toBe("POWERGRID");
+    expect(u.cadence).toBe("quarterly");
+    expect(u.paymentsObserved).toBe(3);
+    expect(u.ttm).toBe("900");
+    expect(u.estimatedNext).not.toBeNull();
+    expect(u.estimatedNext > iso(0)).toBe(true); // the estimate is in the future
   });
 });

@@ -1,7 +1,16 @@
-import { useFilter, useDividends } from "../lib/hooks.js";
+import { useFilter, useDividends, type DividendCadence } from "../lib/hooks.js";
 import { PageHeader } from "../components/PageHeader.js";
 import { Card, EmptyState, Spinner, Badge } from "../components/ui.js";
-import { compactMoney, money, dateShort } from "../lib/format.js";
+import { compactMoney, money, dateShort, pct } from "../lib/format.js";
+
+const CADENCE_LABEL: Record<DividendCadence, string> = {
+  monthly: "~monthly",
+  quarterly: "~quarterly",
+  "half-yearly": "~half-yearly",
+  annual: "~annual",
+  irregular: "irregular",
+  "one-off": "one-off",
+};
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
@@ -30,7 +39,6 @@ export function Dividends() {
     );
   }
 
-  const latestFY = data.byFY[0];
   return (
     <>
       <PageHeader title="Dividends" subtitle={`${data.count} payout${data.count === 1 ? "" : "s"} received`} />
@@ -44,7 +52,12 @@ export function Dividends() {
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Total received" value={compactMoney(data.total)} hint={money(data.total)} />
-        {latestFY && <Stat label={`Latest FY (${latestFY.key.replace("FY ", "")})`} value={compactMoney(latestFY.amount)} hint={money(latestFY.amount)} />}
+        <Stat label="Last 12 months" value={compactMoney(data.income.ttm)} hint={money(data.income.ttm)} />
+        <Stat
+          label="Trailing yield"
+          value={data.income.trailingYield ? pct(data.income.trailingYield) : "—"}
+          hint={data.income.portfolioValue ? `${money(data.income.ttmHeld)} on ${compactMoney(data.income.portfolioValue)} held` : "needs current prices"}
+        />
         <Stat label="Paying securities" value={String(data.bySecurity.length)} />
       </div>
 
@@ -75,6 +88,56 @@ export function Dividends() {
           </ul>
         </Card>
       </div>
+
+      {data.upcoming.length > 0 && (
+        <Card className="mt-4 overflow-x-auto p-0">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4">
+            <h3 className="text-sm font-medium text-muted-foreground">Dividend calendar</h3>
+            <Badge tone="warning">estimated from history</Badge>
+          </div>
+          <p className="px-4 pb-3 pt-1 text-xs text-muted-foreground">
+            Trailing-12-month income and yield are real. Cadence and the next expected date are estimates from each
+            security's own payout history — not a guarantee of future payouts.
+          </p>
+          <table className="w-full min-w-[640px] text-sm">
+            <thead>
+              <tr className="border-b border-t text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <th className="px-4 py-3 font-medium">Security</th>
+                <th className="px-4 py-3 font-medium">Cadence</th>
+                <th className="px-4 py-3 font-medium">Last payout</th>
+                <th className="px-4 py-3 text-right font-medium">Last 12 mo</th>
+                <th className="px-4 py-3 text-right font-medium">Yield</th>
+                <th className="px-4 py-3 font-medium">Next (est.)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.upcoming.map((u) => (
+                <tr key={u.security.id} className="border-b last:border-0 hover:bg-accent/50">
+                  <td className="px-4 py-3">
+                    <span className="min-w-0">
+                      <span className="font-medium">{u.security.symbol}</span>{" "}
+                      <span className="text-muted-foreground">{u.security.name}</span>
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <Badge tone="muted">{CADENCE_LABEL[u.cadence]}</Badge>
+                    <span className="ml-2 text-xs text-muted-foreground">{u.paymentsObserved}×</span>
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
+                    {dateShort(u.lastDate)}
+                    {u.lastAmount && <span className="ml-2 font-mono tabular text-success">{money(u.lastAmount)}</span>}
+                  </td>
+                  <td className="px-4 py-3 text-right font-mono tabular text-success">{money(u.ttm)}</td>
+                  <td className="px-4 py-3 text-right font-mono tabular text-muted-foreground">{u.trailingYield ? pct(u.trailingYield) : "—"}</td>
+                  <td className="whitespace-nowrap px-4 py-3">
+                    {u.estimatedNext ? dateShort(u.estimatedNext) : <span className="text-muted-foreground">—</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
 
       <Card className="mt-4 overflow-x-auto p-0">
         <table className="w-full min-w-[560px] text-sm">

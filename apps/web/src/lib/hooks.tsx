@@ -138,6 +138,18 @@ export function useBenchmark(portfolioId: string | null, benchmarkId: string | n
   });
 }
 
+export type DividendCadence = "monthly" | "quarterly" | "half-yearly" | "annual" | "irregular" | "one-off";
+export interface DividendUpcoming {
+  security: { id: string; symbol: string; name: string };
+  cadence: DividendCadence;
+  paymentsObserved: number;
+  lastDate: string;
+  lastAmount: string | null;
+  ttm: string;
+  currentValue: string | null;
+  trailingYield: string | null;
+  estimatedNext: string | null;
+}
 export interface DividendsResponse {
   baseCurrency: string;
   fxComplete: boolean;
@@ -146,6 +158,15 @@ export interface DividendsResponse {
   count: number;
   byFY: { key: string; amount: string }[];
   bySecurity: { symbol: string; name: string; amount: string }[];
+  income: {
+    ttm: string;
+    ttmHeld: string;
+    portfolioValue: string | null;
+    trailingYield: string | null;
+    asOf: string;
+    windowFrom: string;
+  };
+  upcoming: DividendUpcoming[];
   events: {
     id: string;
     type: "dividend" | "interest";
