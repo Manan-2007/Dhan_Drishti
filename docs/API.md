@@ -68,6 +68,8 @@ curl "$BASE/api/openapi.json" | less
 | GET | `/api/securities?query=&limit=` | Search by symbol / name / ISIN |
 | POST | `/api/securities` | Find-or-create (ISIN → symbol+exchange → symbol) |
 | GET/PUT | `/api/securities/{id}` | Get / edit metadata |
+| GET | `/api/securities/{id}/detail?portfolioId=` | One security: position, transactions, price history (404 unless held) |
+| POST | `/api/securities/reclassify` | Auto-classify held securities (sector / sub-sector / class) |
 | POST | `/api/securities/classify` | Bulk-classify from a reference CSV |
 
 ### Transactions (canonical ledger)
@@ -83,12 +85,22 @@ curl "$BASE/api/openapi.json" | less
 ### Holdings, performance, dividends
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/holdings?portfolioId=` | Derived holdings, allocation, base-currency summary, `fxImpact` |
+| GET | `/api/holdings?portfolioId=` | Derived holdings; allocation by class/sector/region/currency; base-currency summary (incl. `manualAssets`, `netWorth`); `diversification`; `fxImpact` |
 | GET | `/api/performance/summary?portfolioId=` | Realised P&L (FY/month/segment), dividends, XIRR |
+| GET | `/api/performance/networth?portfolioId=&range=1m\|3m\|6m\|1y\|max` | Net-worth-over-time series (from daily snapshots) |
 | GET | `/api/performance/benchmarks` | Available benchmarks |
-| GET | `/api/performance/benchmark?benchmark=nifty50&portfolioId=` | Portfolio vs index on identical cashflows |
+| GET | `/api/performance/benchmark?benchmark=nifty50&portfolioId=` | Portfolio vs index on identical cashflows, with an overlay time series |
 | GET | `/api/performance/twr?portfolioId=` | Time-weighted return (price-based; single-currency holdings) |
-| GET | `/api/dividends?portfolioId=` | Dividend & interest income by FY / security |
+| GET | `/api/dividends?portfolioId=` | Dividend & interest income by FY / security, trailing yield, and an estimated payout calendar |
+| GET | `/api/reports/capital-gains?portfolioId=` | FIFO short- / long-term capital gains by FY (informational, not tax advice) |
+
+### Rebalance & manual assets
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/rebalance?dimension=asset_class\|sector&portfolioId=` | Target weights vs live allocation, with weight & rupee drift |
+| PUT | `/api/rebalance` | Replace the target weights for a scope + dimension |
+| GET/POST | `/api/manual-assets?portfolioId=` | List (with base-currency values) / add a non-market asset |
+| PUT/DELETE | `/api/manual-assets/{id}` | Update / delete a manual asset |
 
 ### Market data & FX
 | Method | Path | Purpose |
@@ -105,14 +117,16 @@ curl "$BASE/api/openapi.json" | less
 |---|---|---|
 | GET | `/api/imports/brokers` | Supported broker adapters |
 | POST | `/api/imports/check` | Preview (valid/invalid/duplicate counts) |
-| POST | `/api/imports/commit` | Commit (idempotent dedup) |
+| POST | `/api/imports/commit` | Commit — atomic, idempotent dedup |
+| POST | `/api/imports/seed-prices` | Seed current prices from a holdings snapshot (no cost basis) |
 | GET | `/api/imports` · `/api/imports/{id}` | List / get import batches |
 
-### Goals & account
+> The import body takes `content` (raw CSV, or base64 with `encoding: "base64"` for an `.xlsx`
+> workbook or a CAS PDF) and, for a CAS PDF (`broker: "cas"`), a `casPassword` (usually the PAN).
+
+### Account
 | Method | Path | Purpose |
 |---|---|---|
-| GET/POST | `/api/goals` | List (with progress) / create |
-| GET/PUT/DELETE | `/api/goals/{id}` | Get / update / delete |
 | GET | `/api/account/export` | Export all of the caller's data as JSON |
 | POST | `/api/account/delete` | Permanently delete the account (password-confirmed) |
 

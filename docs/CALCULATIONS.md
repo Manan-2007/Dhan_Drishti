@@ -1,15 +1,17 @@
-# Dhan Drishti — Calculation Methodology (Phase 1)
+# Dhan Drishti — Calculation Methodology
 
-Every UI metric maps to one formula here. Implemented in `packages/core` as a **pure,
-deterministic, unit-tested** module using `decimal.js` (no floats, no DB coupling).
-Golden tests validate against the prototype's figures.
+Every UI metric maps to one formula here. Implemented in `packages/core` as **pure,
+deterministic, unit-tested** modules using `decimal.js` (no floats, no DB coupling).
 
 ## Conventions
 - Signed quantity: BUY qty > 0, SELL qty > 0 but subtracts from holdings. Internally we
   compute signed via `type`. `deposit/withdrawal/fee/tax/dividend/interest` are cash/income
   events (no share qty effect except they affect cash & P&L).
-- Cost basis default: **average cost** (matches Indian brokers). FIFO/lots = post-MVP.
+- Cost basis for **holdings & analytics is average cost** (matches Indian brokers). The
+  **capital-gains report uses FIFO** — the tax method — in a separate pass (see below).
 - All money is `Decimal`. Division guards against zero (return null, never NaN/Infinity).
+- **Caching:** derived holdings are cached per (user, scope) and invalidated on any write, so a
+  page firing several holdings-derived endpoints recomputes the portfolio once, not once each.
 
 ## Holdings (per security, within a scope: account | portfolio | all)
 ```
@@ -51,7 +53,20 @@ net_pnl = unrealised_pnl + realised_pnl + dividends − fees − taxes
 weight(security) = current_value(security) / Σ current_value      // price-based
 // fallback when no prices: weight = invested(security) / Σ invested (clearly labelled)
 ```
-Break down by asset_class, sector, broker, portfolio, currency.
+Broken down by **asset class, sector, sub-sector, region and currency**. Cash and manual assets
+(FDs, gold, real estate…) fold in as their own slices. A security's **region** is inferred from its
+currency (INR → India, USD → United States, …); manual assets carry their own region. Weights are
+computed on base-currency values so cross-currency slices compare correctly.
+
+## Diversification / concentration (implemented)
+A purely-derived read on how spread-out the invested money is:
+```
+w_i     = position_value_i / Σ position_value        // over priced positions (cash excluded)
+HHI     = Σ w_i²          effective_holdings = 1 / HHI
+score   = round( 100 · [ 0.6·(1 − HHI) + 0.4·(1 − HHI_sector) ] )   // 0..100, higher = better
+```
+Also surfaced: the largest single-position weight, the top-5 weight, the biggest sector weight, and
+plain-language flags for single-stock and sector concentration. Every input is a real position value.
 
 ## Net worth & base-currency aggregation (implemented)
 ```
@@ -64,8 +79,8 @@ whose currency has **no rate** is excluded from base totals and surfaced via
 currency. Allocation weights are computed on base-currency values so cross-currency slices
 compare correctly. FX rates come from a provider abstraction (`FxProvider`; frankfurter.app
 by default) or are set manually. The base-currency gain on foreign holdings is further split
-into asset vs currency return — see *FX-impact decomposition* below.
-*(Cash-balance tracking from the ledger: still to come.)*
+into asset vs currency return — see *FX-impact decomposition* below. Cash (from the ledger) and
+**manual assets** are added on top — see *Cash balance & net worth* and *Manual (non-market) assets*.
 
 ## FX-impact decomposition (implemented — asset return vs currency return)
 For a foreign-currency holding, the base-currency gain is split into the part driven by the
@@ -99,8 +114,13 @@ component. The decomposition is surfaced per holding and summed in `holdings.fxI
 income_total = Σ over (dividend, interest) transactions of gross_amount  // converted to base
 ```
 Reported in base currency with the FY (Apr→Mar) and per-security breakdown, plus the raw
-event list. Income whose currency has no FX rate is excluded from base totals and flagged —
-every figure traces to a real ledger entry; nothing is projected.
+event list. Income whose currency has no FX rate is excluded from base totals and flagged.
+
+**Trailing yield & an estimated calendar.** The trailing-12-month income and the yield (that income
+over the current value of held payers) are **real sums**. A per-payer calendar then infers a
+**cadence** (median gap between historical payouts → ~monthly/quarterly/annual) and a **next expected
+date** (last payout + median, rolled forward) — these are **estimates, clearly labelled**, dropped
+once a payer goes quiet (older than ~2 cycles). Real income vs estimated dates are never conflated.
 
 ## Benchmark comparison (implemented — index-equivalent / PME-style mirror)
 "What if the very same cashflows had gone into an index instead?" We mirror the portfolio's
@@ -121,6 +141,26 @@ otherwise. The head-to-head is only surfaced when the portfolio's own XIRR is av
 value to compare. Index history comes from a provider abstraction (`BenchmarkProvider`;
 Yahoo by default); only the public index symbol + a date range are ever sent — never holdings.
 
+The comparison is also drawn as an **overlay chart**: sampled month by month, the cumulative net
+cash contributed vs the value of the index units those same flows would have bought at each date's
+close. The final gap equals the benchmark edge reported above. It renders even when the head-to-head
+XIRR isn't available (it needs only index bars + cashflows, not current portfolio prices).
+
+## FIFO capital gains (implemented — for ITR; not tax advice)
+Separate from the average-cost engine, the tax report matches each sale against the **oldest open
+lots (FIFO)** and classifies by holding period:
+```
+per sale, consume lots oldest-first:
+  proceeds = qty·sell_price − pro-rata(sell fees+taxes)
+  cost     = qty·lot_cost_per_unit          // buy fees/taxes folded into the lot
+  gain     = proceeds − cost
+  term     = holding_days > long_term_threshold(asset_class) ? "long" : "short"
+```
+Buys/transfers-in open lots; bonuses add zero-cost lots; splits scale lots (basis & date unchanged);
+**F&O is excluded** (business income, not capital gains). Grouped by financial year into STCG/LTCG
+totals, exportable as CSV. Long-term thresholds (12 months for listed equity & equity MFs, 24 months
+otherwise) are a starting point — the report is informational and the user confirms current rules.
+
 ## Cash balance & net worth (implemented)
 The cash the portfolio holds is derived from the ledger — it is only surfaced once you record
 the money you put in (a `deposit`/`withdrawal`), otherwise it isn't meaningful:
@@ -128,12 +168,33 @@ the money you put in (a `deposit`/`withdrawal`), otherwise it isn't meaningful:
 cash += deposit ; cash −= withdrawal
 cash −= buy_cost(incl. fees/taxes) ; cash += sell_proceeds(net fees/taxes)
 cash += dividend + interest ; cash −= fee + tax
-net_worth = Σ holdings_current_value(base) + cash(base)
+net_worth = Σ holdings_current_value(base) + cash(base) + Σ manual_asset_value(base)
 ```
-Cash is tracked per currency and converted to base like holdings. `net_worth` and `cash` appear
-in the holdings summary with `cashTracked`, and cash is folded into the allocation (asset-class
-and currency) as its own slice. Dividends and sale proceeds are **retained as cash**, so they
-show up in net worth rather than vanishing.
+Cash is tracked per currency and converted to base like holdings. `net_worth`, `cash` and
+`manualAssets` appear in the holdings summary with `cashTracked`, and both cash and manual assets
+fold into the allocation as their own slices. Dividends and sale proceeds are **retained as cash**,
+so they show up in net worth rather than vanishing.
+
+## Manual (non-market) assets (implemented)
+Assets with no market price — FDs, PPF/EPF/NPS, physical gold, real estate, savings, bonds — carry a
+**value the user maintains by hand** (with an optional cost → a gain figure). They never touch the
+ledger, but their base-currency value is added to `net_worth` and folded into the by-asset-class and
+by-region allocation (and therefore into rebalancing). Nothing is estimated; every figure is entered.
+
+## Net worth over time (implemented)
+A daily net-worth point is recorded per scope (portfolio, or the "all portfolios" aggregate) —
+forward-accruing: on the first holdings view of the day, on login, and by the nightly cron. The
+chart and the windowed change (1M/3M/6M/1Y/Max) read this `snapshots` series; there is no historical
+back-fill, so the trend builds from first use.
+
+## Rebalancing / target allocation (implemented)
+Compares user-set **target weights** (per asset class or sector) against the live allocation:
+```
+drift_weight(key) = current_weight(key) − target_weight(key)          // + = over target
+drift_value(key)  = current_value(key)  − target_weight(key)·total     // + = trim, − = add
+```
+Targets are the user's own choice; current weights and rupee drift come straight from priced
+holdings. Target weights can't exceed 100%.
 
 ## Time-weighted return (TWR — implemented)
 TWR removes the effect of *when* money was added (which XIRR is sensitive to) by chaining each

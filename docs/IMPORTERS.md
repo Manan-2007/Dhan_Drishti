@@ -1,68 +1,78 @@
-# Dhan Drishti — Import Engine Design (Phase 1)
+# Dhan Drishti — Import Engine
 
-Broker CSV parsing is **isolated** behind one interface. Core never contains broker logic.
+Broker parsing is **isolated** behind one interface. Core never contains broker logic. Uploads may
+be **CSV**, **Excel (`.xlsx`)** (read as data with SheetJS — formulas are never evaluated), or a
+mutual-fund **CAS PDF** (text extracted with pdf.js, password-aware).
 
 ## The `BrokerAdapter` contract
 ```ts
 interface BrokerAdapter {
-  id: 'zerodha' | 'dhan' | 'vested' | 'ibkr' | 'binance' | 'generic';
+  id: string;                                      // "zerodha" | "dhan" | "vested" | …
   label: string;
-  detect(file: ParsedCsv): DetectResult;          // confidence 0..1 + which sheet/format
-  normalize(file: ParsedCsv, ctx: ImportContext): NormalizedRow[]; // → canonical rows
+  detect(file: ParsedCsv): DetectResult;           // confidence 0..1 + reason
+  normalize(file: ParsedCsv): NormalizedRow[];     // → canonical rows
 }
 type NormalizedRow =
-  | { ok: true;  tx: CanonicalTx; rawHash: string; externalRef?: string }
-  | { ok: false; error: string; raw: Record<string,string>; rowIndex: number };
+  | { ok: true;  rowIndex: number; rawHash: string; tx: NormalizedTx }   // tx.externalRef?, tx.quotePrice?
+  | { ok: false; rowIndex: number; error: string };
 ```
-Adapters map columns, normalize dates/decimals/signs/buy-sell terms/currency, and resolve
-security identity (symbol ↔ ISIN ↔ AMFI) via the security master, then emit canonical
-transactions (see `SCHEMA.md`/`CALCULATIONS.md`).
+Adapters map columns, normalize dates / decimals / signs / buy-sell terms / currency, and resolve
+security identity, then emit canonical transactions (see `SCHEMA.md` / `CALCULATIONS.md`).
 
-## Pipeline (12 steps → wizard)
+## Pipeline (preview → commit)
 ```
-1 choose source/broker → 2 upload CSV → 3 parse (papaparse) → 4 detect format →
-5 normalize → 6 validate (Zod) → 7 classify rows: valid | invalid | duplicate |
-unknown-asset | missing-field → 8 preview + user resolves → 9 confirm →
-10 store canonical tx (+ import_batch) → 11 recalculate holdings → 12 summary
+choose source → upload (CSV / .xlsx / CAS PDF) → resolve rows → detect format → normalize →
+validate → classify: valid | invalid | duplicate | new-security → preview → commit (atomic)
 ```
-Import is **idempotent**: dedup by `external_ref` (broker trade/order id) when present.
-When a broker export lacks a trade id, dedup falls
-back to `sha256(broker + raw row)` **plus an occurrence index within the file** — so two
-genuinely-identical trades in one file are both kept, while re-uploading the same file
-reproduces the same hashes and imports 0 new rows. Re-uploads are always idempotent.
-*(Implemented + validated on 2019 real Zerodha rows: first import 2019, re-import 0.)*
+- The period the file covers is read from **its own transaction dates** (min/max), so you never
+  type a date range. With `replace`, existing rows from the same source in that range are cleared
+  first — re-uploading an overlapping file overwrites cleanly instead of duplicating.
+- The whole **commit is one transaction**: the replace-delete, the batch record, and every
+  security / transaction / quote insert either all apply or all roll back — never a half-import.
+  Securities are resolved once each and rows are bulk-inserted.
 
-## Zerodha (first adapter)
-- Tradebook columns: `Symbol, ISIN, TradeDate, Exch, Seg, Series, TradeType(buy/sell),
-  Qty, Price, Amount` → map to buy/sell canonical tx (currency INR). `NetQty`, `BuyAvg`,
-  `Auction` are derived/UI — ignored on import.
-- Ledger (`Particulars, Posting Date, Voucher Type, Debit, Credit, Net Balance`) →
-  cash movements (deposit/withdrawal/fee) — separate importer path; ledger is the source
-  of truth for cash/charges, tradebook for trades (avoid double counting).
-- Dividends sheet (`Symbol, ISIN, Date, Qty, DividendPerShare, DivAmt`) → dividend tx.
+## Idempotency & dedup
+Dedup by `external_ref` (broker trade/order id) when present. When an export lacks a trade id,
+dedup falls back to `sha256(broker + raw row)` **plus an occurrence index within the file** — so two
+genuinely-identical trades in one file are both kept, while re-uploading the same file reproduces
+the same hashes and imports 0 new rows. Re-uploads are always idempotent.
 
 ## Implemented adapters
-- **Zerodha** ✅ (tradebook, above).
-- **Dhan** ✅ `Dhan All TradeBook` (Date+Time, Name, BuySell, Exchange, Segment, Quantity,
-  TradePrice, TradeValue). Dhan keys securities by **full Name** (no ticker/ISIN in the
-  export), so securities are name-based until a `Dhan Keys` / classification map bridges them.
-- **Vested** ✅ US stocks (Symbol/Side/Shares/Price/Amount/Date) → USD equities; FX-at-cost is
-  captured on write from the trade date, so returns decompose into asset vs currency.
-- **Interactive Brokers** ✅ Flex/Activity trades — **signed quantity** (− = sell) when there is
-  no Buy/Sell column, `IBCommission` → fees, `CurrencyPrimary` → currency, `AssetClass` (STK/ETF/
-  CRYPTO…) → asset class, compact `YYYYMMDD` dates.
-- **Binance** ✅ spot trade history — the pair (e.g. `BTCUSDT`) is split into its **base asset**
-  (crypto security) priced in the **quote** currency (USDT/USDC/… → USD); UTC timestamps.
-- **Generic** ✅ `makeGenericAdapter(mapping)` — the user maps CSV columns → canonical
-  fields (a reusable "import template" pattern); the wizard collects the mapping before
-  preview. `POST /api/imports/{check,commit}` accept an optional `mapping`. Covers any other
-  broker/platform.
+
+**Transactions**
+- **Zerodha** — Console tradebook (Symbol, ISIN, TradeDate, Exchange, Segment, TradeType, Qty,
+  Price, trade_id → buy/sell, INR).
+- **Dhan** — tradebook, and an **All Transactions** report (`dhan-txn`) that carries equity, ETF and
+  mutual-fund activity together. Dhan keys securities by **full name** (no ticker/ISIN in the
+  export) until the built-in classifier bridges them.
+- **Vested** — US stocks (Symbol/Side/Shares/Price/Amount/Date) → USD equities; FX-at-cost is
+  captured from the trade date so returns decompose into asset vs currency.
+- **Interactive Brokers** — Flex/Activity trades with **signed quantity** (− = sell), `IBCommission`
+  → fees, `CurrencyPrimary` → currency, `AssetClass` (STK/ETF/CRYPTO…) → asset class.
+- **Binance** — spot trade history; the pair (`BTCUSDT`) splits into its **base asset** priced in the
+  **quote** currency (USDT/USDC/… → USD).
+- **Funds** & **Dividends** — a broker ledger's deposits/withdrawals, and a dividend/interest payout
+  statement.
+
+**Holdings / price-seed** (kind `prices` — seeds current value without cost basis, or imports a
+holdings snapshot as buys): **Holdings** (generic), **Zerodha holdings** (`.xlsx`), **Dhan holdings**.
+
+**Mutual-fund CAS PDF** (`cas`) — one password-protected CAMS / KFintech Consolidated Account
+Statement covers every AMC. The text is extracted (password usually the PAN), then each scheme's
+rows are read: purchases / SIPs / switch-ins / STP-in / IDCW reinvest → buy, redemptions /
+switch-outs / SWP → sell, IDCW payouts → dividend; stamp-duty / STT / TDS rows are skipped. The
+reader keys off the leading date and the trailing numeric columns and classifies by the sign of the
+units, so it tolerates the real-world variety across RTAs and years.
+
+**Generic** — `makeGenericAdapter(mapping)`; the user maps CSV columns → canonical fields. The
+wizard collects the mapping before preview. `POST /api/imports/{check,commit}` accept a `mapping`.
 
 ## Security identity resolver
-Resolve order: exact symbol+exchange → ISIN → AMFI code → broker-name crosswalk
-(`Dhan Keys`/`MF Keys`). Unresolved → row flagged `unknown-asset`, queued for the user to
-map (never guessed silently).
+Find-or-create resolves in order: **ISIN → symbol + exchange → symbol**. A newly-imported security
+is then auto-classified (sector / sub-sector / asset class) from a bundled NSE/AMFI reference and
+segment-aware rules (F&O → Derivatives). Nothing is guessed silently — unresolved metadata stays
+blank rather than fabricated.
 
 ## Safety
-CSV only; enforce MIME + extension + size limit; parse in isolation; **never evaluate
-cell formulas**; strip/parse as plain text. Portfolio data never leaves the machine.
+Enforce extension + size limit; parse in isolation; **never evaluate spreadsheet formulas** (cells
+read as text); a CAS PDF is read for text only. Portfolio data never leaves the machine.
