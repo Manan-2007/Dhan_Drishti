@@ -66,11 +66,17 @@ export function isSameOrigin(req: FastifyRequest): boolean {
   return LOOPBACK.has(srcHost) && LOOPBACK.has(dstHost);
 }
 
-/** Fixed-window in-memory limiter: at most `max` hits per `windowMs` for a given key. */
+/** Fixed-window in-memory limiter: at most `max` hits per `windowMs` for a given key. Sweeps its
+ *  own expired entries at most once per window so the map can't grow unbounded with stale keys. */
 export function makeRateLimiter(max: number, windowMs: number) {
   const hits = new Map<string, { count: number; reset: number }>();
+  let lastSweep = Date.now();
   return function allow(key: string): boolean {
     const now = Date.now();
+    if (now - lastSweep > windowMs) {
+      for (const [k, v] of hits) if (now > v.reset) hits.delete(k);
+      lastSweep = now;
+    }
     const cur = hits.get(key);
     if (!cur || now > cur.reset) {
       hits.set(key, { count: 1, reset: now + windowMs });

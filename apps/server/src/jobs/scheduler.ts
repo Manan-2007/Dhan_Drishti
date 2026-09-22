@@ -6,6 +6,7 @@ import type { MarketDataProvider } from "../market/types.js";
 import { writeAllScopes } from "../domain/snapshots.js";
 import { pruneQuotesToLatest } from "../market/service.js";
 import { invalidateAllHoldings } from "../domain/holdings-cache.js";
+import { deleteExpiredSessions } from "../auth/service.js";
 
 /** Refresh quotes for every security anyone holds, in one deduplicated pass (shared master), so a
  *  nightly job keeps prices fresh without the dashboard ever opening stale. */
@@ -40,11 +41,12 @@ export async function snapshotAllUsers(db: DB): Promise<number> {
   return userRows.length;
 }
 
-/** One maintenance pass: refresh prices (also prunes quotes + drops the holdings cache), then
- *  record the day's snapshots. */
+/** One maintenance pass: refresh prices (also prunes quotes + drops the holdings cache), record
+ *  the day's snapshots, and sweep expired sessions. */
 export async function runMaintenance(db: DB, provider: MarketDataProvider): Promise<void> {
   await refreshAllHeldQuotes(db, provider);
   await snapshotAllUsers(db);
+  await deleteExpiredSessions(db).catch(() => undefined);
 }
 
 /**

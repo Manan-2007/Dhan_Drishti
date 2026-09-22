@@ -1,5 +1,5 @@
 import { randomUUID, randomBytes } from "node:crypto";
-import { eq, and, gt } from "drizzle-orm";
+import { eq, and, gt, lt } from "drizzle-orm";
 import type { DB } from "../db/index.js";
 import { users, sessions, type User } from "../db/schema.js";
 import { hashPassword, verifyPassword } from "./passwords.js";
@@ -73,4 +73,10 @@ export async function getSessionUser(db: DB, sessionId: string): Promise<User | 
 
 export async function destroySession(db: DB, sessionId: string): Promise<void> {
   await db.delete(sessions).where(eq(sessions.id, sessionId)).run();
+}
+
+/** Delete sessions whose expiry has passed. Run periodically so expired rows don't accumulate. */
+export async function deleteExpiredSessions(db: DB): Promise<number> {
+  const res = await db.delete(sessions).where(lt(sessions.expiresAt, new Date().toISOString())).run();
+  return res.rowsAffected ?? 0;
 }

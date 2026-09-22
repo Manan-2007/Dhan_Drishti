@@ -5,6 +5,7 @@ import { queryClient } from "./lib/query.js";
 import { AuthProvider, useAuth } from "./auth/AuthContext.js";
 import { FilterProvider } from "./lib/hooks.js";
 import { ToastProvider } from "./components/Toast.js";
+import { ErrorBoundary } from "./components/ErrorBoundary.js";
 import { Layout } from "./components/Layout.js";
 import { Landing } from "./pages/Landing.js";
 import { Spinner } from "./components/ui.js";
@@ -64,10 +65,12 @@ function Gate() {
 
 export function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <Gate />
-      </AuthProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <Gate />
+        </AuthProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
