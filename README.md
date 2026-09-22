@@ -6,7 +6,7 @@
 
 *Consolidate every broker into one normalized ledger — then see holdings, performance and net worth that always trace back to a real transaction.*
 
-![Tests](https://img.shields.io/badge/tests-120%20passing-2e7d32)
+![Tests](https://img.shields.io/badge/tests-233%20passing-2e7d32)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)
 ![Stack](https://img.shields.io/badge/React%20·%20Fastify%20·%20SQLite-informational-555)
 ![Self-hosted](https://img.shields.io/badge/self--hosted-privacy--first-6d28d9)
@@ -16,49 +16,59 @@
 
 ---
 
-Dhan Drishti turns a pile of broker CSVs into one clear picture of your wealth. Every figure on
-the dashboard is **derived from your own transaction ledger** — nothing is placeholder, estimated
-or sent to a server you don't control.
+Dhan Drishti turns a pile of broker exports into one clear picture of your wealth. Every figure on
+the dashboard is **derived from your own transaction ledger** — nothing is placeholder, silently
+faked or sent to a server you don't control.
 
 ```
-broker CSV ─▶ adapter ─▶ canonical transaction ledger ─▶ derived holdings ─▶ analytics ─▶ dashboard
+broker CSV / Excel / CAS PDF ─▶ adapter ─▶ canonical ledger ─▶ derived holdings ─▶ analytics ─▶ dashboard
 ```
 
 ## ✨ Highlights
 
 - 🔌 **Every broker, one ledger** — Zerodha, Dhan, Vested & Interactive Brokers (US), Binance
-  (crypto), plus a generic column‑mapping importer for anything else. Idempotent, deduped imports.
+  (crypto), Excel (`.xlsx`) holdings, and a mutual‑fund **CAS PDF** (CAMS / KFintech — one
+  password‑protected file covers every AMC), plus a generic column‑mapping importer for anything
+  else. Imports are idempotent, deduped and **atomic** (all‑or‑nothing).
 - 🧮 **Holdings you can trust** — average‑cost positions, invested value and realised P&L derived
-  from the ledger. Missing prices show `—`, never a fake `0`.
-- 📈 **Honest performance** — realised P&L by financial year, **XIRR**, and a **time‑weighted
-  return** valued at each trade from real historical prices.
-- 🥇 **Benchmark & FX** — mirror your exact cashflows into Nifty 50 / Sensex, split foreign gains
-  into **asset vs. currency**, and aggregate everything in your base currency.
-- 💰 **Net worth with cash** — record deposits & withdrawals for true net worth (holdings + retained
-  cash and dividends) and a cash‑inclusive TWR.
-- 🎯 **Goals & dividends** — target/date goals funded by portfolios, and a dividend/interest income
-  view by financial year and security.
+  from the ledger, a **diversification / concentration score**, and a per‑security detail page.
+  Missing prices show `—`, never a fake `0`.
+- 📈 **Honest performance** — realised P&L by financial year, **XIRR**, a **time‑weighted return**
+  valued at each trade from real historical prices, and a **benchmark overlay** that mirrors your
+  exact cashflows into Nifty 50 / Sensex — a chart, not just a stat.
+- 💰 **Full net worth** — holdings + cash + **manual assets** (FDs, PPF / EPF / NPS, physical gold,
+  real estate, savings), a **net‑worth‑over‑time** chart, and allocation by asset class, sector,
+  **region** and currency. Foreign gains split into **asset vs. currency**.
+- 🎯 **Plan, income & tax** — set **target weights** and see the drift in percent and rupees
+  ("trim ₹X"), a trailing **dividend yield** with an estimated payout calendar, and a **FIFO
+  capital‑gains** report (short‑ vs long‑term) you can export as CSV for your ITR.
+- ⚙️ **Fresh & installable** — prices refresh nightly in the background and on login; the UI is an
+  installable **PWA** with an offline shell.
 - 🔒 **Private by design** — runs on your machine; only public ticker symbols ever leave it.
 
 ## 🖥️ The app
 
 | Page | What it shows |
 |---|---|
-| **Dashboard** | Net‑worth headline + holdings/cash bar, allocation donut, top‑holdings chart, recent activity |
-| **Holdings** | Every position with avg cost, current value, unrealised & realised P&L; class/sector filters |
+| **Dashboard** | Net‑worth headline + composition (holdings / cash / manual assets), net‑worth‑over‑time chart, allocation, top holdings, recent activity |
+| **Holdings** | Every position with avg cost, current value, unrealised & realised P&L; class/sector filters — click a symbol for its detail page |
+| **Security detail** | Price chart, position summary, contribution to return, and the full transaction history for one security |
 | **Transactions** | The full ledger, with an in‑app **Add transaction** form (deposits, trades, dividends…) |
-| **Analytics** | Realised P&L by FY, XIRR, TWR, benchmark comparison, FX‑impact decomposition |
-| **Dividends** | Income by financial year and security, with the payout ledger |
-| **Goals · Portfolios · Imports · Settings** | Targets, grouping, the import wizard, export & account controls |
+| **Analytics** | Realised P&L by FY, XIRR, TWR, benchmark comparison + overlay chart, diversification score, FX‑impact decomposition |
+| **Rebalance** | Target weights per asset class / sector, with the drift shown in both percent and rupees |
+| **Dividends** | Income by financial year and security, trailing yield, and an estimated forward calendar |
+| **Capital gains** | FIFO short‑ & long‑term gains by financial year, with a CSV export for your tax return |
+| **Other assets** | Manual, non‑market assets (FDs, PPF, gold, real estate…) that fold straight into net worth |
+| **Portfolios · Imports · Settings** | Grouping & accounts, the import wizard, data export & account controls |
 
 ## 🧱 Tech stack
 
 | Layer | Choice |
 |---|---|
-| Frontend | React + TypeScript + Vite, Tailwind CSS v4, TanStack Query, Recharts |
+| Frontend | React + TypeScript + Vite (route‑level code‑split), Tailwind CSS v4, TanStack Query, Recharts |
 | Design | Flexoki design tokens (light & dark) · Inter / Merriweather / JetBrains Mono |
 | Backend | Node + Fastify · argon2id auth · session cookies |
-| Data | SQLite via Drizzle ORM + libsql (dialect‑swappable to Postgres) |
+| Data | SQLite via Drizzle ORM + libsql (WAL; dialect‑swappable to Postgres) |
 | Money | `decimal.js` — exact decimals end to end, **never floats** |
 | Core | A pure, deterministic, unit‑tested calculation engine (no I/O) |
 
@@ -104,7 +114,7 @@ symbols and currency codes are ever sent to price providers, and only when you r
 
 ```bash
 pnpm install
-pnpm -r test        # 120 tests: core engine (36) + server (84)
+pnpm -r test        # 233 tests: core engine (71) + server (162)
 pnpm -r typecheck
 pnpm --filter @dhan-drishti/server dev     # API on http://127.0.0.1:4000
 pnpm --filter @dhan-drishti/web dev        # UI on http://localhost:5173 (proxies /api → server)
@@ -121,8 +131,10 @@ docs/           schema · calculations · importers · API reference + OpenAPI
 
 ## 🧭 Principles
 
-> **No fake data or dead metrics** — every figure traces to a real imported or derived value.
-> **Money is never a float.** No investment advice — just your data. Broker logic is isolated behind
-> a single `BrokerAdapter` interface. Your portfolio stays on your machine.
+> **No fake data or dead metrics** — every figure traces to a real imported or derived value; the
+> few things that must be estimated (a dividend calendar, a benchmark mirror) say so plainly, and
+> nothing here is tax or investment advice. **Money is never a float.** Broker logic is isolated
+> behind a single `BrokerAdapter` interface. Writes are atomic, reads are cached, and your portfolio
+> stays on your machine.
 
 <div align="center"><sub>Dhan Drishti — runs on your machine. No accounts sold, no data shared.</sub></div>
