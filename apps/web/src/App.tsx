@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { queryClient } from "./lib/query.js";
 import { AuthProvider, useAuth } from "./auth/AuthContext.js";
 import { FilterProvider } from "./lib/hooks.js";
+import { ToastProvider } from "./components/Toast.js";
 import { Layout } from "./components/Layout.js";
 import { Landing } from "./pages/Landing.js";
 import { Dashboard } from "./pages/Dashboard.js";
@@ -32,6 +33,7 @@ function Gate() {
   if (!user) return <Landing />;
   return (
     <FilterProvider>
+      <ToastProvider>
       <BrowserRouter>
         <Routes>
           <Route element={<Layout />}>
@@ -52,6 +54,7 @@ function Gate() {
           </Route>
         </Routes>
       </BrowserRouter>
+      </ToastProvider>
     </FilterProvider>
   );
 }

@@ -2,11 +2,12 @@ import { useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api.js";
 import { useGoals, usePortfolios, type Goal } from "../lib/hooks.js";
+import { useToast } from "../components/Toast.js";
 import { PageHeader } from "../components/PageHeader.js";
 import { Button, Card, EmptyState, Field, Input, Spinner, Badge } from "../components/ui.js";
 import { money, compactMoney, pct, dateShort } from "../lib/format.js";
 
-function GoalCard({ goal, onDelete }: { goal: Goal; onDelete: (id: string) => void }) {
+function GoalCard({ goal, onDelete }: { goal: Goal; onDelete: (goal: Goal) => void }) {
   const progress = Math.min(1, Math.max(0, Number(goal.progress ?? 0)));
   return (
     <Card>
@@ -39,7 +40,7 @@ function GoalCard({ goal, onDelete }: { goal: Goal; onDelete: (id: string) => vo
             ? ` · ${money(goal.requiredMonthly, goal.currency)}/mo for ${goal.monthsRemaining} mo`
             : ""}
         </span>
-        <Button variant="ghost" className="h-7 px-2 text-destructive" onClick={() => onDelete(goal.id)}>
+        <Button variant="ghost" className="h-7 px-2 text-destructive" onClick={() => onDelete(goal)}>
           Delete
         </Button>
       </div>
@@ -49,6 +50,7 @@ function GoalCard({ goal, onDelete }: { goal: Goal; onDelete: (id: string) => vo
 
 export function Goals() {
   const qc = useQueryClient();
+  const { showToast } = useToast();
   const { data: goals, isLoading } = useGoals();
   const { data: portfolios } = usePortfolios();
   const [name, setName] = useState("");
@@ -80,6 +82,15 @@ export function Goals() {
     mutationFn: (id: string) => api.del(`/api/goals/${id}`),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["goals"] }),
   });
+  const recreate = useMutation({
+    mutationFn: (g: Goal) =>
+      api.post("/api/goals", { name: g.name, targetAmount: g.targetAmount, targetDate: g.targetDate ?? undefined, currency: g.currency, portfolioIds: g.portfolioIds.length ? g.portfolioIds : undefined }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["goals"] }),
+  });
+  const handleDelete = (g: Goal) => {
+    del.mutate(g.id);
+    showToast(`Deleted “${g.name}”`, { label: "Undo", onClick: () => recreate.mutate(g) });
+  };
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -94,7 +105,7 @@ export function Goals() {
           {isLoading ? (
             <Spinner />
           ) : goals && goals.length > 0 ? (
-            goals.map((g) => <GoalCard key={g.id} goal={g} onDelete={(id) => del.mutate(id)} />)
+            goals.map((g) => <GoalCard key={g.id} goal={g} onDelete={handleDelete} />)
           ) : (
             <EmptyState title="No goals yet">
               Set a target amount (and optionally a date). Progress is measured from the current value of the

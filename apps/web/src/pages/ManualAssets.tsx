@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type ManualAsset } from "../lib/api.js";
 import { useFilter, useManualAssets, usePortfolios } from "../lib/hooks.js";
+import { useToast } from "../components/Toast.js";
 import { PageHeader } from "../components/PageHeader.js";
 import { Button, Card, EmptyState, Field, Input, Select, Spinner, Badge } from "../components/ui.js";
 import { money, compactMoney, signClass, dateShort, assetClassLabel } from "../lib/format.js";
@@ -9,7 +10,7 @@ import { money, compactMoney, signClass, dateShort, assetClassLabel } from "../l
 const CLASSES = ["fd", "ppf", "epf", "nps", "savings", "gold", "real_estate", "bond", "other"];
 const REGIONS = ["India", "United States", "United Kingdom", "Europe", "Singapore", "UAE", "Other"];
 
-function AssetCard({ asset, onSave, onDelete, busy }: { asset: ManualAsset; onSave: (id: string, value: string) => void; onDelete: (id: string) => void; busy: boolean }) {
+function AssetCard({ asset, onSave, onDelete, busy }: { asset: ManualAsset; onSave: (id: string, value: string) => void; onDelete: (asset: ManualAsset) => void; busy: boolean }) {
   const [value, setValue] = useState(asset.currentValue);
   const dirty = value.trim() !== asset.currentValue && Number(value) >= 0 && value.trim() !== "";
   const gain = asset.gain !== null ? Number(asset.gain) : null;
@@ -44,7 +45,7 @@ function AssetCard({ asset, onSave, onDelete, busy }: { asset: ManualAsset; onSa
         <Button className="h-9 px-3" disabled={!dirty || busy} onClick={() => onSave(asset.id, value.trim())}>
           Save
         </Button>
-        <Button variant="ghost" className="ml-auto h-9 px-2 text-destructive" onClick={() => onDelete(asset.id)}>
+        <Button variant="ghost" className="ml-auto h-9 px-2 text-destructive" onClick={() => onDelete(asset)}>
           Delete
         </Button>
       </div>
@@ -54,9 +55,22 @@ function AssetCard({ asset, onSave, onDelete, busy }: { asset: ManualAsset; onSa
 
 export function ManualAssets() {
   const qc = useQueryClient();
+  const { showToast } = useToast();
   const { portfolioId } = useFilter();
   const { data, isLoading } = useManualAssets(portfolioId);
   const { data: portfolios } = usePortfolios();
+
+  const assetPayload = (a: ManualAsset) => ({
+    name: a.name,
+    assetClass: a.assetClass,
+    region: a.region,
+    currency: a.currency,
+    currentValue: a.currentValue,
+    cost: a.cost ?? undefined,
+    notes: a.notes ?? undefined,
+    valueAsOf: a.valueAsOf ?? undefined,
+    portfolioId: a.portfolioId ?? undefined,
+  });
 
   const [name, setName] = useState("");
   const [assetClass, setAssetClass] = useState("fd");
@@ -105,6 +119,14 @@ export function ManualAssets() {
     mutationFn: (id: string) => api.del(`/api/manual-assets/${id}`),
     onSuccess: invalidate,
   });
+  const recreate = useMutation({
+    mutationFn: (a: ManualAsset) => api.post("/api/manual-assets", assetPayload(a)),
+    onSuccess: invalidate,
+  });
+  const handleDelete = (a: ManualAsset) => {
+    del.mutate(a.id);
+    showToast(`Deleted “${a.name}”`, { label: "Undo", onClick: () => recreate.mutate(a) });
+  };
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -136,7 +158,7 @@ export function ManualAssets() {
                 asset={a}
                 busy={update.isPending || del.isPending}
                 onSave={(id, value) => update.mutate({ id, value })}
-                onDelete={(id) => del.mutate(id)}
+                onDelete={handleDelete}
               />
             ))
           ) : (
