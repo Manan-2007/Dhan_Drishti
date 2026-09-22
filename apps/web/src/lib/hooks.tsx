@@ -222,29 +222,6 @@ export function useDividends(portfolioId: string | null) {
   });
 }
 
-export interface Goal {
-  id: string;
-  name: string;
-  targetAmount: string;
-  targetDate: string | null;
-  currency: string;
-  portfolioIds: string[];
-  funded: string;
-  remaining: string;
-  progress: string | null;
-  basis: "current_value" | "invested";
-  monthsRemaining: number | null;
-  requiredMonthly: string | null;
-  reached: boolean;
-}
-
-export function useGoals() {
-  return useQuery({
-    queryKey: ["goals"],
-    queryFn: () => api.get<{ goals: Goal[] }>("/api/goals").then((r) => r.goals),
-  });
-}
-
 export function useImports() {
   return useQuery({
     queryKey: ["imports"],

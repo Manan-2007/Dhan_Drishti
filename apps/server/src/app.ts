@@ -19,7 +19,6 @@ import { registerMarketRoutes } from "./domain/market.js";
 import { registerPerformanceRoutes } from "./domain/performance.js";
 import { registerDividendRoutes } from "./domain/dividends.js";
 import { registerAccountManagementRoutes } from "./domain/account.js";
-import { registerGoalRoutes } from "./domain/goals.js";
 import { registerRebalanceRoutes } from "./domain/rebalance.js";
 import { registerManualAssetRoutes } from "./domain/manual-assets.js";
 import { registerReportRoutes } from "./domain/reports.js";
@@ -187,7 +186,6 @@ export function buildApp(db: DB, options: AppOptions = {}): FastifyInstance {
   registerFxRoutes(app, db, fxProvider);
   registerPerformanceRoutes(app, db, benchmarkProvider, historyProvider);
   registerDividendRoutes(app, db);
-  registerGoalRoutes(app, db);
   registerRebalanceRoutes(app, db);
   registerManualAssetRoutes(app, db);
   registerReportRoutes(app, db);

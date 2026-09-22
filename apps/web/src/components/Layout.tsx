@@ -12,7 +12,6 @@ const NAV = [
   { to: "/dividends", label: "Dividends" },
   { to: "/reports", label: "Capital gains" },
   { to: "/assets", label: "Other assets" },
-  { to: "/goals", label: "Goals" },
   { to: "/portfolios", label: "Portfolios" },
   { to: "/imports", label: "Imports" },
   { to: "/settings", label: "Settings" },

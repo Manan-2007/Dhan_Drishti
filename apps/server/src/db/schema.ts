@@ -186,33 +186,6 @@ export const exchangeRates = sqliteTable(
   (t) => [unique("uq_fx").on(t.baseCurrency, t.quoteCurrency, t.asOf)],
 );
 
-export const goals = sqliteTable("goals", {
-  id: text("id").primaryKey(),
-  userId: text("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  targetAmount: text("target_amount").notNull(),
-  targetDate: text("target_date"),
-  currency: text("currency").notNull().default("INR"),
-  createdAt: text("created_at").notNull().default(now),
-  updatedAt: text("updated_at").notNull().default(now),
-});
-
-// Which portfolios fund a goal. No links = funded by all the user's portfolios.
-export const goalPortfolios = sqliteTable(
-  "goal_portfolios",
-  {
-    goalId: text("goal_id")
-      .notNull()
-      .references(() => goals.id, { onDelete: "cascade" }),
-    portfolioId: text("portfolio_id")
-      .notNull()
-      .references(() => portfolios.id, { onDelete: "cascade" }),
-  },
-  (t) => [unique("uq_goal_portfolio").on(t.goalId, t.portfolioId)],
-);
-
 // One net-worth data point per user per portfolio-scope per day, for the value-over-time chart.
 // portfolioId NULL = the "all portfolios" aggregate. Provider "reconstructed" marks a backfilled
 // historical point (valued from price history) vs a live "snapshot" recorded from actual holdings.
@@ -289,6 +262,5 @@ export type Portfolio = typeof portfolios.$inferSelect;
 export type Account = typeof accounts.$inferSelect;
 export type Security = typeof securities.$inferSelect;
 export type Transaction = typeof transactions.$inferSelect;
-export type Goal = typeof goals.$inferSelect;
 export type AllocationTarget = typeof allocationTargets.$inferSelect;
 export type ManualAsset = typeof manualAssets.$inferSelect;

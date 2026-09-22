@@ -61,7 +61,6 @@ export const openApiSpec = {
     { name: "Rebalance", description: "Target allocation weights and drift vs the live allocation" },
     { name: "Manual assets", description: "Non-market assets (FD/PPF/EPF/gold/real estate) that fold into net worth" },
     { name: "Reports", description: "ITR-oriented capital-gains report (FIFO, short/long term)" },
-    { name: "Goals", description: "Savings/target goals funded by portfolios" },
     { name: "Account", description: "Data export & account deletion" },
     { name: "Meta", description: "Health, discovery, API schema (no auth)" },
   ],
@@ -176,17 +175,6 @@ export const openApiSpec = {
 
     "/api/reports/capital-gains": { get: op("Reports", "FIFO capital gains (short/long term) by financial year — informational, not tax advice", { parameters: [portfolioIdParam] }) },
 
-    "/api/goals": {
-      get: op("Goals", "List goals with progress"),
-      post: op("Goals", "Create a goal", { requestBody: json(ref("GoalInput")), responses: { "201": { description: "Created", ...json(ref("GoalWrap")) }, ...AUTH_ERRORS } }),
-    },
-    "/api/goals/{id}": {
-      parameters: [idPath],
-      get: op("Goals", "Get a goal with progress"),
-      put: op("Goals", "Update a goal / its funding portfolios", { requestBody: json(ref("GoalInput")) }),
-      delete: op("Goals", "Delete a goal", { responses: { "200": { description: "Deleted", ...json(ref("Ok")) }, ...AUTH_ERRORS } }),
-    },
-
     "/api/account/export": { get: op("Account", "Export all of the caller's data as JSON", { responses: { "200": { description: "Full data export (JSON download)" }, "401": ERR("Not authenticated") } }) },
     "/api/account/delete": { post: op("Account", "Permanently delete the account (password-confirmed)", { requestBody: json({ type: "object", required: ["password"], properties: { password: { type: "string" } } }), responses: { "200": { description: "Deleted", ...json(ref("Ok")) }, "401": ERR("Wrong password / not authenticated") } }) },
   },
@@ -223,9 +211,6 @@ export const openApiSpec = {
       ImportPreview: { type: "object", properties: { broker: { type: "string" }, rowsTotal: { type: "integer" }, valid: { type: "integer" }, invalid: { type: "integer" }, duplicates: { type: "integer" }, newSecurities: { type: "integer" }, toImport: { type: "integer" } } },
       ImportResult: { allOf: [ref("ImportPreview"), { type: "object", properties: { batchId: { type: "string" }, imported: { type: "integer" } } }] },
       RateInput: { type: "object", required: ["from", "to", "rate"], properties: { from: { type: "string", minLength: 3, maxLength: 3 }, to: { type: "string", minLength: 3, maxLength: 3 }, rate: { type: "string", description: "Units of `to` per 1 `from`" } } },
-      GoalInput: { type: "object", required: ["name", "targetAmount"], properties: { name: { type: "string" }, targetAmount: { type: "string" }, targetDate: { type: ["string", "null"] }, currency: { type: "string" }, portfolioIds: { type: "array", items: { type: "string" } } } },
-      Goal: { type: "object", properties: { id: { type: "string" }, name: { type: "string" }, targetAmount: ref("Money"), targetDate: { type: ["string", "null"] }, funded: ref("Money"), remaining: ref("Money"), progress: ref("Money"), basis: { type: "string", enum: ["current_value", "invested"] }, reached: { type: "boolean" } } },
-      GoalWrap: { type: "object", properties: { goal: ref("Goal") } },
       ManualAssetInput: {
         type: "object",
         required: ["name", "currentValue"],

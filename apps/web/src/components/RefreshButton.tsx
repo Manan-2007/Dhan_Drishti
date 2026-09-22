@@ -36,7 +36,6 @@ export function RefreshButton() {
       void qc.invalidateQueries({ queryKey: ["holdings"] });
       void qc.invalidateQueries({ queryKey: ["performance"] });
       void qc.invalidateQueries({ queryKey: ["dividends"] });
-      void qc.invalidateQueries({ queryKey: ["goals"] });
       void qc.invalidateQueries({ queryKey: ["market-status"] });
     },
     onError: (e) => setMsg(e instanceof ApiError ? e.message : "Refresh failed"),

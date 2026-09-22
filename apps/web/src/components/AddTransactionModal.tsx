@@ -71,7 +71,7 @@ export function AddTransactionModal({
       return api.post("/api/transactions", payload);
     },
     onSuccess: () => {
-      for (const key of ["holdings", "transactions", "dividends", "performance", "goals", "twr"]) {
+      for (const key of ["holdings", "transactions", "dividends", "performance", "twr"]) {
         void qc.invalidateQueries({ queryKey: [key] });
       }
       onClose();
