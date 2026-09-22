@@ -3,7 +3,7 @@ import { and, eq, or, like, isNull, inArray } from "drizzle-orm";
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
 import { ASSET_CLASSES } from "@dhan-drishti/core";
-import type { DB } from "../db/index.js";
+import type { DB, Database } from "../db/index.js";
 import { securities, transactions, type Security } from "../db/schema.js";
 import { NotFoundError } from "../lib/errors.js";
 import { authed } from "../lib/routes.js";
@@ -90,7 +90,7 @@ const upsertSchema = z.object({
  * identity resolver (docs/IMPORTERS.md): ISIN → symbol+exchange → symbol.
  */
 export async function findOrCreateSecurity(
-  db: DB,
+  db: Database,
   input: z.infer<typeof upsertSchema>,
 ): Promise<{ security: Security; created: boolean }> {
   if (input.isin) {

@@ -1,18 +1,43 @@
 import { createClient, type Client } from "@libsql/client";
 import { drizzle, type LibSQLDatabase } from "drizzle-orm/libsql";
 import { migrate } from "drizzle-orm/libsql/migrator";
-import { existsSync, mkdirSync } from "node:fs";
-import { dirname, resolve, isAbsolute } from "node:path";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { dirname, resolve, isAbsolute, join } from "node:path";
+import { tmpdir } from "node:os";
+import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import * as schema from "./schema.js";
 
 export type DB = LibSQLDatabase<typeof schema>;
+/** The transaction handle drizzle passes to `db.transaction(async (tx) => …)`. */
+export type DbTransaction = Parameters<Parameters<DB["transaction"]>[0]>[0];
+/** Anything you can run queries against — the base connection or a transaction. Helpers that must
+ *  work inside or outside a transaction take this so a caller can pass either. */
+export type Database = DB | DbTransaction;
 
 const migrationsFolder = resolve(dirname(fileURLToPath(import.meta.url)), "../../drizzle");
 
-/** libsql URL: ':memory:' → in-memory; otherwise a file path → file: URL. */
+// Throwaway temp DBs stood up for ":memory:" (see toLibsqlUrl) — cleaned up when the process exits.
+const tempDbs: string[] = [];
+let cleanupRegistered = false;
+
+/** libsql URL: ':memory:' → a unique temp file; otherwise a file path → file: URL. */
 function toLibsqlUrl(url: string): string {
-  if (url === ":memory:") return ":memory:";
+  if (url === ":memory:") {
+    // @libsql/client's real `:memory:` is connection-scoped: `client.transaction()` opens a fresh
+    // (empty) connection, so any transaction wipes the in-memory tables. Tests need working
+    // transactions, so back an in-memory request with a unique throwaway temp file instead,
+    // deleted on process exit. (Production always passes a real file path, never ":memory:".)
+    const abs = join(tmpdir(), `dd-mem-${randomUUID()}.sqlite`);
+    tempDbs.push(abs);
+    if (!cleanupRegistered) {
+      cleanupRegistered = true;
+      process.once("exit", () => {
+        for (const p of tempDbs) for (const f of [p, `${p}-wal`, `${p}-shm`]) try { rmSync(f); } catch { /* best effort */ }
+      });
+    }
+    return `file:${abs}`;
+  }
   if (url.startsWith("file:") || url.startsWith("libsql:") || url.startsWith("http")) return url;
   const abs = isAbsolute(url) ? url : resolve(process.cwd(), url);
   const dir = dirname(abs);

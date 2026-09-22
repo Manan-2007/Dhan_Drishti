@@ -1,6 +1,6 @@
 import { randomUUID, createHash } from "node:crypto";
 import { and, eq, gte, lte, inArray } from "drizzle-orm";
-import type { DB } from "../db/index.js";
+import type { DB, Database } from "../db/index.js";
 import { transactions, importBatches, securities, accounts, quotes } from "../db/schema.js";
 import { BadRequestError, NotFoundError } from "../lib/errors.js";
 import { getPortfolioOwned } from "../domain/portfolios.js";
@@ -77,7 +77,7 @@ function dedupKey(tx: NormalizedTx, rawHash: string): string {
   return tx.externalRef ? `ref:${tx.externalRef}` : `hash:${rawHash}`;
 }
 
-async function classify(db: DB, userId: string, rows: NormalizedRow[]): Promise<Classified> {
+async function classify(db: Database, userId: string, rows: NormalizedRow[]): Promise<Classified> {
   const invalidRows: RowIssue[] = [];
   const valid: { tx: NormalizedTx; rawHash: string }[] = [];
   // Disambiguate genuinely-identical rows that lack a broker trade id by their
@@ -239,110 +239,125 @@ export async function commitImport(db: DB, userId: string, params: ImportParams)
 
   const { rows, detected } = await resolveRows(params);
 
-  // Overwrite mode: clear existing rows from this source over the period the file covers, so
-  // re-uploading an overlapping range (e.g. a full-year file over monthly ones) doesn't duplicate.
-  // The period is read from the file's own transaction dates (an explicit from/to may still
-  // override it for headless callers). Deleting before classify means the new rows aren't treated
-  // as duplicates of the ones they replace.
+  // The period the file covers, read from its own transaction dates (an explicit from/to may
+  // still override it for headless callers). Used by replace mode to clear the overlapping range.
   const period = params.from && params.to ? { from: params.from, to: params.to } : fileDateRange(rows);
-  let replaced = 0;
-  if (params.replace && period) {
-    const res = await db
-      .delete(transactions)
-      .where(
-        and(
-          eq(transactions.userId, userId),
-          eq(transactions.portfolioId, params.portfolioId),
-          eq(transactions.sourceBroker, params.broker),
-          gte(transactions.tradeDate, dayStart(period.from)),
-          lte(transactions.tradeDate, dayEnd(period.to)),
-        ),
-      )
-      .run();
-    replaced = res.rowsAffected ?? 0;
-  }
-
-  const c = await classify(db, userId, rows);
-
   const fileHash = createHash("sha256").update(params.content).digest("hex");
   const batchId = randomUUID();
-  await db
-    .insert(importBatches)
-    .values({
-      id: batchId,
-      userId,
-      portfolioId: params.portfolioId,
-      accountId: params.accountId ?? null,
-      broker: params.broker,
-      filename: params.filename,
-      fileHash,
-      status: "committed",
-      rowsTotal: rows.length,
-      rowsImported: c.toInsert.length,
-      rowsSkipped: c.duplicates,
-      rowsInvalid: c.invalidRows.length,
-    })
-    .run();
 
-  let imported = 0;
-  for (const { tx, rawHash } of c.toInsert) {
-    let securityId: string | null = null;
-    if (tx.security) {
-      const { security } = await findOrCreateSecurity(db, {
-        symbol: tx.security.symbol,
-        name: tx.security.name ?? tx.security.symbol,
-        isin: tx.security.isin,
-        assetClass: tx.security.assetClass,
-        exchange: tx.security.exchange,
-        sector: tx.security.sector,
-        subSector: tx.security.subSector,
-        currency: tx.currency,
-      });
-      securityId = security.id;
+  // One atomic transaction for the whole write: if anything fails (e.g. a UNIQUE clash on an
+  // external ref), it all rolls back — never a half-applied import, and never a replace-delete
+  // left with nothing put back in its place.
+  const { c, imported, replaced } = await db.transaction(async (trx) => {
+    // Overwrite mode: clear existing rows from this source over the file's period, so re-uploading
+    // an overlapping range (e.g. a full-year file over monthly ones) doesn't duplicate. Deleting
+    // before classify means the new rows aren't treated as duplicates of the ones they replace.
+    let replaced = 0;
+    if (params.replace && period) {
+      const res = await trx
+        .delete(transactions)
+        .where(
+          and(
+            eq(transactions.userId, userId),
+            eq(transactions.portfolioId, params.portfolioId),
+            eq(transactions.sourceBroker, params.broker),
+            gte(transactions.tradeDate, dayStart(period.from)),
+            lte(transactions.tradeDate, dayEnd(period.to)),
+          ),
+        )
+        .run();
+      replaced = res.rowsAffected ?? 0;
     }
-    await db
-      .insert(transactions)
+
+    const c = await classify(trx, userId, rows);
+
+    await trx
+      .insert(importBatches)
       .values({
-        id: randomUUID(),
+        id: batchId,
         userId,
         portfolioId: params.portfolioId,
         accountId: params.accountId ?? null,
-        securityId,
-        importBatchId: batchId,
-        type: tx.type,
-        tradeDate: tx.tradeDate,
-        quantity: tx.quantity,
-        price: tx.price,
-        grossAmount: tx.grossAmount,
-        fees: tx.fees,
-        taxes: tx.taxes,
-        currency: tx.currency,
-        segment: tx.segment,
-        externalRef: tx.externalRef ?? null,
-        rawRowHash: rawHash,
-        sourceBroker: params.broker,
+        broker: params.broker,
+        filename: params.filename,
+        fileHash,
+        status: "committed",
+        rowsTotal: rows.length,
+        rowsImported: c.toInsert.length,
+        rowsSkipped: c.duplicates,
+        rowsInvalid: c.invalidRows.length,
       })
       .run();
-    // A holdings snapshot carries a current price → seed a quote so value shows without a refresh.
-    if (tx.quotePrice && securityId) {
-      await db
-        .insert(quotes)
+
+    let imported = 0;
+    for (const { tx, rawHash } of c.toInsert) {
+      let securityId: string | null = null;
+      if (tx.security) {
+        const { security } = await findOrCreateSecurity(trx, {
+          symbol: tx.security.symbol,
+          name: tx.security.name ?? tx.security.symbol,
+          isin: tx.security.isin,
+          assetClass: tx.security.assetClass,
+          exchange: tx.security.exchange,
+          sector: tx.security.sector,
+          subSector: tx.security.subSector,
+          currency: tx.currency,
+        });
+        securityId = security.id;
+      }
+      await trx
+        .insert(transactions)
         .values({
           id: randomUUID(),
+          userId,
+          portfolioId: params.portfolioId,
+          accountId: params.accountId ?? null,
           securityId,
-          price: tx.quotePrice,
-          prevClose: null,
+          importBatchId: batchId,
+          type: tx.type,
+          tradeDate: tx.tradeDate,
+          quantity: tx.quantity,
+          price: tx.price,
+          grossAmount: tx.grossAmount,
+          fees: tx.fees,
+          taxes: tx.taxes,
           currency: tx.currency,
-          asOf: new Date().toISOString(),
-          provider: "import",
+          segment: tx.segment,
+          externalRef: tx.externalRef ?? null,
+          rawRowHash: rawHash,
+          sourceBroker: params.broker,
         })
         .run();
+      // A holdings snapshot carries a current price → seed a quote so value shows without a refresh.
+      if (tx.quotePrice && securityId) {
+        await trx
+          .insert(quotes)
+          .values({
+            id: randomUUID(),
+            securityId,
+            price: tx.quotePrice,
+            prevClose: null,
+            currency: tx.currency,
+            asOf: new Date().toISOString(),
+            provider: "import",
+          })
+          .run();
+      }
+      imported += 1;
     }
-    imported += 1;
-  }
 
-  // Auto-classify newly imported securities (sectors, sub-sectors, asset class) — best effort.
-  if (imported > 0) await reclassifyHeld(db, userId);
+    return { c, imported, replaced };
+  });
+
+  // Auto-classify newly imported securities (sectors, sub-sectors, asset class) — best effort, and
+  // OUTSIDE the import transaction so a classification hiccup can never roll back a good import.
+  if (imported > 0) {
+    try {
+      await reclassifyHeld(db, userId);
+    } catch {
+      /* cosmetic enrichment only */
+    }
+  }
 
   return {
     batchId,
