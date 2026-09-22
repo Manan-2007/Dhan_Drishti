@@ -33,6 +33,20 @@ export async function upsertSnapshotFromHoldings(db: DB, userId: string, portfol
   }
 }
 
+// Dedup the read-triggered snapshot to at most once per scope per day per process, so a page that
+// polls /api/holdings doesn't turn every read into a write. The daily point is captured on the
+// first view; the login refresh and the nightly cron keep it updated to the latest value.
+const snapshotDay = new Map<string, string>();
+
+/** Record today's snapshot from a holdings read, but only the first time per scope per day. */
+export async function recordSnapshotOnRead(db: DB, userId: string, portfolioId: string | null, h: HoldingsResult): Promise<void> {
+  const key = `${userId}|${portfolioId ?? ""}`;
+  const today = todayISO();
+  if (snapshotDay.get(key) === today) return;
+  await upsertSnapshotFromHoldings(db, userId, portfolioId, h);
+  snapshotDay.set(key, today);
+}
+
 /** Compute and record today's snapshot for one scope. */
 export async function writeSnapshot(db: DB, userId: string, portfolioId?: string): Promise<void> {
   const h = await computePortfolioHoldings(db, userId, portfolioId);

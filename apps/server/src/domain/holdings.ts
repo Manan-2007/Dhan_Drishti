@@ -18,7 +18,7 @@ import type { DB } from "../db/index.js";
 import { transactions, securities, quotes, type Security } from "../db/schema.js";
 import { authed } from "../lib/routes.js";
 import { getPortfolioOwned } from "./portfolios.js";
-import { upsertSnapshotFromHoldings } from "./snapshots.js";
+import { recordSnapshotOnRead } from "./snapshots.js";
 import { computeManualAssets, regionForCurrency } from "./manual-assets.js";
 import { withHoldingsCache } from "./holdings-cache.js";
 import { baseCurrencyOf, rateMap } from "../market/fx.js";
@@ -381,9 +381,10 @@ export function registerHoldingsRoutes(app: FastifyInstance, db: DB): void {
     const userId = req.user!.id;
     if (portfolioId) await getPortfolioOwned(db, userId, portfolioId); // ownership guard
     const result = await computePortfolioHoldings(db, userId, portfolioId);
-    // Accrue the net-worth-over-time series just by using the app (a daily cron also records it).
+    // Accrue the net-worth-over-time series just by using the app — but only once per scope per day
+    // (a daily cron and the login refresh also record it), so reads don't repeatedly write.
     try {
-      await upsertSnapshotFromHoldings(db, userId, portfolioId ?? null, result);
+      await recordSnapshotOnRead(db, userId, portfolioId ?? null, result);
     } catch {
       /* a snapshot write must never break the holdings response */
     }

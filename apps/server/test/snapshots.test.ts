@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { createDb, type DB } from "../src/db/index.js";
 import { buildApp } from "../src/app.js";
+import { snapshots } from "../src/db/schema.js";
 import { refreshAllHeldQuotes, snapshotAllUsers } from "../src/jobs/scheduler.js";
 import type { MarketDataProvider, SecurityLike, QuoteData } from "../src/market/types.js";
 
@@ -46,6 +47,21 @@ describe("net-worth snapshots", () => {
     expect(nw.series.length).toBe(1);
     expect(Number(nw.series[0].netWorth)).toBeCloseTo(16000, 2);
     expect(nw.series[0].date).toBe(new Date().toISOString().slice(0, 10));
+  });
+
+  it("does not re-write the snapshot on repeated holdings reads (guarded to once per day)", async () => {
+    const cookie = await signup("sn4");
+    const pid = await mkPortfolio(cookie);
+    await post("/api/imports/commit", cookie, { portfolioId: pid, broker: "holdings", filename: "h.csv", content: "Instrument,Qty.,Avg. cost,LTP\nINFY,10,1500,1600" });
+    await get("/api/holdings", cookie); // first read writes today's snapshot
+
+    // Tamper with the stored value; a guarded second read must NOT overwrite it.
+    await db.update(snapshots).set({ netWorth: "999" }).run();
+    await get("/api/holdings", cookie); // second read — a no-op for snapshots
+
+    const nw = (await get("/api/performance/networth", cookie)).json();
+    expect(nw.series).toHaveLength(1);
+    expect(nw.series[0].netWorth).toBe("999"); // untouched → the second read skipped the write
   });
 
   it("the scheduler snapshots the aggregate and each portfolio for every user", async () => {

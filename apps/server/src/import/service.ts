@@ -289,64 +289,64 @@ export async function commitImport(db: DB, userId: string, params: ImportParams)
       })
       .run();
 
-    let imported = 0;
+    // Resolve each DISTINCT security once (a file usually has many trades per security), then
+    // bulk-insert the transactions and any seeded quotes in chunks — far fewer statements than a
+    // find-or-create + insert per row. Securities are created eagerly so the FK is satisfied.
+    const secByIdentity = new Map<string, string>();
+    const identityOf = (s: NonNullable<NormalizedTx["security"]>) =>
+      s.isin ? `i:${s.isin}` : s.exchange ? `s:${s.symbol}|${s.exchange}` : `s:${s.symbol}`;
+    const resolveSecurityId = async (s: NonNullable<NormalizedTx["security"]>, currency: string): Promise<string> => {
+      const key = identityOf(s);
+      const cached = secByIdentity.get(key);
+      if (cached) return cached;
+      const { security } = await findOrCreateSecurity(trx, {
+        symbol: s.symbol,
+        name: s.name ?? s.symbol,
+        isin: s.isin,
+        assetClass: s.assetClass,
+        exchange: s.exchange,
+        sector: s.sector,
+        subSector: s.subSector,
+        currency,
+      });
+      secByIdentity.set(key, security.id);
+      return security.id;
+    };
+
+    const txRows: (typeof transactions.$inferInsert)[] = [];
+    const quoteRows: (typeof quotes.$inferInsert)[] = [];
     for (const { tx, rawHash } of c.toInsert) {
-      let securityId: string | null = null;
-      if (tx.security) {
-        const { security } = await findOrCreateSecurity(trx, {
-          symbol: tx.security.symbol,
-          name: tx.security.name ?? tx.security.symbol,
-          isin: tx.security.isin,
-          assetClass: tx.security.assetClass,
-          exchange: tx.security.exchange,
-          sector: tx.security.sector,
-          subSector: tx.security.subSector,
-          currency: tx.currency,
-        });
-        securityId = security.id;
-      }
-      await trx
-        .insert(transactions)
-        .values({
-          id: randomUUID(),
-          userId,
-          portfolioId: params.portfolioId,
-          accountId: params.accountId ?? null,
-          securityId,
-          importBatchId: batchId,
-          type: tx.type,
-          tradeDate: tx.tradeDate,
-          quantity: tx.quantity,
-          price: tx.price,
-          grossAmount: tx.grossAmount,
-          fees: tx.fees,
-          taxes: tx.taxes,
-          currency: tx.currency,
-          segment: tx.segment,
-          externalRef: tx.externalRef ?? null,
-          rawRowHash: rawHash,
-          sourceBroker: params.broker,
-        })
-        .run();
+      const securityId = tx.security ? await resolveSecurityId(tx.security, tx.currency) : null;
+      txRows.push({
+        id: randomUUID(),
+        userId,
+        portfolioId: params.portfolioId,
+        accountId: params.accountId ?? null,
+        securityId,
+        importBatchId: batchId,
+        type: tx.type,
+        tradeDate: tx.tradeDate,
+        quantity: tx.quantity,
+        price: tx.price,
+        grossAmount: tx.grossAmount,
+        fees: tx.fees,
+        taxes: tx.taxes,
+        currency: tx.currency,
+        segment: tx.segment,
+        externalRef: tx.externalRef ?? null,
+        rawRowHash: rawHash,
+        sourceBroker: params.broker,
+      });
       // A holdings snapshot carries a current price → seed a quote so value shows without a refresh.
       if (tx.quotePrice && securityId) {
-        await trx
-          .insert(quotes)
-          .values({
-            id: randomUUID(),
-            securityId,
-            price: tx.quotePrice,
-            prevClose: null,
-            currency: tx.currency,
-            asOf: new Date().toISOString(),
-            provider: "import",
-          })
-          .run();
+        quoteRows.push({ id: randomUUID(), securityId, price: tx.quotePrice, prevClose: null, currency: tx.currency, asOf: new Date().toISOString(), provider: "import" });
       }
-      imported += 1;
     }
+    const CHUNK = 100; // keep well under SQLite's bound-variable limit
+    for (let i = 0; i < txRows.length; i += CHUNK) await trx.insert(transactions).values(txRows.slice(i, i + CHUNK)).run();
+    for (let i = 0; i < quoteRows.length; i += CHUNK) await trx.insert(quotes).values(quoteRows.slice(i, i + CHUNK)).run();
 
-    return { c, imported, replaced };
+    return { c, imported: txRows.length, replaced };
   });
 
   // Auto-classify newly imported securities (sectors, sub-sectors, asset class) — best effort, and
