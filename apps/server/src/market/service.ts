@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { DB } from "../db/index.js";
 import { transactions, securities, quotes } from "../db/schema.js";
 import { getPortfolioOwned } from "../domain/portfolios.js";
+import { bumpHoldings } from "../domain/holdings-cache.js";
 import type { MarketDataProvider, SecurityLike } from "./types.js";
 
 export interface RefreshResult {
@@ -66,19 +67,35 @@ export async function refreshQuotes(
     updated += 1;
     if (!latest || q.asOf > latest) latest = q.asOf;
   }
+  if (updated > 0) {
+    await pruneQuotesToLatest(db); // the app only ever reads the newest quote per security
+    bumpHoldings(userId); // prices changed → invalidate this user's cached holdings
+  }
   return { requested: secs.length, updated, failed: secs.length - updated, provider: provider.id, asOf: latest };
+}
+
+/**
+ * Keep only the newest quote per security — nothing reads older ones (net-worth history lives in
+ * `snapshots`), so without this the quotes table would grow without bound as prices refresh.
+ */
+export async function pruneQuotesToLatest(db: DB): Promise<void> {
+  await db.run(sql`
+    DELETE FROM quotes WHERE id IN (
+      SELECT id FROM (
+        SELECT id, ROW_NUMBER() OVER (PARTITION BY security_id ORDER BY as_of DESC, created_at DESC, id DESC) AS rn FROM quotes
+      ) WHERE rn > 1
+    )
+  `);
 }
 
 /** Timestamp of the most recent quote across the user's held securities. */
 export async function lastQuoteAsOf(db: DB, userId: string, portfolioId?: string): Promise<string | null> {
   const secs = await heldSecurities(db, userId, portfolioId);
   if (secs.length === 0) return null;
-  const rows = await db
-    .select({ asOf: quotes.asOf })
+  const row = await db
+    .select({ latest: sql<string | null>`max(${quotes.asOf})` })
     .from(quotes)
     .where(inArray(quotes.securityId, secs.map((s) => s.id)))
-    .all();
-  let latest: string | null = null;
-  for (const r of rows) if (!latest || r.asOf > latest) latest = r.asOf;
-  return latest;
+    .get();
+  return row?.latest ?? null;
 }

@@ -45,10 +45,15 @@ function toLibsqlUrl(url: string): string {
   return `file:${abs}`;
 }
 
-/** Open a libsql database, enable foreign keys, run migrations. */
+/** Open a libsql database, set pragmas, run migrations. */
 export async function createDb(url: string): Promise<{ db: DB; client: Client }> {
   const client = createClient({ url: toLibsqlUrl(url) });
   await client.execute("PRAGMA foreign_keys = ON;");
+  // WAL lets a reader and the background scheduler's writer proceed concurrently without blocking
+  // each other; busy_timeout makes a brief lock wait instead of failing with SQLITE_BUSY. Both are
+  // no-ops on the (unused) pure-memory path and harmless on the file DB used in prod and tests.
+  await client.execute("PRAGMA journal_mode = WAL;").catch(() => undefined);
+  await client.execute("PRAGMA busy_timeout = 5000;").catch(() => undefined);
   const db = drizzle(client, { schema });
   await migrate(db, { migrationsFolder });
   return { db, client };

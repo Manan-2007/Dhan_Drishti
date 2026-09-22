@@ -4,6 +4,8 @@ import type { DB } from "../db/index.js";
 import { transactions, securities, quotes } from "../db/schema.js";
 import type { MarketDataProvider } from "../market/types.js";
 import { writeAllScopes } from "../domain/snapshots.js";
+import { pruneQuotesToLatest } from "../market/service.js";
+import { invalidateAllHoldings } from "../domain/holdings-cache.js";
 
 /** Refresh quotes for every security anyone holds, in one deduplicated pass (shared master), so a
  *  nightly job keeps prices fresh without the dashboard ever opening stale. */
@@ -17,6 +19,10 @@ export async function refreshAllHeldQuotes(db: DB, provider: MarketDataProvider)
   for (const q of results) {
     await db.insert(quotes).values({ id: randomUUID(), securityId: q.securityId, price: q.price, prevClose: q.prevClose ?? null, currency: q.currency, asOf: q.asOf, provider: q.provider }).run();
     updated += 1;
+  }
+  if (updated > 0) {
+    await pruneQuotesToLatest(db); // keep one quote per security
+    invalidateAllHoldings(); // background prices changed for everyone → drop cached holdings
   }
   return { requested: secs.length, updated };
 }
@@ -34,7 +40,8 @@ export async function snapshotAllUsers(db: DB): Promise<number> {
   return userRows.length;
 }
 
-/** One maintenance pass: refresh prices, then record the day's snapshots. */
+/** One maintenance pass: refresh prices (also prunes quotes + drops the holdings cache), then
+ *  record the day's snapshots. */
 export async function runMaintenance(db: DB, provider: MarketDataProvider): Promise<void> {
   await refreshAllHeldQuotes(db, provider);
   await snapshotAllUsers(db);

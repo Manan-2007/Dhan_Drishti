@@ -34,6 +34,7 @@ import { YahooSecurityHistoryProvider } from "./market/providers/yahoo-security-
 import { registerFxRoutes } from "./domain/fx.js";
 import { refreshQuotes } from "./market/service.js";
 import { writeAllScopes } from "./domain/snapshots.js";
+import { bumpHoldings } from "./domain/holdings-cache.js";
 import {
   SESSION_COOKIE,
   authenticate,
@@ -97,6 +98,15 @@ export function buildApp(db: DB, options: AppOptions = {}): FastifyInstance {
         return reply;
       }
     }
+  });
+
+  // After any successful state-changing request, invalidate that user's cached holdings so the next
+  // read reflects the change immediately. onSend runs after the handler but before the response is
+  // delivered, so the bump is in effect by the time the caller issues its next request.
+  app.addHook("onSend", async (req, reply, payload) => {
+    const m = req.method.toUpperCase();
+    if (m !== "GET" && m !== "HEAD" && m !== "OPTIONS" && req.user && reply.statusCode < 400) bumpHoldings(req.user.id);
+    return payload;
   });
 
   function setSessionCookie(reply: FastifyReply, sessionId: string) {

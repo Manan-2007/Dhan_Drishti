@@ -20,6 +20,7 @@ import { authed } from "../lib/routes.js";
 import { getPortfolioOwned } from "./portfolios.js";
 import { upsertSnapshotFromHoldings } from "./snapshots.js";
 import { computeManualAssets, regionForCurrency } from "./manual-assets.js";
+import { withHoldingsCache } from "./holdings-cache.js";
 import { baseCurrencyOf, rateMap } from "../market/fx.js";
 
 /** Providers whose quotes are model estimates, not exchange-traded prices — flagged in the UI. */
@@ -201,7 +202,13 @@ function allocation(
 
 const querySchema = z.object({ portfolioId: z.string().optional() });
 
-export async function computePortfolioHoldings(db: DB, userId: string, portfolioId?: string) {
+/** Cached entry point (see holdings-cache.ts). Every consumer goes through this, so a page that
+ *  fires several holdings-derived endpoints recomputes the portfolio once, not once per endpoint. */
+export function computePortfolioHoldings(db: DB, userId: string, portfolioId?: string) {
+  return withHoldingsCache(userId, portfolioId ?? null, () => computeHoldingsUncached(db, userId, portfolioId));
+}
+
+async function computeHoldingsUncached(db: DB, userId: string, portfolioId?: string) {
   const clauses = [eq(transactions.userId, userId)];
   if (portfolioId) clauses.push(eq(transactions.portfolioId, portfolioId));
   const txRows = await db
