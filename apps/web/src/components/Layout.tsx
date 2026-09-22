@@ -1,7 +1,8 @@
+import { Suspense } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useTheme } from "../theme.js";
 import { useAuth } from "../auth/AuthContext.js";
-import { Button, cx } from "./ui.js";
+import { Button, cx, Spinner } from "./ui.js";
 
 const NAV = [
   { to: "/", label: "Dashboard", end: true },
@@ -89,7 +90,9 @@ export function Layout() {
           </nav>
         </header>
         <main className="min-w-0 flex-1 p-6 max-sm:p-4">
-          <Outlet />
+          <Suspense fallback={<Spinner label="Loading…" />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>

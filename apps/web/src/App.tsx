@@ -1,3 +1,4 @@
+import { lazy } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { queryClient } from "./lib/query.js";
@@ -6,19 +7,23 @@ import { FilterProvider } from "./lib/hooks.js";
 import { ToastProvider } from "./components/Toast.js";
 import { Layout } from "./components/Layout.js";
 import { Landing } from "./pages/Landing.js";
-import { Dashboard } from "./pages/Dashboard.js";
-import { Holdings } from "./pages/Holdings.js";
-import { Transactions } from "./pages/Transactions.js";
-import { Analytics } from "./pages/Analytics.js";
-import { Rebalance } from "./pages/Rebalance.js";
-import { Dividends } from "./pages/Dividends.js";
-import { Reports } from "./pages/Reports.js";
-import { SecurityDetail } from "./pages/SecurityDetail.js";
-import { ManualAssets } from "./pages/ManualAssets.js";
-import { Portfolios } from "./pages/Portfolios.js";
-import { Imports } from "./pages/Imports.js";
-import { Settings } from "./pages/Settings.js";
 import { Spinner } from "./components/ui.js";
+
+// The authenticated pages are code-split so the initial load (Landing) doesn't pull in the whole
+// app — Recharts and the chart-heavy pages only download when a signed-in user navigates to them.
+// (Named exports, so map each module to a default for React.lazy.)
+const Dashboard = lazy(() => import("./pages/Dashboard.js").then((m) => ({ default: m.Dashboard })));
+const Holdings = lazy(() => import("./pages/Holdings.js").then((m) => ({ default: m.Holdings })));
+const Transactions = lazy(() => import("./pages/Transactions.js").then((m) => ({ default: m.Transactions })));
+const Analytics = lazy(() => import("./pages/Analytics.js").then((m) => ({ default: m.Analytics })));
+const Rebalance = lazy(() => import("./pages/Rebalance.js").then((m) => ({ default: m.Rebalance })));
+const Dividends = lazy(() => import("./pages/Dividends.js").then((m) => ({ default: m.Dividends })));
+const Reports = lazy(() => import("./pages/Reports.js").then((m) => ({ default: m.Reports })));
+const SecurityDetail = lazy(() => import("./pages/SecurityDetail.js").then((m) => ({ default: m.SecurityDetail })));
+const ManualAssets = lazy(() => import("./pages/ManualAssets.js").then((m) => ({ default: m.ManualAssets })));
+const Portfolios = lazy(() => import("./pages/Portfolios.js").then((m) => ({ default: m.Portfolios })));
+const Imports = lazy(() => import("./pages/Imports.js").then((m) => ({ default: m.Imports })));
+const Settings = lazy(() => import("./pages/Settings.js").then((m) => ({ default: m.Settings })));
 
 function Gate() {
   const { user, loading } = useAuth();
