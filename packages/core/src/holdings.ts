@@ -10,6 +10,7 @@ import {
   markToMarket,
   type Position,
 } from "./position.js";
+import { sortLedger } from "./order.js";
 
 /**
  * Average-cost holdings & realised-P&L engine. Pure and deterministic.
@@ -69,13 +70,6 @@ interface Running {
   oversell: boolean;
 }
 
-function sortTxs(txs: CanonicalTx[]): CanonicalTx[] {
-  return [...txs].sort((a, b) => {
-    if (a.tradeDate < b.tradeDate) return -1;
-    if (a.tradeDate > b.tradeDate) return 1;
-    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-  });
-}
 
 function empty(): Running {
   return {
@@ -173,7 +167,7 @@ export function computeHoldings(
   options: ComputeOptions = {},
 ): Holding[] {
   const bySecurity = new Map<string, Running>();
-  for (const tx of sortTxs(txs)) {
+  for (const tx of sortLedger(txs)) {
     if (!tx.securityId) continue; // pure-cash tx: excluded from per-security holdings
     let run = bySecurity.get(tx.securityId);
     if (!run) {

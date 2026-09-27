@@ -10,6 +10,11 @@ deterministic, unit-tested** modules using `decimal.js` (no floats, no DB coupli
 - Cost basis for **holdings & analytics is average cost** (matches Indian brokers). The
   **capital-gains report uses FIFO** — the tax method — in a separate pass (see below).
 - All money is `Decimal`. Division guards against zero (return null, never NaN/Infinity).
+- **Ledger order** (every engine walks it the same way, `packages/core/src/order.ts`): by trade
+  time; on a tie, splits and bonuses first (they take effect at the start of the ex-date), then
+  buys / transfers-in, then sells / transfers-out, then income and cash; then the broker's trade id,
+  else the row's fingerprint. Never a database id — those are random, and average-cost realised P&L
+  depends on sequence, so identical data must always give identical numbers.
 - **Caching:** derived holdings are cached per (user, scope) and invalidated on any write, so a
   page firing several holdings-derived endpoints recomputes the portfolio once, not once each.
 

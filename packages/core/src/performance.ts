@@ -1,6 +1,7 @@
 import { Decimal, d, ZERO, safeDiv } from "./money.js";
 import type { CanonicalTx, Segment } from "./types.js";
 import { applyBonus, applyBuy, applySell, applySplit, emptyPosition, type Position } from "./position.js";
+import { sortLedger } from "./order.js";
 
 /**
  * Performance engine: realised-P&L events (avg-cost) rolled up by segment / month /
@@ -17,9 +18,6 @@ export interface RealisedEvent {
   realised: Decimal; // proceeds - cost - fees - taxes
 }
 
-function sortTxs(txs: CanonicalTx[]): CanonicalTx[] {
-  return [...txs].sort((a, b) => (a.tradeDate < b.tradeDate ? -1 : a.tradeDate > b.tradeDate ? 1 : a.id < b.id ? -1 : 1));
-}
 
 /**
  * Walk the ledger per security (average cost) and emit one realised event per position-closing
@@ -30,7 +28,7 @@ function sortTxs(txs: CanonicalTx[]): CanonicalTx[] {
 export function realisedEvents(txs: CanonicalTx[]): RealisedEvent[] {
   const running = new Map<string, Position>();
   const events: RealisedEvent[] = [];
-  for (const tx of sortTxs(txs)) {
+  for (const tx of sortLedger(txs)) {
     if (!tx.securityId) continue;
     let p = running.get(tx.securityId);
     if (!p) {

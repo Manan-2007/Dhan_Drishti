@@ -1,6 +1,7 @@
 import type { AssetClass } from "@dhan-drishti/core";
 import type { BrokerAdapter, ParsedCsv, NormalizedRow, DetectResult } from "../types.js";
 import { pick, rowHash } from "../csv.js";
+import { canonicalDate, IST } from "../dates.js";
 
 /**
  * User-defined column mapping — a reusable "import template" that lets any broker CSV be
@@ -27,8 +28,7 @@ function parseDate(raw: string | undefined): string | null {
   if (!raw) return null;
   const dmy = raw.match(/^(\d{2})[-/](\d{2})[-/](\d{4})/);
   const iso = dmy ? `${dmy[3]}-${dmy[2]}-${dmy[1]}` : raw;
-  const t = Date.parse(iso);
-  return Number.isNaN(t) ? null : new Date(t).toISOString();
+  return canonicalDate(iso, IST);
 }
 
 export function makeGenericAdapter(mapping: GenericMapping): BrokerAdapter {

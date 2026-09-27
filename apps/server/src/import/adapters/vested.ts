@@ -1,5 +1,6 @@
 import type { BrokerAdapter, ParsedCsv, NormalizedRow, DetectResult } from "../types.js";
 import { pick, hasHeader, rowHash } from "../csv.js";
+import { canonicalDate, US_EASTERN } from "../dates.js";
 
 // Vested (US stocks for Indian investors) — the "Trades" sheet of the Transactions export. USD equities.
 const SYMBOL = ["ticker", "symbol", "stock", "instrument"];
@@ -20,9 +21,7 @@ function normSide(raw: string | undefined): "buy" | "sell" | null {
 
 /** US brokers export MM/DD/YYYY or ISO; Date.parse handles both. */
 function parseDate(raw: string | undefined): string | null {
-  if (!raw) return null;
-  const t = Date.parse(raw);
-  return Number.isNaN(t) ? null : new Date(t).toISOString();
+  return canonicalDate(raw, US_EASTERN);
 }
 
 export const vestedAdapter: BrokerAdapter = {

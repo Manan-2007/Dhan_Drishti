@@ -1,5 +1,6 @@
 import type { BrokerAdapter, ParsedCsv, NormalizedRow, DetectResult } from "../types.js";
 import { pick, hasHeader, rowHash } from "../csv.js";
+import { canonicalDate, IST } from "../dates.js";
 
 /**
  * Dividend statement — cash dividends received (e.g. Dhan "Dividend payout"). Maps each row to
@@ -45,20 +46,20 @@ export const dividendsAdapter: BrokerAdapter = {
       const name = pick(raw, SCRIP);
       const amount = normNum(pick(raw, AMOUNT));
       const dateRaw = pick(raw, DATE);
-      const t = dateRaw ? Date.parse(dateRaw) : NaN;
+      const tradeDate = canonicalDate(dateRaw, IST);
 
       if (!name) return { ok: false, error: "Missing scrip name", raw, rowIndex: i };
       if (amount == null || amount <= 0) return { ok: false, error: `Invalid dividend amount '${pick(raw, AMOUNT) ?? ""}'`, raw, rowIndex: i };
-      if (Number.isNaN(t)) return { ok: false, error: `Invalid date '${dateRaw ?? ""}'`, raw, rowIndex: i };
+      if (!tradeDate) return { ok: false, error: `Invalid date '${dateRaw ?? ""}'`, raw, rowIndex: i };
 
       return {
         ok: true,
         rowIndex: i,
-        rawHash: rowHash("dividends", csv.rawLines[i] ?? `${name}|${new Date(t).toISOString()}|${amount}`),
+        rawHash: rowHash("dividends", csv.rawLines[i] ?? `${name}|${tradeDate}|${amount}`),
         tx: {
           security: { symbol: symbolFromName(name), name, isin: pick(raw, ISIN), assetClass: "equity" },
           type: "dividend",
-          tradeDate: new Date(t).toISOString(),
+          tradeDate,
           quantity: "0",
           price: "0",
           grossAmount: String(amount),

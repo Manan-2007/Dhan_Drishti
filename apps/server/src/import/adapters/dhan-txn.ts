@@ -1,6 +1,7 @@
 import type { Segment } from "@dhan-drishti/core";
 import type { BrokerAdapter, ParsedCsv, NormalizedRow, DetectResult, NormalizedTx } from "../types.js";
 import { pick, hasHeader, rowHash } from "../csv.js";
+import { canonicalDate, IST } from "../dates.js";
 
 /**
  * Dhan "Transaction Report" — the real all-transactions export. One row per scrip per day with
@@ -24,8 +25,7 @@ function num(raw: string | undefined): number {
 
 function parseDate(raw: string | undefined): string | null {
   if (!raw) return null;
-  const t = Date.parse(raw); // "01 Apr 2025 00:00:00"
-  return Number.isNaN(t) ? null : new Date(t).toISOString();
+  return canonicalDate(raw, IST); // "01 Apr 2025 00:00:00" — a date, printed with a midnight time
 }
 
 function symbolFromName(name: string): string {

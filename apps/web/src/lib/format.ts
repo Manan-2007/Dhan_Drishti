@@ -83,9 +83,14 @@ export function signGlyph(value: string | number | null | undefined): string {
   return n > 0 ? "▲ " : "▼ ";
 }
 
+/**
+ * A trade's calendar date. Read in UTC on purpose: date-only rows are stored at UTC midnight of the
+ * broker's date, and timed Indian trades (09:15–23:55 IST) fall on the same UTC day — so this shows
+ * the date the broker printed on any computer, in any timezone.
+ */
 export function dateShort(iso: string): string {
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString("en-IN", { year: "numeric", month: "short", day: "2-digit" });
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString("en-IN", { year: "numeric", month: "short", day: "2-digit", timeZone: "UTC" });
 }
 
 /** Indian financial year label for a date (Apr–Mar), e.g. "FY 24-25" — mirrors the server. */

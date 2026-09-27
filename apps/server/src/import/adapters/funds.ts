@@ -1,5 +1,6 @@
 import type { BrokerAdapter, ParsedCsv, NormalizedRow, DetectResult } from "../types.js";
 import { pick, hasHeader, rowHash } from "../csv.js";
+import { canonicalDate, IST } from "../dates.js";
 
 /**
  * Funds / cash statement — deposits and withdrawals (e.g. Dhan "Fund Summary", or any
@@ -51,12 +52,11 @@ export const fundsAdapter: BrokerAdapter = {
       const amount = normNum(pick(raw, AMOUNT));
       if (amount == null || amount === 0) return;
       const dateRaw = pick(raw, DATE);
-      const t = dateRaw ? Date.parse(dateRaw) : NaN;
-      if (Number.isNaN(t)) {
+      const tradeDate = canonicalDate(dateRaw, IST);
+      if (!tradeDate) {
         out.push({ ok: false, error: `Invalid date '${dateRaw ?? ""}'`, raw, rowIndex: i });
         return;
       }
-      const tradeDate = new Date(t).toISOString();
       out.push({
         ok: true,
         rowIndex: i,

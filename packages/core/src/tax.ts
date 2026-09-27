@@ -1,5 +1,6 @@
 import { Decimal, d, ZERO } from "./money.js";
 import type { CanonicalTx } from "./types.js";
+import { sortLedger } from "./order.js";
 
 /**
  * FIFO capital-gains matching for Indian ITR. Unlike the average-cost realised engine (which
@@ -37,9 +38,6 @@ export interface CapitalGainsOptions {
   longTermDays: (securityId: string) => number;
 }
 
-function sortTxs(txs: CanonicalTx[]): CanonicalTx[] {
-  return [...txs].sort((a, b) => (a.tradeDate < b.tradeDate ? -1 : a.tradeDate > b.tradeDate ? 1 : a.id < b.id ? -1 : 1));
-}
 
 const daysBetween = (fromISO: string, toISO: string): number => Math.floor((Date.parse(toISO) - Date.parse(fromISO)) / DAY);
 
@@ -53,7 +51,7 @@ export function fifoCapitalGains(txs: CanonicalTx[], opts: CapitalGainsOptions):
   const lotsBySec = new Map<string, Lot[]>();
   const rows: CapitalGainRow[] = [];
 
-  for (const tx of sortTxs(txs)) {
+  for (const tx of sortLedger(txs)) {
     if (!tx.securityId || tx.segment === "fno") continue; // derivatives are business income, not CG
     const sid = tx.securityId;
     const lots = lotsBySec.get(sid) ?? lotsBySec.set(sid, []).get(sid)!;

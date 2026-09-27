@@ -1,6 +1,7 @@
 import type { AssetClass, Segment } from "@dhan-drishti/core";
 import type { BrokerAdapter, ParsedCsv, NormalizedRow, DetectResult } from "../types.js";
 import { pick, hasHeader, rowHash } from "../csv.js";
+import { canonicalDate, US_EASTERN } from "../dates.js";
 
 // Interactive Brokers — Flex/Activity "Trades" export. Quantity may be signed (− = sell),
 // commission is usually a negative charge, and currency/asset-class come from their own columns.
@@ -36,8 +37,7 @@ function parseDate(raw: string | undefined): string | null {
   // IBKR often uses "YYYYMMDD" or "YYYYMMDD;HHMMSS" in Flex, or ISO in Activity.
   const compact = raw.match(/^(\d{4})(\d{2})(\d{2})/);
   const iso = compact ? `${compact[1]}-${compact[2]}-${compact[3]}` : raw.replace(";", " ");
-  const t = Date.parse(iso);
-  return Number.isNaN(t) ? null : new Date(t).toISOString();
+  return canonicalDate(iso, US_EASTERN);
 }
 
 export const ibkrAdapter: BrokerAdapter = {
