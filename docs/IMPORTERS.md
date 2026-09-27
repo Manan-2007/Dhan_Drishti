@@ -111,7 +111,15 @@ units, so it tolerates the real-world variety across RTAs and years.
 wizard collects the mapping before preview. `POST /api/imports/{check,commit}` accept a `mapping`.
 
 ## Security identity resolver
-Find-or-create resolves in order: **ISIN → symbol + exchange → symbol**. A newly-imported security
+Before that, an Indian share, ETF or REIT/InvIT that arrives worded ("POWER FINANCE CORPORATION",
+Dhan) or as a ticker without an ISIN is resolved to its **NSE listing** (`import/listings.ts`,
+offline, from the bundled master `nse-master-data.json` — regenerate with
+`scripts/build-nse-master.mjs`): by ISIN, then a ticker in brackets, then the name, where every word
+of the broker's name must be found in the listing's (shortened words and initials allowed — "MNGT
+SER", "MQ") and only one best listing is accepted. So "KOTAK BANK", "KOTAK MAHINDRA BANK LTD" and
+Zerodha's KOTAKBANK are one security, priced and classified. Ambiguous names stay as they are.
+Securities created before this existed are matched and merged once at startup (every row moves;
+nothing is dropped). Then find-or-create resolves in order: **ISIN → symbol + exchange → symbol**. A newly-imported security
 is then auto-classified (sector / sub-sector / asset class) from a bundled NSE/AMFI reference and
 segment-aware rules (F&O → Derivatives). Nothing is guessed silently — unresolved metadata stays
 blank rather than fabricated.

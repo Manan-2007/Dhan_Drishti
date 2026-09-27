@@ -48,7 +48,7 @@ describe("holdings snapshot import", () => {
     await post("/api/imports/commit", cookie, { portfolioId: pid, broker: "holdings", filename: "d.csv", content: DHAN });
 
     const h = (await get("/api/holdings", cookie)).json();
-    const apl = find(h.holdings, "APL APOLLO TUBES")!;
+    const apl = find(h.holdings, "APLAPOLLO")!; // the worded name resolves to its NSE ticker
     expect(apl.netQty).toBe("100");
     expect(apl.invested).toBe("164334"); // 100 × 1,643.34
     expect(Number(apl.currentValue)).toBeCloseTo(213990, 2); // 100 × 2,139.90 from LTP

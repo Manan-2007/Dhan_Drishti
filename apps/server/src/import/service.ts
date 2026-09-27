@@ -11,6 +11,7 @@ import { looksLikeXlsx, workbookToCsv } from "./xlsx.js";
 import { extractCasText, parseCasTransactions } from "./cas.js";
 import { getAdapter, detectBest } from "./registry.js";
 import { resettleExpired } from "./expiry.js";
+import { canonicalRef } from "./canonical.js";
 import { hasSnapshot, reconcileSnapshots, storeSnapshot, type Scope, type SnapshotPosition, type SnapshotSummary } from "./snapshot.js";
 import type { GenericMapping } from "./adapters/generic.js";
 import type { BrokerAdapter, NormalizedRow, NormalizedTx } from "./types.js";
@@ -298,7 +299,8 @@ export async function commitImport(db: DB, userId: string, params: ImportParams)
 function securityResolver(trx: Database) {
   const cache = new Map<string, string>();
   const identityOf = (s: NonNullable<NormalizedTx["security"]>) => (s.isin ? `i:${s.isin}` : s.exchange ? `s:${s.symbol}|${s.exchange}` : `s:${s.symbol}`);
-  return async (s: NonNullable<NormalizedTx["security"]>, currency: string): Promise<string> => {
+  return async (raw: NonNullable<NormalizedTx["security"]>, currency: string): Promise<string> => {
+    const s = canonicalRef(raw, currency); // a worded or ISIN-less row → its NSE listing
     const key = identityOf(s);
     const cached = cache.get(key);
     if (cached) return cached;

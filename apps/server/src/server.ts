@@ -12,6 +12,7 @@ import { FrankfurterProvider } from "./market/providers/frankfurter.js";
 import { YahooBenchmarkProvider } from "./market/providers/yahoo-benchmark.js";
 import { startScheduler } from "./jobs/scheduler.js";
 import { convertLegacyStatements } from "./import/snapshot.js";
+import { canonicalizeSecurities } from "./import/canonical.js";
 
 /** Resolve the web build dir: WEB_DIR env, else the sibling apps/web/dist if present. */
 function resolveWebDir(): string {
@@ -24,6 +25,10 @@ async function main() {
   const { db } = await createDb(env.databaseUrl);
   // One-time: holdings statements imported as buys become snapshots (see import/snapshot.ts).
   const converted = await convertLegacyStatements(db);
+  // One-time: worded shares ("KOTAK BANK") resolved to their NSE listing; duplicates merged.
+  const merged = await canonicalizeSecurities(db);
+  // eslint-disable-next-line no-console
+  if (merged) console.log(`Matched ${merged} securities to their NSE listing`);
   // eslint-disable-next-line no-console
   if (converted) console.log(`Converted ${converted} holdings-statement rows into snapshots`);
   // Share one market provider between the app and the background scheduler.
