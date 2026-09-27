@@ -4,7 +4,6 @@ import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-
 import { queryClient } from "./lib/query.js";
 import { AuthProvider, useAuth } from "./auth/AuthContext.js";
 import { FilterProvider } from "./lib/hooks.js";
-import { ToastProvider } from "./components/Toast.js";
 import { ErrorBoundary } from "./components/ErrorBoundary.js";
 import { Landing } from "./pages/Landing.js";
 import { AppShell } from "@/components/shell/AppShell";
@@ -50,7 +49,6 @@ function Gate() {
   if (!user) return <Landing />;
   return (
     <FilterProvider>
-      <ToastProvider>
         <BrowserRouter>
           <Suspense fallback={null}>
             <Routes>
@@ -152,7 +150,6 @@ function Gate() {
             </Routes>
           </Suspense>
         </BrowserRouter>
-      </ToastProvider>
     </FilterProvider>
   );
 }

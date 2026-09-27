@@ -82,6 +82,10 @@ describe("expiry settlement", () => {
     expect(h["NIFTY25MAY24500CE"]).toEqual({ qty: "0", realised: "12000" }); // 75 × (24,750 − 24,500 − 90)
     expect(h["NIFTY27JAN30000CE"]!.qty).toBe("75");
     expect(h["GOLDM25JUNFUT"]!.qty).toBe("1");
+    const all = (await get("/api/holdings", cookie)).json();
+    expect(all.summary.expiredOpen).toBe(1); // the gold future: expired, open, no public price
+    expect(all.holdings.find((x: { security: { symbol: string } }) => x.security.symbol === "GOLDM25JUNFUT").expired).toBe(true);
+    expect(all.holdings.find((x: { security: { symbol: string } }) => x.security.symbol === "NIFTY27JAN30000CE").expired).toBe(false);
 
     const txs = (await get("/api/transactions?limit=50", cookie)).json().transactions as { sourceBroker: string; tradeDate: string; security: { symbol: string } }[];
     const may = txs.find((t) => t.sourceBroker === "expiry" && t.security.symbol === "NIFTY25MAY24500CE")!;

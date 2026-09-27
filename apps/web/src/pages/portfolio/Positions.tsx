@@ -281,7 +281,12 @@ function PositionCells({ h, totalValue }: { h: HoldingRow; totalValue: number })
       <td className="max-w-[280px] px-3 py-3">
         <span className="flex items-center gap-2">
           <span className="truncate font-semibold" title={h.security.symbol}>{contract?.title ?? h.security.symbol}</span>
-          {short && <Badge variant="warning">short</Badge>}
+          {short && !h.expired && <Badge variant="warning">short</Badge>}
+          {h.expired && (
+            <Badge variant="warning" title="Past its expiry, but your files don't show it closing and there's no public price to settle it. Add the tradebook that closed it.">
+              expired
+            </Badge>
+          )}
           {closed && <Badge variant="muted">closed</Badge>}
         </span>
         <span className="block truncate text-xs text-muted-foreground">

@@ -103,6 +103,15 @@ function useAttention(data: HoldingsResponse | undefined): Attention[] {
       action: <Button size="xs" variant="outline" onClick={() => navigate("/accounts")}><Upload /> Add files</Button>,
     });
   }
+  const stuck = s.expiredOpen ?? 0;
+  if (stuck > 0) {
+    items.push({
+      id: "expired",
+      icon: <CalendarClock />,
+      text: `${stuck} expired contract${stuck === 1 ? " is" : "s are"} still open with no closing trade and no public price to settle ${stuck === 1 ? "it" : "them"} (commodities). Add the tradebook that closed ${stuck === 1 ? "it" : "them"}.`,
+      action: <Button size="xs" variant="ghost" onClick={() => navigate("/portfolio")}>View</Button>,
+    });
+  }
   for (const f of data.diversification?.flags ?? []) {
     if (f.severity === "info") continue;
     items.push({

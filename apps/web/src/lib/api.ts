@@ -99,6 +99,9 @@ export interface HoldingRow {
   todayChange: string | null;
   netPnl: string | null;
   hasOversell: boolean;
+  /** Unsettled F&O contract past its expiry. */
+  expired?: boolean;
+  soldWithoutPurchase?: string;
   quote: { price: string; asOf: string; estimated: boolean } | null;
   baseInvested: string | null;
   baseCurrentValue: string | null;
@@ -189,6 +192,8 @@ export interface HoldingsResponse {
     soldWithoutPurchase: number;
     /** F&O contracts closed by an estimated expiry settlement. */
     settledAtExpiry: number;
+    /** Expired contracts still open (no public settlement price). */
+    expiredOpen: number;
   };
   manualAssets: ManualAsset[];
   allocation: {
