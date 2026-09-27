@@ -4,7 +4,7 @@ import type { FastifyInstance } from "fastify";
 import {
   computeHoldings,
   cashBalances,
-  hasCashAccounting,
+  cashTrackedTxs,
   computeDiversification,
   toStore,
   d,
@@ -66,6 +66,8 @@ interface SerializedHolding {
   todayChange: string | null;
   netPnl: string | null;
   hasOversell: boolean;
+  /** Units sold with no purchase on record (bought before the imported history) — not held, no profit counted. */
+  soldWithoutPurchase: string;
   quote: { price: string; asOf: string; estimated: boolean } | null;
   // Values converted into the user's base currency (null when no FX rate is available).
   baseInvested: string | null;
@@ -103,6 +105,7 @@ function serialize(h: Holding, sec: Security, quote: CoreQuote | undefined): Ser
     todayChange: toStore(h.todayChange),
     netPnl: toStore(h.netPnl),
     hasOversell: h.hasOversell,
+    soldWithoutPurchase: h.soldWithoutPurchase.toFixed(),
     quote: quote
       ? { price: quote.price, asOf: quote.asOf, estimated: ESTIMATE_PROVIDERS.has((quote as CoreQuote & { provider?: string }).provider ?? "") }
       : null,
@@ -237,8 +240,10 @@ async function computeHoldingsUncached(db: DB, userId: string, portfolioId?: str
 
   // Convert every holding into the user's base currency for aggregation.
   const base = await baseCurrencyOf(db, userId);
-  // Cash can be in currencies with no held security, so rate over the union of both.
-  const cashRaw = cashBalances(txs);
+  // Cash only from accounts that record their deposits/withdrawals (see cashTrackedAccounts).
+  // It can be in currencies with no held security, so rate over the union of both.
+  const cashTxs = cashTrackedTxs(txs);
+  const cashRaw = cashBalances(cashTxs);
   const allCurrencies = [...new Set([...secRows.map((s) => s.currency), ...cashRaw.keys()])];
   const rates = await rateMap(db, allCurrencies, base);
   const unconvertible = new Set<string>();
@@ -282,9 +287,9 @@ async function computeHoldingsUncached(db: DB, userId: string, portfolioId?: str
       .filter((p) => Number(p.value) > 0),
   );
 
-  // Cash balance (base currency), converted per source currency. Only surfaced when the ledger
-  // actually records cash movements (deposits/withdrawals) — otherwise it isn't meaningful.
-  const cashTracked = hasCashAccounting(txs);
+  // Cash balance (base currency), converted per source currency. Only surfaced for accounts whose
+  // ledger records cash movements (deposits/withdrawals) — elsewhere it isn't meaningful.
+  const cashTracked = cashTxs.length > 0;
   const cashByCurrency = new Map<string, Decimal>();
   let cashBase = ZERO;
   if (cashTracked) {
@@ -366,6 +371,8 @@ async function computeHoldingsUncached(db: DB, userId: string, portfolioId?: str
       openPositions,
       pricedPositions: priced,
       allPriced,
+      /** Holdings with sales older than their purchases on record — an older statement would complete them. */
+      soldWithoutPurchase: serialized.filter((r) => r.soldWithoutPurchase !== "0").length,
     },
     manualAssets: manual.items,
     allocation: allocation(serialized, cashByCurrency, cashBase, manualByClass, manualByRegion),

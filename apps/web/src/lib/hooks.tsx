@@ -143,7 +143,7 @@ export interface BenchmarkComparison {
 
 export interface TwrResponse {
   available: boolean;
-  mode?: "holdings" | "cash-inclusive";
+  mode?: "holdings" | "cash-inclusive" | "mixed";
   reason?: string;
   from?: string;
   asOf?: string;

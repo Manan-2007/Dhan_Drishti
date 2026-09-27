@@ -7,6 +7,8 @@ import {
   applySplit,
   averageBasis,
   emptyPosition,
+  isDeliverySegment,
+  settleUnmatchedSale,
   markToMarket,
   type Position,
 } from "./position.js";
@@ -50,6 +52,14 @@ export interface Holding {
    */
   hasOversell: boolean;
   /**
+   * Delivery units sold with no purchase on record — bought before the imported history (see
+   * `settleUnmatchedSale`). They're not held and no profit is counted for them; an older statement
+   * would supply the missing cost.
+   */
+  soldWithoutPurchase: Decimal;
+  /** What those units were sold for (sell-side charges deducted). */
+  soldWithoutPurchaseProceeds: Decimal;
+  /**
    * Cost basis of the current holding expressed in the base currency using the FX rate at
    * each buy's trade date (`fxRateToBase`). Null unless every contributing buy carried a
    * rate — needed to split total return into asset vs currency components. See CALCULATIONS.md.
@@ -68,6 +78,12 @@ interface Running {
   fees: Decimal;
   taxes: Decimal;
   oversell: boolean;
+  /** Calendar day (UTC) of the last trade applied — for the day-end delivery settlement. */
+  lastDay: string;
+  /** The open short came from a delivery sale (equity/MF), so it settles at the day's end. */
+  deliveryShort: boolean;
+  soldWithoutPurchase: Decimal;
+  soldWithoutPurchaseProceeds: Decimal;
 }
 
 
@@ -81,7 +97,24 @@ function empty(): Running {
     fees: ZERO,
     taxes: ZERO,
     oversell: false,
+    lastDay: "",
+    deliveryShort: false,
+    soldWithoutPurchase: ZERO,
+    soldWithoutPurchaseProceeds: ZERO,
   };
+}
+
+/** Day-end: a delivery position still short was a sale of shares bought before the history. */
+function settleDay(r: Running): void {
+  if (!r.deliveryShort) return;
+  const settled = settleUnmatchedSale(r.pos);
+  r.deliveryShort = false;
+  if (!settled) return;
+  r.pos = settled.position;
+  r.soldWithoutPurchase = r.soldWithoutPurchase.plus(settled.quantity);
+  r.soldWithoutPurchaseProceeds = r.soldWithoutPurchaseProceeds.plus(settled.proceeds);
+  r.costBase = ZERO;
+  r.fxCostKnown = true;
 }
 
 function apply(r: Running, tx: CanonicalTx): void {
@@ -126,7 +159,10 @@ function apply(r: Running, tx: CanonicalTx): void {
       const out = applySell(r.pos, qty, price, fees, taxes);
       r.pos = out.position;
       r.realised = r.realised.plus(out.realised);
-      if (out.wentShort) r.oversell = true;
+      if (out.wentShort) {
+        r.oversell = true;
+        r.deliveryShort = isDeliverySegment(tx.segment);
+      }
       // Reduce base-currency cost proportionally so avg FX-at-cost is preserved.
       if (costBefore.greaterThan(0)) {
         r.costBase = r.costBase.times(costBefore.minus(out.basisReleased).div(costBefore));
@@ -174,8 +210,14 @@ export function computeHoldings(
       run = empty();
       bySecurity.set(tx.securityId, run);
     }
+    const day = tx.tradeDate.slice(0, 10);
+    if (day > run.lastDay) {
+      settleDay(run);
+      run.lastDay = day;
+    }
     apply(run, tx);
   }
+  for (const run of bySecurity.values()) settleDay(run);
 
   const holdings: Holding[] = [];
   for (const [securityId, r] of bySecurity) {
@@ -228,6 +270,8 @@ export function computeHoldings(
       todayChange,
       netPnl,
       hasOversell: r.oversell,
+      soldWithoutPurchase: r.soldWithoutPurchase,
+      soldWithoutPurchaseProceeds: r.soldWithoutPurchaseProceeds,
       investedBaseAtCost,
       avgFxAtCost,
     });

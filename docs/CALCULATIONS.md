@@ -10,6 +10,12 @@ deterministic, unit-tested** modules using `decimal.js` (no floats, no DB coupli
 - Cost basis for **holdings & analytics is average cost** (matches Indian brokers). The
   **capital-gains report uses FIFO** — the tax method — in a separate pass (see below).
 - All money is `Decimal`. Division guards against zero (return null, never NaN/Infinity).
+- **Delivery positions can't be short overnight.** An equity/MF position still below zero at the
+  end of its trading day means shares bought *before the imported history* were sold. Every
+  engine (holdings, realised events, FIFO tax, XIRR flows) settles it to zero at day's end: no
+  profit is booked (the cost isn't known), the holding reports `soldWithoutPurchase`, and a later
+  purchase starts a fresh holding rather than "covering" a short that never existed. A short
+  bought back the same day (intraday) realises normally; F&O and commodity shorts are real.
 - **Ledger order** (every engine walks it the same way, `packages/core/src/order.ts`): by trade
   time; on a tie, splits and bonuses first (they take effect at the start of the ex-date), then
   buys / transfers-in, then sells / transfers-out, then income and cash; then the broker's trade id,
@@ -167,8 +173,10 @@ totals, exportable as CSV. Long-term thresholds (12 months for listed equity & e
 otherwise) are a starting point — the report is informational and the user confirms current rules.
 
 ## Cash balance & net worth (implemented)
-The cash the portfolio holds is derived from the ledger — it is only surfaced once you record
-the money you put in (a `deposit`/`withdrawal`), otherwise it isn't meaningful:
+The cash the portfolio holds is derived from the ledger — **per account**, and only for an account
+whose own ledger records the money put in (a `deposit`/`withdrawal`). An account imported from a
+tradebook alone would show every purchase as money spent from nowhere, a large negative "cash"
+dragging net worth down, so its cash isn't counted (`cashTrackedAccounts`):
 ```
 cash += deposit ; cash −= withdrawal
 cash −= buy_cost(incl. fees/taxes) ; cash += sell_proceeds(net fees/taxes)
@@ -214,16 +222,21 @@ The portfolio is valued at every buy/sell date from **real historical daily pric
 surfaced rather than hidden: it needs **single-currency** holdings (cross-currency → unavailable,
 since intra-period FX isn't stored) and **price history for every security** (mutual funds have
 none → the securities are listed and TWR is marked unavailable). Dividends are income, shown
-separately. **Two modes:** when the ledger records deposits/withdrawals (real cash accounting),
-the portfolio value is holdings **+ cash** and only deposits/withdrawals are external flows — so
-dividends and sale proceeds stay *retained* (a `cash-inclusive` TWR). Otherwise buys/sells are the
-external flows and the value is holdings only. A security with a split
+separately. **Per account, two modes:** an account that records its deposits/withdrawals is valued
+as holdings **+ cash** and only those deposits/withdrawals are external flows — so dividends and
+sale proceeds stay *retained*. Any other account's buys/sells are its external flows and only its
+holdings count. All of one kind gives a `cash-inclusive` or `holdings` TWR; a family mixing both
+is `mixed`. A security with a split
 or bonus recorded only as an adjustment — not in the ledger — can distort TWR, because provider
 history is corporate-action-adjusted while ledger cost is not; record the action for accuracy.
 
 ## Performance (data requirements)
 - **XIRR / MWR:** dated signed cashflows (buys −, sells +, dividends +) + current value as
   final positive flow → solve IRR. Computable from ledger + one current price. **Implemented.**
+  Every flow is in the base currency (a foreign trade at its FX-at-cost, else today's rate until
+  the scheduler backfills it), and sales of shares bought before the history are left out
+  (`withoutUnmatchedSales`) — with no purchase to set against them, their proceeds would read as
+  pure return.
 - **TWR:** valuation at each flow date from historical prices, chained. **Implemented** (above).
 - **FX impact:** decompose base-ccy return into asset return + currency return → **implemented**
   (see *FX-impact decomposition* above; needs `fxRateToBase` captured/backfilled per buy).

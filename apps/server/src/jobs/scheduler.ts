@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { inArray, isNotNull } from "drizzle-orm";
 import type { DB } from "../db/index.js";
 import { transactions, securities, quotes } from "../db/schema.js";
-import type { MarketDataProvider } from "../market/types.js";
+import type { FxProvider, MarketDataProvider } from "../market/types.js";
+import { backfillFxAtCost, refreshRates } from "../market/fx.js";
 import { writeAllScopes } from "../domain/snapshots.js";
 import { pruneQuotesToLatest } from "../market/service.js";
 import { invalidateAllHoldings } from "../domain/holdings-cache.js";
@@ -41,10 +42,31 @@ export async function snapshotAllUsers(db: DB): Promise<number> {
   return userRows.length;
 }
 
-/** One maintenance pass: refresh prices (also prunes quotes + drops the holdings cache), record
- *  the day's snapshots, and sweep expired sessions. */
-export async function runMaintenance(db: DB, provider: MarketDataProvider): Promise<void> {
+/**
+ * Keep foreign-currency figures right without anyone pressing a button: today's rate for every
+ * currency held, and the trade-date rate (FX-at-cost) on any foreign trade that lacks one. Only
+ * currency codes and dates are sent to the rate provider — never amounts or holdings.
+ */
+export async function refreshAllFx(db: DB, fx: FxProvider): Promise<void> {
+  // Everyone with a ledger: which currencies are "foreign" depends on each user's base currency,
+  // and a user with none makes no requests.
+  const users = await db.selectDistinct({ userId: transactions.userId }).from(transactions).all();
+  for (const u of users) {
+    try {
+      await refreshRates(db, u.userId, fx);
+      await backfillFxAtCost(db, u.userId, fx);
+    } catch {
+      /* rates are best effort; the next pass retries */
+    }
+  }
+  if (users.length) invalidateAllHoldings();
+}
+
+/** One maintenance pass: refresh prices (also prunes quotes + drops the holdings cache) and
+ *  exchange rates, record the day's snapshots, and sweep expired sessions. */
+export async function runMaintenance(db: DB, provider: MarketDataProvider, fx?: FxProvider): Promise<void> {
   await refreshAllHeldQuotes(db, provider);
+  if (fx) await refreshAllFx(db, fx);
   await snapshotAllUsers(db);
   await deleteExpiredSessions(db).catch(() => undefined);
 }
@@ -53,9 +75,9 @@ export async function runMaintenance(db: DB, provider: MarketDataProvider): Prom
  * Start the background scheduler: an initial pass shortly after boot, then every `intervalHours`.
  * Returns a stop function. Not started inside buildApp so tests never spin timers.
  */
-export function startScheduler(db: DB, provider: MarketDataProvider, intervalHours = 6): () => void {
+export function startScheduler(db: DB, provider: MarketDataProvider, fx?: FxProvider, intervalHours = 6): () => void {
   const tick = () => {
-    runMaintenance(db, provider).catch((err) => {
+    runMaintenance(db, provider, fx).catch((err) => {
       // eslint-disable-next-line no-console
       console.error("[scheduler] maintenance failed:", err);
     });

@@ -273,5 +273,10 @@ describe("P&L report cross-check", () => {
     });
     expect(res.statusCode).toBe(201);
     expect(res.json().files[1].reconcile).toMatchObject({ filled: [], unmatched: 0, check: { broker: "5000.00", ours: "0.00", soldWithoutPurchase: 1 } });
+    // Not a short worth −5 × price: the sale settles at day's end, nothing is held, nothing invented.
+    const h = (await get("/api/holdings", cookie)).json();
+    expect(h.summary.soldWithoutPurchase).toBe(1);
+    const trent = h.holdings.find((x: { security: { symbol: string } }) => x.security.symbol === "TRENT");
+    expect(trent).toMatchObject({ netQty: "0", realisedPnl: "0", soldWithoutPurchase: "5" });
   });
 });

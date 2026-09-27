@@ -49,20 +49,35 @@ const daysBetween = (fromISO: string, toISO: string): number => Math.floor((Date
  */
 export function fifoCapitalGains(txs: CanonicalTx[], opts: CapitalGainsOptions): CapitalGainRow[] {
   const lotsBySec = new Map<string, Lot[]>();
+  // Units sold today with no lot to match — an intraday short, unless the day ends first (then
+  // they were bought before the history; see settleUnmatchedSale). A same-day buy covers them.
+  const shortToday = new Map<string, { day: string; qty: Decimal }>();
   const rows: CapitalGainRow[] = [];
 
   for (const tx of sortLedger(txs)) {
     if (!tx.securityId || tx.segment === "fno") continue; // derivatives are business income, not CG
     const sid = tx.securityId;
     const lots = lotsBySec.get(sid) ?? lotsBySec.set(sid, []).get(sid)!;
-    const qty = d(tx.quantity);
+    const day = tx.tradeDate.slice(0, 10);
+    const short = shortToday.get(sid);
+    if (short && short.day !== day) shortToday.delete(sid);
+    let qty = d(tx.quantity);
     const price = d(tx.price);
     const fees = d(tx.fees).plus(d(tx.taxes));
 
     if (tx.type === "buy" || tx.type === "transfer_in") {
       if (qty.lessThanOrEqualTo(0)) continue;
       const cost = qty.times(price).plus(fees);
-      lots.push({ qty, costPerUnit: cost.div(qty), date: tx.tradeDate });
+      const open = shortToday.get(sid);
+      if (open) {
+        // Buying back an intraday short: speculative income, not a holding — no lot for that part.
+        const cover = Decimal.min(qty, open.qty);
+        open.qty = open.qty.minus(cover);
+        if (open.qty.lessThanOrEqualTo(0)) shortToday.delete(sid);
+        qty = qty.minus(cover);
+        if (qty.lessThanOrEqualTo(0)) continue;
+      }
+      lots.push({ qty, costPerUnit: cost.div(d(tx.quantity)), date: tx.tradeDate });
     } else if (tx.type === "bonus") {
       if (qty.greaterThan(0)) lots.push({ qty, costPerUnit: ZERO, date: tx.tradeDate });
     } else if (tx.type === "split") {
@@ -95,7 +110,11 @@ export function fifoCapitalGains(txs: CanonicalTx[], opts: CapitalGainsOptions):
         remaining = remaining.minus(take);
         if (lot.qty.lessThanOrEqualTo(0)) lots.shift();
       }
-      // Any remaining un-matched quantity (an oversell with no open lot) contributes no CG row.
+      // Units with no lot contribute no CG row. Kept for the day in case they're bought back.
+      if (remaining.greaterThan(0)) {
+        const open = shortToday.get(sid);
+        shortToday.set(sid, { day, qty: (open?.qty ?? ZERO).plus(remaining) });
+      }
     }
   }
   return rows;

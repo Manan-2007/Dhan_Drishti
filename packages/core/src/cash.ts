@@ -74,3 +74,20 @@ export function cashBalanceAsOf(deltas: CashDelta[], currency: string, date: str
 export function hasCashAccounting(txs: CanonicalTx[]): boolean {
   return txs.some((t) => t.type === "deposit" || t.type === "withdrawal");
 }
+
+/**
+ * Accounts whose OWN ledger records deposits or withdrawals (key: account id, "" for entries with
+ * no account). Only their cash means anything: an account imported from a tradebook alone would
+ * show every purchase as money spent from nowhere — a large negative "cash" dragging net worth down.
+ */
+export function cashTrackedAccounts(txs: CanonicalTx[]): Set<string> {
+  const tracked = new Set<string>();
+  for (const t of txs) if (t.type === "deposit" || t.type === "withdrawal") tracked.add(t.accountId ?? "");
+  return tracked;
+}
+
+/** The entries of cash-tracked accounts only — what cash balances should be computed from. */
+export function cashTrackedTxs(txs: CanonicalTx[]): CanonicalTx[] {
+  const tracked = cashTrackedAccounts(txs);
+  return txs.filter((t) => tracked.has(t.accountId ?? ""));
+}

@@ -45,6 +45,7 @@ export function TwrCard() {
             <div className="text-xs text-muted-foreground">
               since {data.from} · {data.subPeriods} sub-period{data.subPeriods === 1 ? "" : "s"}
               {data.mode === "cash-inclusive" && <div className="text-success">cash-inclusive · dividends retained</div>}
+              {data.mode === "mixed" && <div>cash counted for accounts with deposits recorded</div>}
             </div>
           </div>
         ) : (
