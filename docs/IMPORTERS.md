@@ -85,8 +85,20 @@ the same hashes and imports 0 new rows. Re-uploads are always idempotent.
 - **Funds** & **Dividends** — a broker ledger's deposits/withdrawals, and a dividend/interest payout
   statement.
 
-**Holdings / price-seed** (kind `prices` — seeds current value without cost basis, or imports a
-holdings snapshot as buys): **Holdings** (generic), **Zerodha holdings** (`.xlsx`), **Dhan holdings**.
+**Holdings statements** (**Holdings** generic, **Zerodha holdings** `.xlsx`): what an account held on
+a day, stored in `holding_snapshots` — never added on top of the trades, which would count every
+share a tradebook already bought twice. The ledger gets only the difference, re-derived from the
+account's latest statement whenever its trades change, so files can arrive in any order:
+- more held than the trades explain → an **opening balance** dated the day before the trade history
+  starts, at the broker's average price (compared against the raw buys − sells, so it also covers
+  sales of shares bought before the history);
+- fewer → a **transfer out** on the statement date, at cost (no invented profit);
+- positions the trades show but the statement doesn't list are reported, not removed — a statement
+  can be one sheet of a workbook. Re-importing the same statement changes nothing.
+These derived rows (`source_broker = 'snapshot'`) can't be edited by hand. Statements imported
+before this existed (as buys) are converted once at startup.
+
+**Price seed** (kind `prices` — current value without cost basis): **Dhan holdings**.
 
 **Mutual-fund CAS PDF** (`cas`) — one password-protected CAMS / KFintech Consolidated Account
 Statement covers every AMC. The text is extracted (password usually the PAN), then each scheme's

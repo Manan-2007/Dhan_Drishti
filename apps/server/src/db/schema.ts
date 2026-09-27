@@ -256,6 +256,40 @@ export const manualAssets = sqliteTable(
   (t) => [index("idx_manual_assets_user").on(t.userId)],
 );
 
+/**
+ * A holdings statement: what one account (or, for an account-less import, one portfolio) held on
+ * a day. Deliberately NOT ledger rows. The trades already build most of those positions, so the
+ * ledger only gets the difference — opening balances and adjustments that `import/snapshot.ts`
+ * derives from the latest snapshot and re-derives whenever that account's trades change, so the
+ * order files arrive in never double-counts anything.
+ */
+export const holdingSnapshots = sqliteTable(
+  "holding_snapshots",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    portfolioId: text("portfolio_id")
+      .notNull()
+      .references(() => portfolios.id, { onDelete: "cascade" }),
+    accountId: text("account_id").references(() => accounts.id, { onDelete: "cascade" }),
+    /** One statement = one batch; its rows share `asOf`. */
+    importBatchId: text("import_batch_id")
+      .notNull()
+      .references(() => importBatches.id, { onDelete: "cascade" }),
+    securityId: text("security_id")
+      .notNull()
+      .references(() => securities.id, { onDelete: "restrict" }),
+    quantity: text("quantity").notNull(),
+    avgPrice: text("avg_price").notNull(),
+    currency: text("currency").notNull().default("INR"),
+    asOf: text("as_of").notNull(),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [index("idx_holding_snapshots_scope").on(t.userId, t.portfolioId, t.accountId)],
+);
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Portfolio = typeof portfolios.$inferSelect;
@@ -264,3 +298,4 @@ export type Security = typeof securities.$inferSelect;
 export type Transaction = typeof transactions.$inferSelect;
 export type AllocationTarget = typeof allocationTargets.$inferSelect;
 export type ManualAsset = typeof manualAssets.$inferSelect;
+export type HoldingSnapshot = typeof holdingSnapshots.$inferSelect;

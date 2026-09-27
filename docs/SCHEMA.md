@@ -80,6 +80,15 @@ name, asset_class (fd|ppf|epf|nps|savings|gold|real_estate|bond|other), region (
 currency, current_value (text), cost? (text), notes?, value_as_of? (YYYY-MM-DD), created_at,
 updated_at` · index(user_id). Values are user-maintained; they never touch the ledger.
 
+### holding_snapshots  (holdings statements — what an account held on a day)
+`id (pk), user_id (fk, cascade), portfolio_id (fk, cascade), account_id? (fk, cascade; NULL = the
+portfolio's account-less rows), import_batch_id (fk, cascade; one statement = one batch),
+security_id (fk, restrict), quantity (text), avg_price (text), currency, as_of, created_at` ·
+index(user_id, portfolio_id, account_id). Not ledger rows: the ledger gets only the difference
+from the account's trades — `transactions` with `source_broker = 'snapshot'` (opening balances
+dated before the trade history, transfers out at cost) — re-derived from the latest statement
+whenever that account's trades change. See `IMPORTERS.md`.
+
 ## Derived (NOT tables — computed by the calc engine / query layer)
 - **Holdings** per (scope, security): net_qty, invested, avg_cost, current_value,
   unrealised_pnl, realised_pnl, dividends, weight%, plus base-currency conversions and the

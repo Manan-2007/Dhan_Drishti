@@ -10,6 +10,7 @@ import { authed } from "../lib/routes.js";
 import type { FxProvider } from "../market/types.js";
 import { baseCurrencyOf, fxAtCost } from "../market/fx.js";
 import { getPortfolioOwned } from "./portfolios.js";
+import { refreshSnapshots, SNAPSHOT_SOURCE } from "../import/snapshot.js";
 
 const decimalStr = z
   .string()
@@ -53,6 +54,12 @@ const searchSchema = z.object({
   limit: z.coerce.number().int().min(1).max(500).default(100),
   offset: z.coerce.number().int().min(0).default(0),
 });
+
+/** Opening balances and adjustments come from a holdings statement and re-derive themselves. */
+function derivedGuard(tx: Transaction): void {
+  if (tx.sourceBroker === SNAPSHOT_SOURCE)
+    throw new BadRequestError("derived_row", "This entry comes from your holdings statement and updates by itself. Import a newer statement to change it.");
+}
 
 async function getTxOwned(db: DB, userId: string, id: string): Promise<Transaction> {
   const row = await db
@@ -210,7 +217,10 @@ export function registerTransactionRoutes(app: FastifyInstance, db: DB, fxProvid
     const userId = req.user!.id;
     const row = await validateAndBuild(db, userId, body);
     await withFxAtCost(userId, row);
-    await db.insert(transactions).values(row as typeof transactions.$inferInsert).run();
+    await db.transaction(async (trx) => {
+      await trx.insert(transactions).values(row as typeof transactions.$inferInsert).run();
+      await refreshSnapshots(trx, [{ userId, portfolioId: row.portfolioId as string, accountId: (row.accountId as string | null) ?? null }]);
+    });
     reply.code(201).send({ transaction: await getTxOwned(db, userId, row.id as string) });
   });
 
@@ -223,25 +233,36 @@ export function registerTransactionRoutes(app: FastifyInstance, db: DB, fxProvid
     const { id } = req.params as { id: string };
     const userId = req.user!.id;
     const existing = await getTxOwned(db, userId, id);
+    derivedGuard(existing);
     const patch = updateSchema.parse(req.body);
     // Re-validate the merged result so invariants still hold.
     const merged = { ...existing, ...patch, portfolioId: existing.portfolioId } as z.infer<typeof createSchema>;
     const rebuilt = await validateAndBuild(db, userId, merged);
     delete (rebuilt as Record<string, unknown>).id;
     delete (rebuilt as Record<string, unknown>).userId;
-    await db
-      .update(transactions)
-      .set(rebuilt)
-      .where(and(eq(transactions.id, id), eq(transactions.userId, userId)))
-      .run();
+    await db.transaction(async (trx) => {
+      await trx
+        .update(transactions)
+        .set(rebuilt)
+        .where(and(eq(transactions.id, id), eq(transactions.userId, userId)))
+        .run();
+      await refreshSnapshots(trx, [
+        { userId, portfolioId: existing.portfolioId, accountId: existing.accountId ?? null },
+        { userId, portfolioId: existing.portfolioId, accountId: (rebuilt.accountId as string | null | undefined) ?? null },
+      ]);
+    });
     return { transaction: await getTxOwned(db, userId, id) };
   });
 
   app.delete("/api/transactions/:id", opts, async (req, reply) => {
     const { id } = req.params as { id: string };
     const userId = req.user!.id;
-    await getTxOwned(db, userId, id);
-    await db.delete(transactions).where(and(eq(transactions.id, id), eq(transactions.userId, userId))).run();
+    const existing = await getTxOwned(db, userId, id);
+    derivedGuard(existing);
+    await db.transaction(async (trx) => {
+      await trx.delete(transactions).where(and(eq(transactions.id, id), eq(transactions.userId, userId))).run();
+      await refreshSnapshots(trx, [{ userId, portfolioId: existing.portfolioId, accountId: existing.accountId ?? null }]);
+    });
     reply.send({ ok: true });
   });
 }

@@ -12,6 +12,7 @@ import {
   HelpCircle,
   KeyRound,
   Loader2,
+  Layers,
   RotateCcw,
   Scale,
   ShieldCheck,
@@ -316,7 +317,7 @@ export function AddData() {
 }
 
 function unreadable(filename: string, message: string): UploadDetection {
-  return { filename, kind: "unrecognized", adapter: null, confidence: 0, reason: message, brokerFamily: null, accountRef: null, holderName: null, sheet: null, counts: null, priceRows: null, currency: null, suggestion: null, error: message };
+  return { filename, kind: "unrecognized", snapshot: false, adapter: null, confidence: 0, reason: message, brokerFamily: null, accountRef: null, holderName: null, sheet: null, counts: null, priceRows: null, currency: null, suggestion: null, error: message };
 }
 
 function DropZone({ compact, onChoose }: { compact: boolean; onChoose: () => void }) {
@@ -398,6 +399,7 @@ function verdict(it: Item): { label: string; tone: "gain" | "muted" | "warning" 
   switch (d.kind) {
     case "transactions":
       if ((d.counts?.toImport ?? 0) === 0) return { label: "Already imported", tone: "muted", icon: <CheckCircle2 /> };
+      if (d.snapshot) return { label: it.include ? "Balances" : "Skipped", tone: it.include ? "gain" : "muted", icon: <Layers /> };
       return { label: it.include ? "Will import" : "Skipped", tone: it.include ? "gain" : "muted", icon: <FileSpreadsheet /> };
     case "prices":
       return { label: it.include ? "Prices only" : "Skipped", tone: it.include ? "gain" : "muted", icon: <Tags /> };
@@ -456,7 +458,12 @@ function FileCard({
             <Badge variant={v.tone === "gain" ? "gain" : v.tone === "warning" ? "warning" : v.tone === "loss" ? "loss" : "muted"}>{v.label}</Badge>
           </div>
           <p className="mt-0.5 truncate text-sm text-muted-foreground">{what}</p>
-          {d?.kind === "transactions" && c && (
+          {d?.kind === "transactions" && d.snapshot && c && (
+            <p className="mt-2 text-sm text-muted-foreground">
+              <b className="text-foreground">{c.valid.toLocaleString("en-IN")}</b> positions. Checked against this account's trades: only shares they don't already show are added, never twice.
+            </p>
+          )}
+          {d?.kind === "transactions" && !d.snapshot && c && (
             <p className="mt-2 text-sm">
               <b>{c.toImport.toLocaleString("en-IN")}</b> new
               {c.duplicates > 0 && <span className="text-muted-foreground"> · {c.duplicates.toLocaleString("en-IN")} already in your ledger</span>}
@@ -636,6 +643,7 @@ function Done({ result, onMore }: { result: CommitManyResult; onMore: () => void
   const { data: accounts } = useAllAccounts();
   const brokerOf = (accountId: string | null) => brokerName(accounts?.find((a) => a.id === accountId)?.broker);
   const checks = result.files.filter((f) => f.reconcile);
+  const statements = result.files.filter((f) => f.snapshot && f.snapshot.notInStatement.length > 0);
   const imported = result.files.reduce((n, f) => n + f.imported, 0);
   const priced = result.files.reduce((n, f) => n + (f.prices?.seeded ?? 0), 0);
   const before = Number(result.before.netWorth);
@@ -674,6 +682,9 @@ function Done({ result, onMore }: { result: CommitManyResult; onMore: () => void
           </Button>
         </div>
       </div>
+      {statements.map((f) => (
+        <NotInStatement key={f.filename} broker={brokerOf(f.accountId)} filename={f.filename} s={f.snapshot!} />
+      ))}
       {checks.length > 0 && (
         <section className="space-y-2">
           <h2 className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">Checked against your broker</h2>
@@ -689,6 +700,8 @@ function Done({ result, onMore }: { result: CommitManyResult; onMore: () => void
             <span className="shrink-0 text-muted-foreground">
               {f.kind === "prices"
                 ? `${f.prices?.seeded ?? 0} prices`
+                : f.snapshot
+                  ? statementLine(f.snapshot)
                 : f.kind === "pnl_report"
                   ? f.imported > 0
                     ? `checked · ${f.imported} missing trade${f.imported === 1 ? "" : "s"} filled`
@@ -776,6 +789,44 @@ function BrokerCheck({ broker, filename, r }: { broker: string; filename: string
               </AnimatePresence>
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function statementLine(s: NonNullable<CommitManyResult["files"][number]["snapshot"]>): string {
+  const parts = [
+    s.opening > 0 && `${s.opening} opening balance${s.opening === 1 ? "" : "s"}`,
+    s.reduced > 0 && `${s.reduced} reduced`,
+  ].filter(Boolean);
+  return parts.length ? `balances · ${parts.join(" · ")}` : "balances · matches your trades";
+}
+
+/** Positions the trades say are held that the broker's statement doesn't list — likely sold since. */
+function NotInStatement({ broker, filename, s }: { broker: string; filename: string; s: NonNullable<CommitManyResult["files"][number]["snapshot"]> }) {
+  const shown = s.notInStatement.slice(0, 8);
+  const more = s.notInStatement.length - shown.length;
+  return (
+    <div className="rounded-2xl border bg-card p-4">
+      <div className="flex items-start gap-4">
+        <span className="mt-0.5 grid size-10 shrink-0 place-items-center rounded-full bg-raised text-warning [&_svg]:size-5">
+          <Layers />
+        </span>
+        <div className="min-w-0 flex-1 text-sm">
+          <p className="font-semibold">
+            {s.notInStatement.length} holding{s.notInStatement.length === 1 ? "" : "s"} from your trades {s.notInStatement.length === 1 ? "isn't" : "aren't"} on {broker}'s statement
+          </p>
+          <p className="mt-0.5 truncate text-muted-foreground">
+            {filename} · as of {dateShort(s.asOf)}
+          </p>
+          <p className="mt-2">
+            {shown.join(", ")}
+            {more > 0 && <span className="text-muted-foreground"> and {more} more</span>}
+          </p>
+          <p className="mt-1.5 text-muted-foreground">
+            They were most likely sold after your trade files end. Add the newer tradebook and they'll close on their own; until then they still count as held.
+          </p>
         </div>
       </div>
     </div>

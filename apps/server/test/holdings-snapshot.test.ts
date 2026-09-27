@@ -26,7 +26,7 @@ describe("holdings snapshot import", () => {
   // Dhan "Portfolio" export: quoted names + Indian comma grouping.
   const DHAN = ['"Name","Quantity","Avg Price","Last Traded","Investment"', '"APL Apollo Tubes",100,"1,643.34","2,139.90","1,64,333.90"'].join("\n");
 
-  it("imports Zerodha holdings as buys and seeds current value from LTP", async () => {
+  it("imports a holdings snapshot (no trades yet: every position opens) and seeds current value from LTP", async () => {
     const cookie = await signup("hs1");
     const pid = await mkPortfolio(cookie);
     const preview = (await post("/api/imports/check", cookie, { portfolioId: pid, broker: "holdings", filename: "z.csv", content: ZERODHA })).json();

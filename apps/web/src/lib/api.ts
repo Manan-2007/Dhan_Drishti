@@ -316,6 +316,8 @@ export interface AccountSuggestion {
 export interface UploadDetection {
   filename: string;
   kind: FileKind;
+  /** A holdings statement: checked against the account's trades, never added on top of them. */
+  snapshot: boolean;
   adapter: string | null;
   confidence: number;
   reason: string;
@@ -382,6 +384,8 @@ export interface CommitManyResult {
     accountId: string | null;
     prices?: { seeded: number; unmatchedCount: number };
     reconcile?: PnlReconcile;
+    /** A holdings statement: what it added beyond the trades, and what the trades hold that it doesn't list. */
+    snapshot?: { asOf: string; opening: number; reduced: number; notInStatement: string[] };
   }[];
   before: DropSnapshot;
   after: DropSnapshot;

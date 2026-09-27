@@ -13,6 +13,8 @@ import { parseHoldingPrices, seedPricesFromHoldings, type SeedPricesResult } fro
 import { parsePnlReport, reconcileWithPnlReport, type PnlReport, type ReconcileResult } from "./pnl-report.js";
 import { looksLikeXlsx, workbookToCsv } from "./xlsx.js";
 import type { NormalizedRow } from "./types.js";
+import { getAdapter } from "./registry.js";
+import { sameAsLatestSnapshot, type SnapshotSummary } from "./snapshot.js";
 
 /**
  * "Drop anything" import: identify each file with no hints, suggest whose account it is, then
@@ -38,6 +40,8 @@ export interface AccountSuggestion {
 
 export interface UploadDetection extends FileSniff {
   filename: string;
+  /** A holdings statement: checked against the account's trades, never added on top of them. */
+  snapshot: boolean;
   counts: Awaited<ReturnType<typeof countRows>> | null;
   priceRows: number | null;
   currency: string | null;
@@ -96,7 +100,7 @@ async function suggestAccount(db: Database, userId: string, sniff: FileSniff): P
 
 /** Identify one upload and preview what importing it would do. Writes nothing. */
 export async function detectUpload(db: DB, userId: string, file: UploadFile): Promise<UploadDetection> {
-  const base = { filename: file.filename, counts: null, priceRows: null, currency: null, suggestion: null, error: null };
+  const base = { filename: file.filename, snapshot: false, counts: null, priceRows: null, currency: null, suggestion: null, error: null };
   let sniff: FileSniff;
   try {
     sniff = sniffFile(file);
@@ -118,9 +122,14 @@ export async function detectUpload(db: DB, userId: string, file: UploadFile): Pr
 
   try {
     const { rows } = await resolveRows({ portfolioId: "", broker: sniff.adapter, filename: file.filename, content: file.content, encoding: file.encoding, casPassword: file.casPassword });
-    const counts = await countRows(db, userId, rows);
+    let counts = await countRows(db, userId, rows);
     const suggestion = await suggestAccount(db, userId, sniff);
-    return { ...base, ...sniff, counts, currency: mainCurrency(rows), suggestion };
+    const snapshot = !!getAdapter(sniff.adapter)?.snapshot;
+    // A statement isn't matched row by row against trades; it's already in if it's the account's latest.
+    if (snapshot && suggestion && (await sameAsLatestSnapshot(db, { userId, portfolioId: suggestion.portfolioId, accountId: suggestion.accountId }, rows))) {
+      counts = { ...counts, duplicates: counts.valid, toImport: 0 };
+    }
+    return { ...base, ...sniff, snapshot, counts, currency: mainCurrency(rows), suggestion };
   } catch (err) {
     const code = err instanceof AppError ? err.code : null;
     if (code === "cas_password") return { ...base, ...sniff, kind: "needs_password", reason: "This statement is password-protected (usually your PAN in capitals)" };
@@ -159,6 +168,8 @@ export interface CommitFileResult {
   accountId: string | null;
   prices?: Pick<SeedPricesResult, "seeded" | "unmatchedCount">;
   reconcile?: ReconcileResult;
+  /** A holdings statement: what it added beyond the trades, and what the trades hold that it doesn't list. */
+  snapshot?: SnapshotSummary;
 }
 
 interface Snapshot {
@@ -256,7 +267,11 @@ export async function commitMany(db: DB, userId: string, items: CommitItem[]) {
     };
 
     const out: CommitFileResult[] = parsed.map(({ item }) => ({ filename: item.filename, kind: item.kind, imported: 0, duplicates: 0, replaced: 0, invalid: 0, accountId: null }));
-    for (const [i, { item, rows }] of parsed.entries()) {
+    // Trades first, holdings statements after them: a statement is checked against the trades, so
+    // its summary (what it added, what it doesn't list) is only final once they're all in.
+    const isStatement = (item: CommitItem) => !!(item.adapter && getAdapter(item.adapter)?.snapshot);
+    const order = [...parsed.entries()].sort(([, a], [, b]) => Number(isStatement(a.item)) - Number(isStatement(b.item)));
+    for (const [i, { item, rows }] of order) {
       if (item.kind !== "transactions") continue;
       const { accountId, portfolioId } = await resolveTarget(item.target!);
       const params: ImportParams = {
@@ -274,7 +289,7 @@ export async function commitMany(db: DB, userId: string, items: CommitItem[]) {
         replace: false,
       };
       const r = await commitRowsInto(trx, userId, params, rows);
-      out[i] = { filename: item.filename, kind: "transactions", imported: r.imported, duplicates: r.c.duplicates, replaced: r.replaced, invalid: r.c.invalidRows.length, accountId };
+      out[i] = { filename: item.filename, kind: "transactions", imported: r.imported, duplicates: r.c.duplicates, replaced: r.replaced, invalid: r.c.invalidRows.length, accountId, ...(isStatement(item) && r.snapshot ? { snapshot: r.snapshot } : {}) };
     }
     // P&L reports last: they check (and complete) the ledger the trade files above just wrote.
     for (const [i, { item, report }] of parsed.entries()) {

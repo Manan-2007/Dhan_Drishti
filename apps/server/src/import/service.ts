@@ -1,5 +1,6 @@
 import { randomUUID, createHash } from "node:crypto";
 import { and, eq, gte, lte, inArray } from "drizzle-orm";
+import { d } from "@dhan-drishti/core";
 import type { DB, Database } from "../db/index.js";
 import { transactions, importBatches, securities, accounts, quotes } from "../db/schema.js";
 import { BadRequestError, NotFoundError } from "../lib/errors.js";
@@ -9,6 +10,7 @@ import { parseCsv } from "./csv.js";
 import { looksLikeXlsx, workbookToCsv } from "./xlsx.js";
 import { extractCasText, parseCasTransactions } from "./cas.js";
 import { getAdapter, detectBest } from "./registry.js";
+import { hasSnapshot, reconcileSnapshots, storeSnapshot, type Scope, type SnapshotPosition, type SnapshotSummary } from "./snapshot.js";
 import type { GenericMapping } from "./adapters/generic.js";
 import type { BrokerAdapter, NormalizedRow, NormalizedTx } from "./types.js";
 
@@ -287,87 +289,128 @@ export async function commitImport(db: DB, userId: string, params: ImportParams)
   };
 }
 
+/** Find-or-create each distinct security once per file (a file usually has many rows per security). */
+function securityResolver(trx: Database) {
+  const cache = new Map<string, string>();
+  const identityOf = (s: NonNullable<NormalizedTx["security"]>) => (s.isin ? `i:${s.isin}` : s.exchange ? `s:${s.symbol}|${s.exchange}` : `s:${s.symbol}`);
+  return async (s: NonNullable<NormalizedTx["security"]>, currency: string): Promise<string> => {
+    const key = identityOf(s);
+    const cached = cache.get(key);
+    if (cached) return cached;
+    const { security } = await findOrCreateSecurity(trx, {
+      symbol: s.symbol,
+      name: s.name ?? s.symbol,
+      isin: s.isin,
+      assetClass: s.assetClass,
+      exchange: s.exchange,
+      sector: s.sector,
+      subSector: s.subSector,
+      currency,
+    });
+    cache.set(key, security.id);
+    return security.id;
+  };
+}
+
+const CHUNK = 100; // keep well under SQLite's bound-variable limit
+
 /**
  * Write one parsed file into the ledger, using the caller's transaction (so several files can
  * commit or roll back together). Records the import batch, resolves each security once, and
  * bulk-inserts transactions plus any quotes a holdings snapshot carries.
+ *
+ * A holdings statement (an adapter marked `snapshot`) is stored as a snapshot instead, and the
+ * ledger gets only what it adds beyond the trades (see snapshot.ts). Any other file re-derives
+ * those rows afterwards if the account has a statement, so trades and statements can arrive in
+ * any order.
  */
 export async function commitRowsInto(trx: Database, userId: string, params: ImportParams, rows: NormalizedRow[]) {
+  const scope: Scope = { userId, portfolioId: params.portfolioId, accountId: params.accountId ?? null };
+  const isSnapshot = !!getAdapter(params.broker, params.mapping)?.snapshot;
   // The period the file covers, read from its own transaction dates (an explicit from/to may
   // still override it for headless callers). Used by replace mode to clear the overlapping range.
-  const period = params.from && params.to ? { from: params.from, to: params.to } : fileDateRange(rows);
+  const period = isSnapshot ? null : params.from && params.to ? { from: params.from, to: params.to } : fileDateRange(rows);
   const fileHash = createHash("sha256").update(params.content).digest("hex");
   const batchId = randomUUID();
-  {
-    // Overwrite mode: clear existing rows from this source over the file's period, so re-uploading
-    // an overlapping range (e.g. a full-year file over monthly ones) doesn't duplicate. Deleting
-    // before classify means the new rows aren't treated as duplicates of the ones they replace.
-    // Scoped to the account when there is one: two accounts at the same broker never touch each
-    // other's rows.
-    let replaced = 0;
-    if (params.replace && period) {
-      const res = await trx
-        .delete(transactions)
-        .where(
-          and(
-            eq(transactions.userId, userId),
-            eq(transactions.portfolioId, params.portfolioId),
-            eq(transactions.sourceBroker, params.broker),
-            params.accountId ? eq(transactions.accountId, params.accountId) : undefined,
-            gte(transactions.tradeDate, dayStart(period.from)),
-            lte(transactions.tradeDate, dayEnd(period.to)),
-          ),
-        )
-        .run();
-      replaced = res.rowsAffected ?? 0;
-    }
+  const resolveSecurityId = securityResolver(trx);
 
-    const c = await classify(trx, userId, rows);
-
-    await trx
-      .insert(importBatches)
-      .values({
-        id: batchId,
-        userId,
-        portfolioId: params.portfolioId,
-        accountId: params.accountId ?? null,
-        broker: params.broker,
-        filename: params.filename,
-        fileHash,
-        status: "committed",
-        rowsTotal: rows.length,
-        rowsImported: c.toInsert.length,
-        rowsSkipped: c.duplicates,
-        rowsInvalid: c.invalidRows.length,
-      })
+  // Overwrite mode: clear existing rows from this source over the file's period, so re-uploading
+  // an overlapping range (e.g. a full-year file over monthly ones) doesn't duplicate. Deleting
+  // before classify means the new rows aren't treated as duplicates of the ones they replace.
+  // Scoped to the account when there is one: two accounts at the same broker never touch each
+  // other's rows.
+  let replaced = 0;
+  if (params.replace && period) {
+    const res = await trx
+      .delete(transactions)
+      .where(
+        and(
+          eq(transactions.userId, userId),
+          eq(transactions.portfolioId, params.portfolioId),
+          eq(transactions.sourceBroker, params.broker),
+          params.accountId ? eq(transactions.accountId, params.accountId) : undefined,
+          gte(transactions.tradeDate, dayStart(period.from)),
+          lte(transactions.tradeDate, dayEnd(period.to)),
+        ),
+      )
       .run();
+    replaced = res.rowsAffected ?? 0;
+  }
 
-    // Resolve each DISTINCT security once (a file usually has many trades per security), then
-    // bulk-insert the transactions and any seeded quotes in chunks — far fewer statements than a
-    // find-or-create + insert per row. Securities are created eagerly so the FK is satisfied.
-    const secByIdentity = new Map<string, string>();
-    const identityOf = (s: NonNullable<NormalizedTx["security"]>) =>
-      s.isin ? `i:${s.isin}` : s.exchange ? `s:${s.symbol}|${s.exchange}` : `s:${s.symbol}`;
-    const resolveSecurityId = async (s: NonNullable<NormalizedTx["security"]>, currency: string): Promise<string> => {
-      const key = identityOf(s);
-      const cached = secByIdentity.get(key);
-      if (cached) return cached;
-      const { security } = await findOrCreateSecurity(trx, {
-        symbol: s.symbol,
-        name: s.name ?? s.symbol,
-        isin: s.isin,
-        assetClass: s.assetClass,
-        exchange: s.exchange,
-        sector: s.sector,
-        subSector: s.subSector,
-        currency,
-      });
-      secByIdentity.set(key, security.id);
-      return security.id;
-    };
+  const c: Classified = isSnapshot
+    ? { toInsert: [], invalidRows: rows.flatMap((r) => (r.ok ? [] : [{ rowIndex: r.rowIndex, error: r.error }])), duplicates: 0, newSecuritySymbols: new Set() }
+    : await classify(trx, userId, rows);
 
+  await trx
+    .insert(importBatches)
+    .values({
+      id: batchId,
+      userId,
+      portfolioId: params.portfolioId,
+      accountId: params.accountId ?? null,
+      broker: params.broker,
+      filename: params.filename,
+      fileHash,
+      status: "committed",
+      rowsTotal: rows.length,
+      rowsImported: c.toInsert.length,
+      rowsSkipped: c.duplicates,
+      rowsInvalid: c.invalidRows.length,
+    })
+    .run();
+
+  const quoteRows: (typeof quotes.$inferInsert)[] = [];
+  const quoteFor = (securityId: string, price: string | undefined, currency: string) => {
+    // A holdings snapshot carries a current price → seed a quote so value shows without a refresh.
+    if (price) quoteRows.push({ id: randomUUID(), securityId, price, prevClose: null, currency, asOf: new Date().toISOString(), provider: "import" });
+  };
+
+  let imported = 0;
+  let snapshot: SnapshotSummary | null = null;
+  if (isSnapshot) {
+    // One position per security (a workbook can list one in two sheets), weighted by quantity.
+    const bySec = new Map<string, SnapshotPosition>();
+    for (const r of rows) {
+      if (!r.ok || !r.tx.security) continue;
+      const securityId = await resolveSecurityId(r.tx.security, r.tx.currency);
+      quoteFor(securityId, r.tx.quotePrice, r.tx.currency);
+      const prev = bySec.get(securityId);
+      const qty = d(r.tx.quantity);
+      if (!prev) bySec.set(securityId, { securityId, quantity: qty.toFixed(), avgPrice: d(r.tx.price).toFixed(), currency: r.tx.currency });
+      else {
+        const total = d(prev.quantity).plus(qty);
+        const cost = d(prev.quantity).times(prev.avgPrice).plus(qty.times(r.tx.price));
+        bySec.set(securityId, { ...prev, quantity: total.toFixed(), avgPrice: total.isZero() ? prev.avgPrice : cost.div(total).toFixed() });
+      }
+    }
+    const stored = await storeSnapshot(trx, scope, batchId, new Date().toISOString(), [...bySec.values()]);
+    snapshot = await reconcileSnapshots(trx, scope);
+    // The same statement again changes nothing: report it as already there.
+    if (stored) imported = snapshot ? snapshot.opening + snapshot.reduced : 0;
+    else c.duplicates = bySec.size;
+    await trx.update(importBatches).set({ rowsImported: imported }).where(eq(importBatches.id, batchId)).run();
+  } else {
     const txRows: (typeof transactions.$inferInsert)[] = [];
-    const quoteRows: (typeof quotes.$inferInsert)[] = [];
     for (const { tx, rawHash } of c.toInsert) {
       const securityId = tx.security ? await resolveSecurityId(tx.security, tx.currency) : null;
       txRows.push({
@@ -390,17 +433,16 @@ export async function commitRowsInto(trx: Database, userId: string, params: Impo
         rawRowHash: rawHash,
         sourceBroker: params.broker,
       });
-      // A holdings snapshot carries a current price → seed a quote so value shows without a refresh.
-      if (tx.quotePrice && securityId) {
-        quoteRows.push({ id: randomUUID(), securityId, price: tx.quotePrice, prevClose: null, currency: tx.currency, asOf: new Date().toISOString(), provider: "import" });
-      }
+      if (securityId) quoteFor(securityId, tx.quotePrice, tx.currency);
     }
-    const CHUNK = 100; // keep well under SQLite's bound-variable limit
     for (let i = 0; i < txRows.length; i += CHUNK) await trx.insert(transactions).values(txRows.slice(i, i + CHUNK)).run();
-    for (let i = 0; i < quoteRows.length; i += CHUNK) await trx.insert(quotes).values(quoteRows.slice(i, i + CHUNK)).run();
-
-    return { c, imported: txRows.length, replaced, batchId };
+    imported = txRows.length;
+    // New trades change what a statement adds on top of them.
+    if (imported > 0 && (await hasSnapshot(trx, scope))) snapshot = await reconcileSnapshots(trx, scope);
   }
+  for (let i = 0; i < quoteRows.length; i += CHUNK) await trx.insert(quotes).values(quoteRows.slice(i, i + CHUNK)).run();
+
+  return { c, imported, replaced, batchId, snapshot };
 }
 
 export async function getBatch(db: DB, userId: string, id: string) {
