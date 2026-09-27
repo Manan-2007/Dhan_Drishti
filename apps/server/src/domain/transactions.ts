@@ -8,7 +8,7 @@ import { transactions, securities, accounts, type Transaction } from "../db/sche
 import { BadRequestError, NotFoundError } from "../lib/errors.js";
 import { authed } from "../lib/routes.js";
 import type { FxProvider } from "../market/types.js";
-import { baseCurrencyOf, fxAtCost } from "../market/fx.js";
+import { baseCurrencyOf, fxAtCost, rateMap } from "../market/fx.js";
 import { getPortfolioOwned } from "./portfolios.js";
 import { refreshSnapshots, SNAPSHOT_SOURCE } from "../import/snapshot.js";
 
@@ -49,11 +49,54 @@ const searchSchema = z.object({
   accountId: z.string().optional(),
   securityId: z.string().optional(),
   type: z.enum(TX_TYPES).optional(),
+  /** Several types at once, comma-separated ("buy,sell") — how the Activity screen's groups filter. */
+  types: z
+    .string()
+    .optional()
+    .transform((s) => (s ? s.split(",").map((t) => t.trim()).filter(Boolean) : undefined))
+    .pipe(z.array(z.enum(TX_TYPES)).optional()),
+  /** Text to find in the security's symbol or name. */
+  q: z.string().trim().max(80).optional(),
+  /** "1" adds totals over every matching row (not just this page), in the base currency. */
+  summary: z.enum(["0", "1"]).optional(),
   from: z.string().optional(),
   to: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
   offset: z.coerce.number().int().min(0).default(0),
 });
+
+/**
+ * Totals for a filtered stretch of activity, in the base currency: what was bought, sold, earned
+ * and paid in charges. A foreign row converts at its FX-at-cost, else today's rate; one with
+ * neither is left out and flagged. Statement-derived rows (opening balances) aren't trades, so
+ * they don't count as buying or selling.
+ */
+async function activitySummary(db: DB, userId: string, rows: Transaction[]) {
+  const base = await baseCurrencyOf(db, userId);
+  const foreign = [...new Set(rows.map((r) => r.currency).filter((c) => c !== base))];
+  const today = await rateMap(db, foreign, base);
+  let bought = d("0");
+  let sold = d("0");
+  let income = d("0");
+  let charges = d("0");
+  let unconverted = 0;
+  for (const r of rows) {
+    const rate = r.currency === base ? d("1") : r.fxRateToBase ? d(r.fxRateToBase) : today.get(r.currency) ?? null;
+    if (!rate) {
+      unconverted++;
+      continue;
+    }
+    const gross = d(r.grossAmount).abs().times(rate);
+    const fees = d(r.fees).plus(r.taxes).times(rate);
+    const trade = r.sourceBroker !== SNAPSHOT_SOURCE;
+    if (r.type === "buy" && trade) bought = bought.plus(gross);
+    else if (r.type === "sell" && trade) sold = sold.plus(gross);
+    else if (r.type === "dividend" || r.type === "interest") income = income.plus(gross);
+    else if (r.type === "fee" || r.type === "tax") charges = charges.plus(gross);
+    if (r.type === "buy" || r.type === "sell") charges = charges.plus(fees);
+  }
+  return { count: rows.length, baseCurrency: base, bought: bought.toFixed(2), sold: sold.toFixed(2), income: income.toFixed(2), charges: charges.toFixed(2), unconverted };
+}
 
 /** Opening balances and adjustments come from a holdings statement and re-derive themselves. */
 function derivedGuard(tx: Transaction): void {
@@ -162,6 +205,13 @@ export function registerTransactionRoutes(app: FastifyInstance, db: DB, fxProvid
     if (q.accountId) clauses.push(eq(transactions.accountId, q.accountId));
     if (q.securityId) clauses.push(eq(transactions.securityId, q.securityId));
     if (q.type) clauses.push(eq(transactions.type, q.type));
+    if (q.types?.length) clauses.push(inArray(transactions.type, q.types));
+    if (q.q) {
+      const like = `%${q.q.toLowerCase().replace(/[%_]/g, (c) => `\\${c}`)}%`;
+      clauses.push(
+        sql`${transactions.securityId} in (select ${securities.id} from ${securities} where lower(${securities.symbol}) like ${like} escape '\\' or lower(${securities.name}) like ${like} escape '\\')`,
+      );
+    }
     if (q.from) clauses.push(gte(transactions.tradeDate, new Date(q.from).toISOString()));
     if (q.to) clauses.push(lte(transactions.tradeDate, new Date(q.to).toISOString()));
     const where = and(...clauses);
@@ -209,7 +259,8 @@ export function registerTransactionRoutes(app: FastifyInstance, db: DB, fxProvid
         : null,
     }));
 
-    return { transactions: enriched, total, limit: q.limit, offset: q.offset };
+    const summary = q.summary === "1" ? await activitySummary(db, userId, await db.select().from(transactions).where(where).all()) : undefined;
+    return { transactions: enriched, total, limit: q.limit, offset: q.offset, ...(summary ? { summary } : {}) };
   });
 
   app.post("/api/transactions", opts, async (req, reply) => {

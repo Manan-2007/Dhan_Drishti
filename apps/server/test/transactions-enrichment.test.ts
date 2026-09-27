@@ -66,3 +66,24 @@ describe("GET /api/transactions — enrichment", () => {
     expect(symbols).toEqual(["INFY", "TCS"]);
   });
 });
+
+describe("activity search, groups and totals", () => {
+  it("finds by name, filters by several types, and totals every match in the base currency", async () => {
+    const cookie = await signup("act1");
+    const pid = (await post("/api/portfolios", cookie, { name: "P" })).json().portfolio.id;
+    const infy = (await post("/api/securities", cookie, { symbol: "INFY", name: "Infosys Ltd", assetClass: "equity" })).json().security.id;
+    const tcs = (await post("/api/securities", cookie, { symbol: "TCS", name: "Tata Consultancy", assetClass: "equity" })).json().security.id;
+    await post("/api/transactions", cookie, { portfolioId: pid, securityId: infy, type: "buy", tradeDate: "2025-04-02", quantity: "10", price: "1500", fees: "20" });
+    await post("/api/transactions", cookie, { portfolioId: pid, securityId: infy, type: "sell", tradeDate: "2025-05-02", quantity: "4", price: "1600" });
+    await post("/api/transactions", cookie, { portfolioId: pid, securityId: infy, type: "dividend", tradeDate: "2025-06-02", grossAmount: "180" });
+    await post("/api/transactions", cookie, { portfolioId: pid, securityId: tcs, type: "buy", tradeDate: "2025-04-03", quantity: "1", price: "3500" });
+
+    const r = (await get("/api/transactions?q=infos&types=buy,sell&summary=1", cookie)).json();
+    expect(r.total).toBe(2);
+    expect(r.transactions.every((t: { security: { symbol: string } }) => t.security.symbol === "INFY")).toBe(true);
+    expect(r.summary).toMatchObject({ count: 2, bought: "15000.00", sold: "6400.00", income: "0.00", charges: "20.00", baseCurrency: "INR" });
+
+    // A LIKE wildcard in the search is taken literally.
+    expect((await get("/api/transactions?q=%25", cookie)).json().total).toBe(0);
+  });
+});

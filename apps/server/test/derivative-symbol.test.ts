@@ -28,6 +28,20 @@ describe("parseDerivativeSymbol — Zerodha raw NSE trading symbols", () => {
   it("returns null for a plain equity symbol", () => {
     expect(parseDerivativeSymbol("RELIANCE")).toBeNull();
     expect(parseDerivativeSymbol("HDFCBANK")).toBeNull();
+    expect(parseDerivativeSymbol("MON100")).toBeNull();
+    expect(parseDerivativeSymbol("NIFTYBEES")).toBeNull();
+  });
+
+  it("parses a weekly option with its exact expiry day", () => {
+    expect(parseDerivativeSymbol("NIFTY2560524000CE")).toEqual({ kind: "option", underlying: "NIFTY", expiryISO: "2025-06-05", strike: 24000, optionType: "CE" });
+    expect(parseDerivativeSymbol("NIFTY25O0924500PE")).toMatchObject({ expiryISO: "2025-10-09", strike: 24500, optionType: "PE" });
+  });
+
+  it("reads underlyings with digits, '&' or '-', and decimal strikes", () => {
+    expect(parseDerivativeSymbol("M&M25JUNFUT")).toMatchObject({ kind: "future", underlying: "M&M" });
+    expect(parseDerivativeSymbol("BAJAJ-AUTO25JUN9000CE")).toMatchObject({ underlying: "BAJAJ-AUTO", strike: 9000 });
+    expect(parseDerivativeSymbol("360ONE25JUN1200PE")).toMatchObject({ underlying: "360ONE", strike: 1200 });
+    expect(parseDerivativeSymbol("IDEA25JUN7.5CE")).toMatchObject({ underlying: "IDEA", strike: 7.5 });
   });
 });
 

@@ -8,7 +8,7 @@ import { assetColor } from "@/lib/assetColors";
 import { assetClassLabel, compactMoney } from "@/lib/format";
 import type { AllocationSlice } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { Empty } from "./Positions";
+import { Empty } from "@/components/kit/Empty";
 
 type Dim = "asset" | "sector" | "currency" | "region";
 const DIMS: { value: Dim; label: string }[] = [

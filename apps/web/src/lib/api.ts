@@ -67,6 +67,24 @@ export interface Transaction {
   security: { id: string; symbol: string; name: string; isin: string | null; assetClass: string; sector: string | null; exchange: string | null } | null;
   account: { id: string; name: string; broker: string } | null;
 }
+/** Totals over every entry matching an Activity filter, in the base currency. */
+export interface ActivitySummary {
+  count: number;
+  baseCurrency: string;
+  bought: string;
+  sold: string;
+  income: string;
+  charges: string;
+  /** Foreign entries with no exchange rate yet, left out of the totals. */
+  unconverted: number;
+}
+export interface ActivityPage {
+  transactions: Transaction[];
+  total: number;
+  limit: number;
+  offset: number;
+  summary?: ActivitySummary;
+}
 export interface HoldingRow {
   security: { id: string; symbol: string; name: string; assetClass: string; sector: string | null; subSector: string | null; currency: string };
   netQty: string;
@@ -167,6 +185,8 @@ export interface HoldingsResponse {
     openPositions: number;
     pricedPositions: number;
     allPriced: boolean;
+    /** Holdings with sales of shares bought before the imported history. */
+    soldWithoutPurchase: number;
   };
   manualAssets: ManualAsset[];
   allocation: {

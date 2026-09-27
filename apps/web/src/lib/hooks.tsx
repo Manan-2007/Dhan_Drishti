@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { api, type Portfolio, type Account, type HoldingsResponse, type Transaction, type ImportBatch, type NetWorthSeries, type RebalanceResponse, type RebalanceDimension, type ManualAssetsResult, type CapitalGainsReport, type SecurityDetail } from "./api.js";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { api, type ActivityPage, type Portfolio, type Account, type HoldingsResponse, type Transaction, type ImportBatch, type NetWorthSeries, type RebalanceResponse, type RebalanceDimension, type ManualAssetsResult, type CapitalGainsReport, type SecurityDetail } from "./api.js";
 
 export function useCapitalGains(portfolioId: string | null) {
   const qs = portfolioId ? `?portfolioId=${portfolioId}` : "";
@@ -77,6 +77,35 @@ export function useHoldings(portfolioId: string | null) {
   return useQuery({
     queryKey: ["holdings", portfolioId],
     queryFn: () => api.get<HoldingsResponse>(`/api/holdings${qs}`),
+  });
+}
+
+export interface ActivityFilter {
+  portfolioId: string | null;
+  accountId?: string;
+  types?: string[];
+  q?: string;
+  from?: string;
+  to?: string;
+}
+
+/** The Activity timeline: newest first, a page at a time, with totals for the whole filter. */
+export function useActivity(filter: ActivityFilter, pageSize = 150) {
+  return useInfiniteQuery({
+    queryKey: ["transactions", "activity", filter, pageSize],
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) => {
+      const search = new URLSearchParams({ limit: String(pageSize), offset: String(pageParam) });
+      if (filter.portfolioId) search.set("portfolioId", filter.portfolioId);
+      if (filter.accountId) search.set("accountId", filter.accountId);
+      if (filter.types?.length) search.set("types", filter.types.join(","));
+      if (filter.q) search.set("q", filter.q);
+      if (filter.from) search.set("from", filter.from);
+      if (filter.to) search.set("to", filter.to);
+      if (pageParam === 0) search.set("summary", "1");
+      return api.get<ActivityPage>(`/api/transactions?${search.toString()}`);
+    },
+    getNextPageParam: (last) => (last.offset + last.transactions.length < last.total ? last.offset + last.transactions.length : undefined),
   });
 }
 

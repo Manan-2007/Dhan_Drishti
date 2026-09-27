@@ -16,7 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 const Home = lazy(() => import("@/pages/home/Home").then((m) => ({ default: m.Home })));
 const Positions = lazy(() => import("@/pages/portfolio/Positions").then((m) => ({ default: m.Positions })));
 const Allocation = lazy(() => import("@/pages/portfolio/Allocation").then((m) => ({ default: m.Allocation })));
-const Transactions = lazy(() => import("./pages/Transactions.js").then((m) => ({ default: m.Transactions })));
+const Activity = lazy(() => import("@/pages/activity/Activity").then((m) => ({ default: m.Activity })));
 const Analytics = lazy(() => import("./pages/Analytics.js").then((m) => ({ default: m.Analytics })));
 const Rebalance = lazy(() => import("./pages/Rebalance.js").then((m) => ({ default: m.Rebalance })));
 const Dividends = lazy(() => import("./pages/Dividends.js").then((m) => ({ default: m.Dividends })));
@@ -89,13 +89,13 @@ function Gate() {
                       title="Activity"
                       lead="Everything that happened: trades, income and cash."
                       tabs={[
-                        { label: "All activity", to: "/activity", end: true },
-                        { label: "Income", to: "/activity/income" },
+                        { label: "Timeline", to: "/activity", end: true },
+                        { label: "Dividends", to: "/activity/income" },
                       ]}
                     />
                   }
                 >
-                  <Route index element={<Lazy><Transactions /></Lazy>} />
+                  <Route index element={<Lazy><Activity /></Lazy>} />
                   <Route path="income" element={<Lazy><Dividends /></Lazy>} />
                 </Route>
                 <Route

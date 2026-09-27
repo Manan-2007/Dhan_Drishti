@@ -16,6 +16,8 @@ import { assetColor } from "@/lib/assetColors";
 import { ago, assetClassLabel, compactMoney, money, num, signedMoney, signedPct } from "@/lib/format";
 import type { HoldingRow, HoldingsResponse } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { Panel } from "@/components/kit/Panel";
+import { displayName } from "@/lib/instrument";
 
 const RANGES: { value: NetWorthRange; label: string }[] = [
   { value: "1m", label: "1M" },
@@ -33,18 +35,6 @@ function baseDayChange(h: HoldingRow): number | null {
   const base = num(h.baseCurrentValue);
   if (local === null || base === null || local === 0) return change;
   return change * (base / local);
-}
-
-function Panel({ title, action, children, className }: { title: string; action?: ReactNode; children: ReactNode; className?: string }) {
-  return (
-    <section className={cn("rounded-2xl border bg-card p-5", className)}>
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">{title}</h2>
-        {action}
-      </div>
-      {children}
-    </section>
-  );
 }
 
 interface Attention {
@@ -94,12 +84,12 @@ function useAttention(data: HoldingsResponse | undefined): Attention[] {
       action: refreshBtn,
     });
   }
-  const missingBuys = data.holdings.filter((h) => h.hasOversell && Number(h.netQty) >= 0 && h.security.assetClass !== "other").length;
+  const missingBuys = s.soldWithoutPurchase ?? 0;
   if (missingBuys > 0) {
     items.push({
       id: "history",
       icon: <FileWarning />,
-      text: `${missingBuys} holding${missingBuys === 1 ? " was" : "s were"} sold more than was bought — an older file may be missing`,
+      text: `${missingBuys} holding${missingBuys === 1 ? " was" : "s were"} sold that ${missingBuys === 1 ? "was" : "were"} bought before your files start, so their profit isn't counted. An older statement fixes that.`,
       action: <Button size="xs" variant="outline" onClick={() => navigate("/accounts")}><Upload /> Add files</Button>,
     });
   }
@@ -267,7 +257,7 @@ export function Home() {
                   <li key={h.security.id}>
                     <Link to={`/portfolio/security/${h.security.id}`} className="-mx-2 flex items-center justify-between gap-3 rounded-xl px-2 py-2.5 transition-colors hover:bg-raised">
                       <span className="min-w-0">
-                        <span className="block truncate text-sm font-semibold">{h.security.symbol}</span>
+                        <span className="block truncate text-sm font-semibold">{displayName(h.security)}</span>
                         <span className="block truncate text-xs text-muted-foreground">{assetClassLabel(h.security.assetClass)}{h.security.sector ? ` · ${h.security.sector}` : ""}</span>
                       </span>
                       <span className={cn("shrink-0 text-sm font-semibold", change >= 0 ? "text-gain" : "text-loss")}>{signedMoney(change, data.baseCurrency)}</span>

@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
@@ -15,6 +15,9 @@ import { assetColor } from "@/lib/assetColors";
 import { ago, assetClassLabel, compactMoney, money, num, qty, signedMoney, signedPct } from "@/lib/format";
 import type { HoldingRow } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { Empty } from "@/components/kit/Empty";
+import { Stat } from "@/components/kit/Stat";
+import { readableContract } from "@/lib/instrument";
 
 type SortKey = "security" | "value" | "invested" | "pnl" | "pnlPct" | "today" | "weight";
 
@@ -272,17 +275,18 @@ function PositionCells({ h, totalValue }: { h: HoldingRow; totalValue: number })
   const weight = value !== null && totalValue > 0 ? value / totalValue : null;
   const pnl = num(h.baseUnrealisedPnl);
   const cur = h.security.currency;
+  const contract = readableContract(h.security.symbol);
   return (
     <>
       <td className="max-w-[280px] px-3 py-3">
         <span className="flex items-center gap-2">
-          <span className="truncate font-semibold">{h.security.symbol}</span>
+          <span className="truncate font-semibold" title={h.security.symbol}>{contract?.title ?? h.security.symbol}</span>
           {short && <Badge variant="warning">short</Badge>}
           {closed && <Badge variant="muted">closed</Badge>}
         </span>
         <span className="block truncate text-xs text-muted-foreground">
-          {h.security.name !== h.security.symbol ? h.security.name : assetClassLabel(h.security.assetClass)}
-          {h.security.sector ? ` · ${h.security.sector}` : ""}
+          {contract ? contract.expiry : h.security.name !== h.security.symbol ? h.security.name : assetClassLabel(h.security.assetClass)}
+          {!contract && h.security.sector ? ` · ${h.security.sector}` : ""}
         </span>
       </td>
       <td className="px-3 py-3 text-right whitespace-nowrap">{closed ? "—" : qty(h.netQty)}</td>
@@ -315,25 +319,5 @@ function PositionCells({ h, totalValue }: { h: HoldingRow; totalValue: number })
       </td>
       <td className="px-3 py-3 text-right whitespace-nowrap text-muted-foreground">{weight === null ? "—" : `${(weight * 100).toFixed(1)}%`}</td>
     </>
-  );
-}
-
-function Stat({ label, value, sub, tone, title }: { label: string; value: string; sub?: string; tone?: "gain" | "loss"; title?: string }) {
-  return (
-    <div className="rounded-2xl border bg-card px-5 py-4" title={title}>
-      <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{label}</p>
-      <p className={cn("mt-1.5 text-2xl font-semibold tracking-tight", tone === "gain" && "text-gain", tone === "loss" && "text-loss")}>{value}</p>
-      {sub && <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>}
-    </div>
-  );
-}
-
-export function Empty({ title, body, action }: { title: string; body: string; action?: ReactNode }) {
-  return (
-    <div className="rounded-2xl border border-dashed bg-card/60 px-6 py-14 text-center">
-      <p className="font-display text-3xl">{title}</p>
-      <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">{body}</p>
-      {action && <div className="mt-6">{action}</div>}
-    </div>
   );
 }

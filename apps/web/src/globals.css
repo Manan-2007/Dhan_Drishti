@@ -153,3 +153,11 @@
     }
   }
 }
+
+/* Horizontal pill rows scroll on narrow screens without showing a bar. */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
