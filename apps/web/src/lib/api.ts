@@ -302,3 +302,87 @@ export interface ImportBatch {
   rowsInvalid: number;
   createdAt: string;
 }
+
+// ---- Drop-anything import ----
+export type FileKind = "transactions" | "prices" | "pnl_report" | "not_needed" | "needs_password" | "unrecognized";
+export interface AccountSuggestion {
+  accountId: string;
+  accountName: string;
+  portfolioId: string;
+  portfolioName: string;
+  why: string;
+  adoptRef: string | null;
+}
+export interface UploadDetection {
+  filename: string;
+  kind: FileKind;
+  adapter: string | null;
+  confidence: number;
+  reason: string;
+  brokerFamily: string | null;
+  accountRef: string | null;
+  holderName: string | null;
+  sheet: string | null;
+  counts: {
+    rowsTotal: number;
+    valid: number;
+    invalid: number;
+    duplicates: number;
+    newSecurities: number;
+    toImport: number;
+    period: { from: string; to: string } | null;
+  } | null;
+  priceRows: number | null;
+  currency: string | null;
+  suggestion: AccountSuggestion | null;
+  error: string | null;
+}
+export type CommitTarget =
+  | { accountId: string; adoptRef?: string | null }
+  | { newAccount: { portfolioId?: string; newPortfolioName?: string; broker: string; accountRef?: string | null; name: string; currency?: string } };
+export interface CommitManyItem {
+  filename: string;
+  content: string;
+  encoding?: "base64";
+  casPassword?: string;
+  kind: "transactions" | "prices" | "pnl_report";
+  adapter?: string;
+  target?: CommitTarget;
+}
+export interface DropSnapshot {
+  netWorth: string;
+  currentValue: string;
+  invested: string;
+  realisedPnl: string;
+  openPositions: number;
+}
+/** What a broker's P&L report found when checked against the ledger. */
+export interface PnlReconcile {
+  /** Closing trades the statement left out, added from the report. */
+  filled: { contract: string; type: "buy" | "sell"; quantity: string; price: string; tradeDate: string }[];
+  unmatched: number;
+  check: {
+    broker: string;
+    ours: string;
+    difference: string;
+    from: string;
+    to: string;
+    /** Shares sold with no purchase in the files — bought before they start. */
+    soldWithoutPurchase: number;
+  } | null;
+}
+export interface CommitManyResult {
+  files: {
+    filename: string;
+    kind: "transactions" | "prices" | "pnl_report";
+    imported: number;
+    duplicates: number;
+    replaced: number;
+    invalid: number;
+    accountId: string | null;
+    prices?: { seeded: number; unmatchedCount: number };
+    reconcile?: PnlReconcile;
+  }[];
+  before: DropSnapshot;
+  after: DropSnapshot;
+}

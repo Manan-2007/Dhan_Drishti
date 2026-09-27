@@ -179,7 +179,7 @@ function parseWithAdapter(params: ImportParams) {
 type Detected = { broker: string; confidence: number; reason: string } | null;
 
 /** Normalized rows for an import — a Consolidated Account Statement PDF, or a broker file adapter. */
-async function resolveRows(params: ImportParams): Promise<{ rows: NormalizedRow[]; detected: Detected }> {
+export async function resolveRows(params: ImportParams): Promise<{ rows: NormalizedRow[]; detected: Detected }> {
   if (params.broker === "cas") {
     const buf = Buffer.from(params.content, "base64");
     let text: string;
@@ -197,6 +197,21 @@ async function resolveRows(params: ImportParams): Promise<{ rows: NormalizedRow[
   }
   const { rows, detected } = parseWithAdapter(params);
   return { rows, detected };
+}
+
+/** Counts for a parsed file against the ledger: valid / invalid / already imported / new securities. */
+export async function countRows(db: Database, userId: string, rows: NormalizedRow[]) {
+  const c = await classify(db, userId, rows);
+  return {
+    rowsTotal: rows.length,
+    valid: rows.length - c.invalidRows.length,
+    invalid: c.invalidRows.length,
+    duplicates: c.duplicates,
+    newSecurities: c.newSecuritySymbols.size,
+    toImport: c.toInsert.length,
+    invalidRows: c.invalidRows.slice(0, 50),
+    period: fileDateRange(rows),
+  };
 }
 
 export async function previewImport(db: DB, userId: string, params: ImportParams): Promise<ImportPreview> {
@@ -239,19 +254,56 @@ export async function commitImport(db: DB, userId: string, params: ImportParams)
 
   const { rows, detected } = await resolveRows(params);
 
+  // One atomic transaction for the whole write: if anything fails (e.g. a UNIQUE clash on an
+  // external ref), it all rolls back — never a half-applied import, and never a replace-delete
+  // left with nothing put back in its place.
+  const { c, imported, replaced, batchId } = await db.transaction((trx) => commitRowsInto(trx, userId, params, rows));
+
+  // Auto-classify newly imported securities (sectors, sub-sectors, asset class) — best effort, and
+  // OUTSIDE the import transaction so a classification hiccup can never roll back a good import.
+  if (imported > 0) {
+    try {
+      await reclassifyHeld(db, userId);
+    } catch {
+      /* cosmetic enrichment only */
+    }
+  }
+
+  return {
+    batchId,
+    imported,
+    replaced,
+    broker: params.broker,
+    detected,
+    rowsTotal: rows.length,
+    valid: rows.length - c.invalidRows.length,
+    invalid: c.invalidRows.length,
+    duplicates: c.duplicates,
+    newSecurities: c.newSecuritySymbols.size,
+    toImport: c.toInsert.length,
+    invalidRows: c.invalidRows.slice(0, 50),
+    newSecuritySymbols: [...c.newSecuritySymbols].slice(0, 100),
+    period: fileDateRange(rows),
+  };
+}
+
+/**
+ * Write one parsed file into the ledger, using the caller's transaction (so several files can
+ * commit or roll back together). Records the import batch, resolves each security once, and
+ * bulk-inserts transactions plus any quotes a holdings snapshot carries.
+ */
+export async function commitRowsInto(trx: Database, userId: string, params: ImportParams, rows: NormalizedRow[]) {
   // The period the file covers, read from its own transaction dates (an explicit from/to may
   // still override it for headless callers). Used by replace mode to clear the overlapping range.
   const period = params.from && params.to ? { from: params.from, to: params.to } : fileDateRange(rows);
   const fileHash = createHash("sha256").update(params.content).digest("hex");
   const batchId = randomUUID();
-
-  // One atomic transaction for the whole write: if anything fails (e.g. a UNIQUE clash on an
-  // external ref), it all rolls back — never a half-applied import, and never a replace-delete
-  // left with nothing put back in its place.
-  const { c, imported, replaced } = await db.transaction(async (trx) => {
+  {
     // Overwrite mode: clear existing rows from this source over the file's period, so re-uploading
     // an overlapping range (e.g. a full-year file over monthly ones) doesn't duplicate. Deleting
     // before classify means the new rows aren't treated as duplicates of the ones they replace.
+    // Scoped to the account when there is one: two accounts at the same broker never touch each
+    // other's rows.
     let replaced = 0;
     if (params.replace && period) {
       const res = await trx
@@ -261,6 +313,7 @@ export async function commitImport(db: DB, userId: string, params: ImportParams)
             eq(transactions.userId, userId),
             eq(transactions.portfolioId, params.portfolioId),
             eq(transactions.sourceBroker, params.broker),
+            params.accountId ? eq(transactions.accountId, params.accountId) : undefined,
             gte(transactions.tradeDate, dayStart(period.from)),
             lte(transactions.tradeDate, dayEnd(period.to)),
           ),
@@ -346,35 +399,8 @@ export async function commitImport(db: DB, userId: string, params: ImportParams)
     for (let i = 0; i < txRows.length; i += CHUNK) await trx.insert(transactions).values(txRows.slice(i, i + CHUNK)).run();
     for (let i = 0; i < quoteRows.length; i += CHUNK) await trx.insert(quotes).values(quoteRows.slice(i, i + CHUNK)).run();
 
-    return { c, imported: txRows.length, replaced };
-  });
-
-  // Auto-classify newly imported securities (sectors, sub-sectors, asset class) — best effort, and
-  // OUTSIDE the import transaction so a classification hiccup can never roll back a good import.
-  if (imported > 0) {
-    try {
-      await reclassifyHeld(db, userId);
-    } catch {
-      /* cosmetic enrichment only */
-    }
+    return { c, imported: txRows.length, replaced, batchId };
   }
-
-  return {
-    batchId,
-    imported,
-    replaced,
-    broker: params.broker,
-    detected,
-    rowsTotal: rows.length,
-    valid: rows.length - c.invalidRows.length,
-    invalid: c.invalidRows.length,
-    duplicates: c.duplicates,
-    newSecurities: c.newSecuritySymbols.size,
-    toImport: c.toInsert.length,
-    invalidRows: c.invalidRows.slice(0, 50),
-    newSecuritySymbols: [...c.newSecuritySymbols].slice(0, 100),
-    period: fileDateRange(rows),
-  };
 }
 
 export async function getBatch(db: DB, userId: string, id: string) {

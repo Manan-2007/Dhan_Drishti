@@ -31,6 +31,37 @@ validate → classify: valid | invalid | duplicate | new-security → preview �
   security / transaction / quote insert either all apply or all roll back — never a half-import.
   Securities are resolved once each and rows are bulk-inserted.
 
+## Drop anything (`/detect` → `/commit-many`)
+The app's main import path. Each file is identified with no hints — its kind (`transactions`,
+`prices`, `pnl_report`, `not_needed`, `needs_password`, `unrecognized`), broker, and the client
+code printed in its preamble ("UCC, BDDA…") or its name (`tradebook-BH1234-EQ.csv`). Files sharing
+a code are one account: known codes match an existing account, an account with no code yet learns
+it, and only a genuinely new account asks whose it is. The whole drop commits in **one transaction**,
+without period-replace (a broker's equity and F&O files cover the same dates, so replacing one's
+period would delete the other's rows) — re-drops stay clean through dedup.
+
+### Broker P&L reports as a cross-check
+A realised-P&L report (Dhan's "Realised PnL Report": per instrument, the closed quantity with its
+buy and sell values) is never imported as trades. It runs after the trade files, per account:
+- **Missing exits.** Statements sometimes drop a closing trade (Dhan's leaves out some F&O exits),
+  so a contract looks open forever. For a *derivative* still open in the ledger, if the report's
+  numbers differ from the ledger's by **exactly** the open quantity — all buys closed and exactly
+  the leftover more sold (or the mirror for a short), buy (sell) value matching to ₹1 — the missing
+  trade is added, priced from the report and dated at expiry (never past the report's end).
+  Anything less clear-cut is left alone and counted as unmatched. Contracts are matched by name,
+  ticker in brackets, or (the same underlying, type and strike with expiry ≤ 3 days apart) when a
+  statement and its report label an MCX expiry a day apart.
+- **Totals check.** Our realised P&L for the instruments the report lists, over its period, next
+  to the broker's net figure. Shares sold with no purchase in the files (bought before they start)
+  are counted, since the broker knows their cost and the ledger doesn't.
+
+## Dates
+Adapters never trust the server's timezone. `canonicalDate(raw, zone)`: a date-only row (or a
+printed midnight) is stored at **UTC midnight of the printed date**; a real time is read in the
+broker's zone (IST for Indian brokers, UTC for Binance, New York for US brokers) and stored as the
+true instant. So `tradeDate.slice(0, 10)` and the financial year are always the broker's date.
+Zerodha rows use `order_execution_time` when present, so same-day trades keep their real order.
+
 ## Idempotency & dedup
 Dedup by `external_ref` (broker trade/order id) when present. When an export lacks a trade id,
 dedup falls back to `sha256(broker + raw row)` **plus an occurrence index within the file** — so two

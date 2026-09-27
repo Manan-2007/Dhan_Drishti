@@ -64,6 +64,14 @@ export function useAccounts(portfolioId: string | null) {
   });
 }
 
+/** Every account the user has, across all portfolios. */
+export function useAllAccounts() {
+  return useQuery({
+    queryKey: ["accounts", "all"],
+    queryFn: () => api.get<{ accounts: Account[] }>("/api/accounts").then((r) => r.accounts),
+  });
+}
+
 export function useHoldings(portfolioId: string | null) {
   const qs = portfolioId ? `?portfolioId=${portfolioId}` : "";
   return useQuery({

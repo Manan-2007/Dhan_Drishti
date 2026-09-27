@@ -17,6 +17,7 @@ import { useAuth } from "@/auth/AuthContext";
 import { Background } from "./Background";
 import { CommandMenu } from "./CommandMenu";
 import { DESTINATIONS, destinationFor } from "./nav";
+import { DropProvider, GlobalDropOverlay } from "./DropContext";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
@@ -64,8 +65,10 @@ export function AppShell() {
   const initial = (user?.username ?? "?").slice(0, 1).toUpperCase();
 
   return (
+    <DropProvider>
     <div className="relative min-h-screen">
       <Background />
+      <GlobalDropOverlay />
 
       <header className="sticky top-0 z-40 border-b bg-background">
         <div className="mx-auto flex max-w-[1280px] items-center gap-3 px-4 py-3 sm:px-6">
@@ -127,5 +130,6 @@ export function AppShell() {
       <CommandMenu open={cmdOpen} onOpenChange={setCmdOpen} />
       <Toaster position="bottom-right" />
     </div>
+    </DropProvider>
   );
 }

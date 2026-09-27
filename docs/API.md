@@ -119,6 +119,8 @@ curl "$BASE/api/openapi.json" | less
 | POST | `/api/imports/check` | Preview (valid/invalid/duplicate counts) |
 | POST | `/api/imports/commit` | Commit — atomic, idempotent dedup |
 | POST | `/api/imports/seed-prices` | Seed current prices from a holdings snapshot (no cost basis) |
+| POST | `/api/imports/detect` | Identify one file with no hints: kind, broker, client code, counts, likely account |
+| POST | `/api/imports/commit-many` | Import a whole drop atomically (new people/accounts included); P&L reports cross-check it |
 | GET | `/api/imports` · `/api/imports/{id}` | List / get import batches |
 
 > The import body takes `content` (raw CSV, or base64 with `encoding: "base64"` for an `.xlsx`

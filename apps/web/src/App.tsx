@@ -25,6 +25,7 @@ const SecurityDetail = lazy(() => import("./pages/SecurityDetail.js").then((m) =
 const ManualAssets = lazy(() => import("./pages/ManualAssets.js").then((m) => ({ default: m.ManualAssets })));
 const Portfolios = lazy(() => import("./pages/Portfolios.js").then((m) => ({ default: m.Portfolios })));
 const Imports = lazy(() => import("./pages/Imports.js").then((m) => ({ default: m.Imports })));
+const AddData = lazy(() => import("@/pages/accounts/AddData").then((m) => ({ default: m.AddData })));
 const Settings = lazy(() => import("./pages/Settings.js").then((m) => ({ default: m.Settings })));
 
 function PageFallback() {
@@ -124,12 +125,14 @@ function Gate() {
                       tabs={[
                         { label: "Add data", to: "/accounts", end: true },
                         { label: "Portfolios & accounts", to: "/accounts/portfolios" },
+                        { label: "Manual import", to: "/accounts/manual" },
                       ]}
                     />
                   }
                 >
-                  <Route index element={<Lazy><Imports /></Lazy>} />
+                  <Route index element={<Lazy><AddData /></Lazy>} />
                   <Route path="portfolios" element={<Lazy><Portfolios /></Lazy>} />
+                  <Route path="manual" element={<Lazy><Imports /></Lazy>} />
                 </Route>
                 <Route path="settings" element={<Lazy><Settings /></Lazy>} />
 

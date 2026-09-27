@@ -2,7 +2,7 @@ import { useState } from "react";
 
 /** Per-upload-type instructions for getting the right file from each broker — the #1 onboarding
  *  hurdle is not the upload but knowing which export to download and where it lives. */
-const GUIDES: Record<string, { where: string; steps: string[]; note?: string }> = {
+export const GUIDES: Record<string, { where: string; steps: string[]; note?: string }> = {
   cas: {
     where: "CAMS / KFintech → Consolidated Account Statement (CAS)",
     steps: [
@@ -38,7 +38,7 @@ const GUIDES: Record<string, { where: string; steps: string[]; note?: string }> 
       "Choose the All Transaction Report.",
       "Set the date range and export as CSV.",
     ],
-    note: "This one file carries equity, ETF and mutual-fund trades together.",
+    note: "This one file carries shares, ETFs, F&O and mutual funds together. Grab the Realised P&L report for the same dates too: it's used to double-check your profit and to fill in any closing trades the statement misses.",
   },
   dhan: {
     where: "Dhan → Reports → Tradebook",

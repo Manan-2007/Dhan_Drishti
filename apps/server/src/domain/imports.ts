@@ -7,6 +7,7 @@ import { authed } from "../lib/routes.js";
 import { listAdapters } from "../import/registry.js";
 import { previewImport, commitImport, getBatch } from "../import/service.js";
 import { seedPricesFromHoldings } from "../import/seed-prices.js";
+import { commitMany, detectUpload } from "../import/batch.js";
 
 const mappingSchema = z.object({
   symbol: z.string().min(1),
@@ -38,6 +39,40 @@ const importSchema = z.object({
   replace: z.boolean().optional(),
 });
 
+const uploadSchema = z.object({
+  filename: z.string().min(1).max(255),
+  content: z.string().min(1).max(24_000_000),
+  encoding: z.enum(["base64"]).optional(),
+  casPassword: z.string().max(200).optional(),
+});
+
+const targetSchema = z.union([
+  z.object({ accountId: z.string().min(1), adoptRef: z.string().trim().max(60).nullable().optional() }),
+  z.object({
+    newAccount: z.object({
+      portfolioId: z.string().min(1).optional(),
+      newPortfolioName: z.string().trim().min(1).max(120).optional(),
+      broker: z.string().min(1).max(40),
+      accountRef: z.string().trim().max(60).nullable().optional(),
+      name: z.string().trim().min(1).max(120),
+      currency: z.string().trim().length(3).optional(),
+    }),
+  }),
+]);
+
+const commitManySchema = z.object({
+  items: z
+    .array(
+      uploadSchema.extend({
+        kind: z.enum(["transactions", "prices", "pnl_report"]),
+        adapter: z.string().min(1).max(40).optional(),
+        target: targetSchema.optional(),
+      }),
+    )
+    .min(1)
+    .max(50),
+});
+
 const seedPricesSchema = z.object({
   portfolioId: z.string().min(1).nullable().optional(),
   filename: z.string().min(1).max(255).optional(),
@@ -59,6 +94,18 @@ export function registerImportRoutes(app: FastifyInstance, db: DB): void {
     const body = importSchema.parse(req.body);
     const result = await commitImport(db, req.user!.id, body);
     reply.code(201).send(result);
+  });
+
+  // Drop-anything import, step 1: identify one file with no hints and preview it. Writes nothing.
+  app.post("/api/imports/detect", opts, async (req) => {
+    const body = uploadSchema.parse(req.body);
+    return { detection: await detectUpload(db, req.user!.id, body) };
+  });
+
+  // Step 2: commit a whole drop (several files, new accounts included) in one transaction.
+  app.post("/api/imports/commit-many", opts, async (req, reply) => {
+    const body = commitManySchema.parse(req.body);
+    reply.code(201).send(await commitMany(db, req.user!.id, body.items));
   });
 
   // Price-only seed from a holdings snapshot (e.g. Dhan "Holding" — a closing price, no cost basis).
