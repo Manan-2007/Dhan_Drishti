@@ -333,6 +333,7 @@ export interface SecurityDetail {
 }
 export interface ImportBatch {
   id: string;
+  accountId: string | null;
   broker: string;
   filename: string;
   status: string;

@@ -22,8 +22,8 @@ const Rebalance = lazy(() => import("@/pages/performance/Rebalance").then((m) =>
 const Dividends = lazy(() => import("@/pages/activity/Dividends").then((m) => ({ default: m.Dividends })));
 const Tax = lazy(() => import("@/pages/performance/Tax").then((m) => ({ default: m.Tax })));
 const Security = lazy(() => import("@/pages/portfolio/Security").then((m) => ({ default: m.Security })));
-const ManualAssets = lazy(() => import("./pages/ManualAssets.js").then((m) => ({ default: m.ManualAssets })));
-const Portfolios = lazy(() => import("./pages/Portfolios.js").then((m) => ({ default: m.Portfolios })));
+const OtherAssets = lazy(() => import("@/pages/portfolio/OtherAssets").then((m) => ({ default: m.OtherAssets })));
+const People = lazy(() => import("@/pages/accounts/People").then((m) => ({ default: m.People })));
 const Imports = lazy(() => import("./pages/Imports.js").then((m) => ({ default: m.Imports })));
 const AddData = lazy(() => import("@/pages/accounts/AddData").then((m) => ({ default: m.AddData })));
 const Settings = lazy(() => import("./pages/Settings.js").then((m) => ({ default: m.Settings })));
@@ -79,7 +79,7 @@ function Gate() {
                 >
                   <Route index element={<Lazy><Positions /></Lazy>} />
                   <Route path="allocation" element={<Lazy><Allocation /></Lazy>} />
-                  <Route path="other" element={<Lazy><ManualAssets /></Lazy>} />
+                  <Route path="other" element={<Lazy><OtherAssets /></Lazy>} />
                 </Route>
                 <Route path="portfolio/security/:id" element={<Lazy><Security /></Lazy>} />
                 <Route
@@ -124,14 +124,14 @@ function Gate() {
                       lead="Where your data comes from: add files, manage brokers and family."
                       tabs={[
                         { label: "Add data", to: "/accounts", end: true },
-                        { label: "Portfolios & accounts", to: "/accounts/portfolios" },
+                        { label: "People & accounts", to: "/accounts/portfolios" },
                         { label: "Manual import", to: "/accounts/manual" },
                       ]}
                     />
                   }
                 >
                   <Route index element={<Lazy><AddData /></Lazy>} />
-                  <Route path="portfolios" element={<Lazy><Portfolios /></Lazy>} />
+                  <Route path="portfolios" element={<Lazy><People /></Lazy>} />
                   <Route path="manual" element={<Lazy><Imports /></Lazy>} />
                 </Route>
                 <Route path="settings" element={<Lazy><Settings /></Lazy>} />

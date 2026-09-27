@@ -10,8 +10,9 @@ export const DESTINATIONS = [
 /** Which destination a path belongs to (by its first segment). */
 export function destinationFor(pathname: string): string {
   const seg = pathname.split("/")[1] ?? "";
+  if (seg === "") return "/";
   const hit = DESTINATIONS.find((d) => d.href !== "/" && d.href.slice(1) === seg);
-  return hit ? hit.href : "/";
+  return hit ? hit.href : pathname; // e.g. /settings: no destination lit up
 }
 
 /** Everything the command bar can jump to, in the order people look for it. */
@@ -26,6 +27,6 @@ export const JUMP_TARGETS = [
   { label: "Tax", to: "/performance/tax", keywords: "capital gains ltcg stcg report" },
   { label: "Rebalance", to: "/performance/rebalance", keywords: "targets drift" },
   { label: "Import files", to: "/accounts", keywords: "upload csv excel cas add data broker" },
-  { label: "Portfolios & accounts", to: "/accounts/portfolios", keywords: "family members brokers groups" },
+  { label: "People & accounts", to: "/accounts/portfolios", keywords: "family members brokers portfolios groups" },
   { label: "Settings", to: "/settings", keywords: "export delete account fx rates" },
 ] as const;
