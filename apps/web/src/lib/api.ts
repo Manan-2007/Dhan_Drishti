@@ -289,6 +289,11 @@ export interface CapitalGainRow {
   gain: string;
   holdingDays: number;
   term: "short" | "long";
+  /** False for an opening balance: bought before the files start, real holding period unknown. */
+  buyDateKnown: boolean;
+  proceedsBase: string | null;
+  costBase: string | null;
+  gainBase: string | null;
 }
 export interface TermTotals {
   gain: string;
@@ -296,13 +301,26 @@ export interface TermTotals {
   cost: string;
   count: number;
 }
+export interface UnmatchedSaleRow {
+  securityId: string;
+  symbol: string;
+  name: string;
+  currency: string;
+  sellDate: string;
+  quantity: string;
+  proceeds: string;
+  proceedsBase: string | null;
+  fy: string;
+}
 export interface CapitalGainsReport {
+  baseCurrency: string;
   rows: CapitalGainRow[];
-  byFY: { key: string; shortTerm: TermTotals; longTerm: TermTotals }[];
+  byFY: { key: string; shortTerm: TermTotals; longTerm: TermTotals; unknownTerm: TermTotals }[];
   fyList: string[];
-  totals: { shortTerm: TermTotals; longTerm: TermTotals };
+  totals: { shortTerm: TermTotals; longTerm: TermTotals; unknownTerm: TermTotals };
+  unmatched: UnmatchedSaleRow[];
   currencies: string[];
-  currencyNote?: string;
+  fxApprox: boolean;
   disclaimer: string;
 }
 export interface SecurityDetail {
