@@ -127,7 +127,7 @@ export function Transactions() {
           {type ? "No transactions of this type." : "Import a broker CSV to populate your ledger."}
           {!type && (
             <div className="mt-4">
-              <Link to="/imports">
+              <Link to="/accounts">
                 <Button>Import transactions</Button>
               </Link>
             </div>
@@ -165,7 +165,7 @@ export function Transactions() {
                         {t.security ? (
                           <>
                             <div className="font-medium">
-                              <Link to={`/security/${t.security.id}`} className="hover:underline">{t.security.symbol}</Link>
+                              <Link to={`/portfolio/security/${t.security.id}`} className="hover:underline">{t.security.symbol}</Link>
                             </div>
                             <div className="text-xs text-muted-foreground">
                               {/* Mutual funds have no short ticker — symbol and name are identical, so

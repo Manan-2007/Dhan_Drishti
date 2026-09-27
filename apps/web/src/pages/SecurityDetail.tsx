@@ -29,7 +29,7 @@ export function SecurityDetail() {
         <PageHeader title="Security" showFilter={false} />
         <EmptyState title="Not found">
           This security isn't in your ledger{portfolioId ? " for the selected portfolio" : ""}.{" "}
-          <Link to="/holdings" className="underline">Back to holdings</Link>
+          <Link to="/portfolio" className="underline">Back to positions</Link>
         </EmptyState>
       </>
     );
@@ -48,7 +48,7 @@ export function SecurityDetail() {
   return (
     <>
       <div className="mb-2 text-sm">
-        <Link to="/holdings" className="text-muted-foreground underline">← Holdings</Link>
+        <Link to="/portfolio" className="text-muted-foreground underline">← Positions</Link>
       </div>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>

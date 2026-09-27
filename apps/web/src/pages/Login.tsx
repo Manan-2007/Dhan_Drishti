@@ -1,8 +1,11 @@
 import { useState, type FormEvent } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import { useAuth } from "../auth/AuthContext.js";
 import { ApiError } from "../lib/api.js";
-import { Button, Card, Field, Input } from "../components/ui.js";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
+/** Sign in, or create the one account this install needs. */
 export function Login() {
   const { login, register } = useAuth();
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -20,60 +23,72 @@ export function Login() {
       if (mode === "login") await login(username, password);
       else await register({ username, password, email: email || undefined });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong");
+      setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div className="grid min-h-screen place-items-center bg-background p-4">
-      <div className="w-full max-w-sm">
-        <div className="mb-6 flex items-center justify-center gap-2">
-          <div className="grid h-10 w-10 place-items-center rounded-md bg-primary font-serif text-primary-foreground">द</div>
-          <span className="font-serif text-2xl">Dhan Drishti</span>
-        </div>
-        <Card>
-          <h1 className="mb-1 font-serif text-lg">{mode === "login" ? "Sign in" : "Create your account"}</h1>
-          <p className="mb-4 text-sm text-muted-foreground">Private, self-hosted portfolio tracking.</p>
-          <form onSubmit={submit} className="space-y-4">
-            <Field label="Username">
-              <Input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" required minLength={3} />
-            </Field>
-            {mode === "register" && (
-              <Field label="Email (optional)">
-                <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
-              </Field>
-            )}
-            <Field label="Password">
-              <Input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete={mode === "login" ? "current-password" : "new-password"}
-                required
-                minLength={8}
-              />
-            </Field>
-            {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button type="submit" className="w-full" disabled={busy}>
-              {busy ? "Please wait…" : mode === "login" ? "Sign in" : "Create account"}
-            </Button>
-          </form>
-          <p className="mt-4 text-center text-sm text-muted-foreground">
-            {mode === "login" ? "New here? " : "Have an account? "}
-            <button
-              className="font-medium text-foreground underline"
-              onClick={() => {
-                setMode(mode === "login" ? "register" : "login");
-                setError(null);
-              }}
+    <div className="w-full rounded-3xl border bg-card p-7 sm:p-8">
+      <h2 className="font-display text-3xl">{mode === "login" ? "Welcome back" : "Create your account"}</h2>
+      <p className="mt-1 text-sm text-muted-foreground">{mode === "login" ? "Sign in to see where you stand." : "One account for this computer. It stays here."}</p>
+      <form onSubmit={submit} className="mt-6 space-y-4">
+        <label className="block space-y-1.5">
+          <span className="text-sm font-medium">Username</span>
+          <Input className="h-11 rounded-xl" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" required minLength={3} autoFocus />
+        </label>
+        <AnimatePresence initial={false}>
+          {mode === "register" && (
+            <motion.label
+              className="block space-y-1.5 overflow-hidden"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.22 }}
             >
-              {mode === "login" ? "Create an account" : "Sign in"}
-            </button>
+              <span className="text-sm font-medium">
+                Email <span className="text-muted-foreground">(optional)</span>
+              </span>
+              <Input className="h-11 rounded-xl" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+            </motion.label>
+          )}
+        </AnimatePresence>
+        <label className="block space-y-1.5">
+          <span className="text-sm font-medium">Password</span>
+          <Input
+            className="h-11 rounded-xl"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete={mode === "login" ? "current-password" : "new-password"}
+            required
+            minLength={8}
+          />
+          {mode === "register" && <span className="text-xs text-muted-foreground">At least 8 characters.</span>}
+        </label>
+        {error && (
+          <p role="alert" className="rounded-xl bg-loss/10 px-3 py-2 text-sm text-loss">
+            {error}
           </p>
-        </Card>
-      </div>
+        )}
+        <Button type="submit" size="lg" className="w-full" disabled={busy}>
+          {busy ? "Please wait…" : mode === "login" ? "Sign in" : "Create account"}
+        </Button>
+      </form>
+      <p className="mt-5 text-center text-sm text-muted-foreground">
+        {mode === "login" ? "First time here? " : "Already have an account? "}
+        <button
+          type="button"
+          className="cursor-pointer font-medium text-foreground underline-offset-4 hover:underline"
+          onClick={() => {
+            setMode(mode === "login" ? "register" : "login");
+            setError(null);
+          }}
+        >
+          {mode === "login" ? "Create an account" : "Sign in"}
+        </button>
+      </p>
     </div>
   );
 }

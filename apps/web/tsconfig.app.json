@@ -7,7 +7,11 @@
     "moduleResolution": "Bundler",
     "types": ["vite/client"],
     "noEmit": true,
-    "composite": true
+    "composite": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
   },
   "include": ["src"]
 }

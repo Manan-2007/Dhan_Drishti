@@ -1,20 +1,21 @@
-import { lazy } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import { queryClient } from "./lib/query.js";
 import { AuthProvider, useAuth } from "./auth/AuthContext.js";
 import { FilterProvider } from "./lib/hooks.js";
 import { ToastProvider } from "./components/Toast.js";
 import { ErrorBoundary } from "./components/ErrorBoundary.js";
-import { Layout } from "./components/Layout.js";
 import { Landing } from "./pages/Landing.js";
-import { Spinner } from "./components/ui.js";
+import { AppShell } from "@/components/shell/AppShell";
+import { Section } from "@/components/shell/Section";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { Skeleton } from "@/components/ui/skeleton";
 
-// The authenticated pages are code-split so the initial load (Landing) doesn't pull in the whole
-// app — Recharts and the chart-heavy pages only download when a signed-in user navigates to them.
-// (Named exports, so map each module to a default for React.lazy.)
-const Dashboard = lazy(() => import("./pages/Dashboard.js").then((m) => ({ default: m.Dashboard })));
-const Holdings = lazy(() => import("./pages/Holdings.js").then((m) => ({ default: m.Holdings })));
+// Pages are code-split so the landing page doesn't download the whole app.
+const Home = lazy(() => import("@/pages/home/Home").then((m) => ({ default: m.Home })));
+const Positions = lazy(() => import("@/pages/portfolio/Positions").then((m) => ({ default: m.Positions })));
+const Allocation = lazy(() => import("@/pages/portfolio/Allocation").then((m) => ({ default: m.Allocation })));
 const Transactions = lazy(() => import("./pages/Transactions.js").then((m) => ({ default: m.Transactions })));
 const Analytics = lazy(() => import("./pages/Analytics.js").then((m) => ({ default: m.Analytics })));
 const Rebalance = lazy(() => import("./pages/Rebalance.js").then((m) => ({ default: m.Rebalance })));
@@ -26,12 +27,22 @@ const Portfolios = lazy(() => import("./pages/Portfolios.js").then((m) => ({ def
 const Imports = lazy(() => import("./pages/Imports.js").then((m) => ({ default: m.Imports })));
 const Settings = lazy(() => import("./pages/Settings.js").then((m) => ({ default: m.Settings })));
 
+function PageFallback() {
+  return <Skeleton className="h-[420px] rounded-2xl" />;
+}
+
+/** Old links (bookmarks, history) still land somewhere sensible. */
+function LegacySecurity() {
+  const { id } = useParams();
+  return <Navigate to={`/portfolio/security/${id ?? ""}`} replace />;
+}
+
 function Gate() {
   const { user, loading } = useAuth();
   if (loading) {
     return (
       <div className="grid min-h-screen place-items-center">
-        <Spinner label="Loading Dhan Drishti…" />
+        <span className="font-display text-5xl text-muted-foreground">द</span>
       </div>
     );
   }
@@ -39,37 +50,123 @@ function Gate() {
   return (
     <FilterProvider>
       <ToastProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route element={<Layout />}>
-            <Route index element={<Dashboard />} />
-            <Route path="holdings" element={<Holdings />} />
-            <Route path="transactions" element={<Transactions />} />
-            <Route path="analytics" element={<Analytics />} />
-            <Route path="rebalance" element={<Rebalance />} />
-            <Route path="dividends" element={<Dividends />} />
-            <Route path="reports" element={<Reports />} />
-            <Route path="security/:id" element={<SecurityDetail />} />
-            <Route path="assets" element={<ManualAssets />} />
-            <Route path="portfolios" element={<Portfolios />} />
-            <Route path="imports" element={<Imports />} />
-            <Route path="settings" element={<Settings />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
+        <BrowserRouter>
+          <Suspense fallback={null}>
+            <Routes>
+              <Route element={<AppShell />}>
+                <Route
+                  index
+                  element={
+                    <Suspense fallback={<PageFallback />}>
+                      <Home />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="portfolio"
+                  element={
+                    <Section
+                      title="Portfolio"
+                      lead="What you own, grouped by kind and priced."
+                      tabs={[
+                        { label: "Positions", to: "/portfolio", end: true },
+                        { label: "Allocation", to: "/portfolio/allocation" },
+                        { label: "Other assets", to: "/portfolio/other" },
+                      ]}
+                    />
+                  }
+                >
+                  <Route index element={<Lazy><Positions /></Lazy>} />
+                  <Route path="allocation" element={<Lazy><Allocation /></Lazy>} />
+                  <Route path="other" element={<Lazy><ManualAssets /></Lazy>} />
+                </Route>
+                <Route path="portfolio/security/:id" element={<Lazy><SecurityDetail /></Lazy>} />
+                <Route
+                  path="activity"
+                  element={
+                    <Section
+                      title="Activity"
+                      lead="Everything that happened: trades, income and cash."
+                      tabs={[
+                        { label: "All activity", to: "/activity", end: true },
+                        { label: "Income", to: "/activity/income" },
+                      ]}
+                    />
+                  }
+                >
+                  <Route index element={<Lazy><Transactions /></Lazy>} />
+                  <Route path="income" element={<Lazy><Dividends /></Lazy>} />
+                </Route>
+                <Route
+                  path="performance"
+                  element={
+                    <Section
+                      title="Performance"
+                      lead="How your money is doing, what you owe in tax, and how to rebalance."
+                      tabs={[
+                        { label: "Returns", to: "/performance", end: true },
+                        { label: "Tax", to: "/performance/tax" },
+                        { label: "Rebalance", to: "/performance/rebalance" },
+                      ]}
+                    />
+                  }
+                >
+                  <Route index element={<Lazy><Analytics /></Lazy>} />
+                  <Route path="tax" element={<Lazy><Reports /></Lazy>} />
+                  <Route path="rebalance" element={<Lazy><Rebalance /></Lazy>} />
+                </Route>
+                <Route
+                  path="accounts"
+                  element={
+                    <Section
+                      title="Accounts"
+                      lead="Where your data comes from: add files, manage brokers and family."
+                      tabs={[
+                        { label: "Add data", to: "/accounts", end: true },
+                        { label: "Portfolios & accounts", to: "/accounts/portfolios" },
+                      ]}
+                    />
+                  }
+                >
+                  <Route index element={<Lazy><Imports /></Lazy>} />
+                  <Route path="portfolios" element={<Lazy><Portfolios /></Lazy>} />
+                </Route>
+                <Route path="settings" element={<Lazy><Settings /></Lazy>} />
+
+                {/* Old addresses */}
+                <Route path="holdings" element={<Navigate to="/portfolio" replace />} />
+                <Route path="assets" element={<Navigate to="/portfolio/other" replace />} />
+                <Route path="security/:id" element={<LegacySecurity />} />
+                <Route path="transactions" element={<Navigate to="/activity" replace />} />
+                <Route path="dividends" element={<Navigate to="/activity/income" replace />} />
+                <Route path="analytics" element={<Navigate to="/performance" replace />} />
+                <Route path="reports" element={<Navigate to="/performance/tax" replace />} />
+                <Route path="rebalance" element={<Navigate to="/performance/rebalance" replace />} />
+                <Route path="imports" element={<Navigate to="/accounts" replace />} />
+                <Route path="portfolios" element={<Navigate to="/accounts/portfolios" replace />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Route>
+            </Routes>
+          </Suspense>
+        </BrowserRouter>
       </ToastProvider>
     </FilterProvider>
   );
+}
+
+function Lazy({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<PageFallback />}>{children}</Suspense>;
 }
 
 export function App() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <Gate />
-        </AuthProvider>
+        <TooltipProvider delayDuration={250}>
+          <AuthProvider>
+            <Gate />
+          </AuthProvider>
+        </TooltipProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   );

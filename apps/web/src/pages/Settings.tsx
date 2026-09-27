@@ -103,6 +103,17 @@ export function Settings() {
             </div>
           )}
         </Card>
+
+        <Card>
+          <h2 className="text-lg font-semibold">About</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Charts by{" "}
+            <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer" className="text-foreground underline-offset-4 hover:underline">
+              TradingView
+            </a>{" "}
+            Lightweight Charts™ (Apache-2.0). Motion components adapted from React Bits (MIT). Interface built with shadcn/ui (MIT).
+          </p>
+        </Card>
       </div>
     </>
   );
