@@ -373,6 +373,8 @@ async function computeHoldingsUncached(db: DB, userId: string, portfolioId?: str
       allPriced,
       /** Holdings with sales older than their purchases on record — an older statement would complete them. */
       soldWithoutPurchase: serialized.filter((r) => r.soldWithoutPurchase !== "0").length,
+      /** F&O contracts closed by an estimated expiry settlement, not a trade in the files. */
+      settledAtExpiry: txs.filter((t) => t.sourceBroker === "expiry").length,
     },
     manualAssets: manual.items,
     allocation: allocation(serialized, cashByCurrency, cashBase, manualByClass, manualByRegion),

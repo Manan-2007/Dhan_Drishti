@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, CheckCircle2, Clock, FileWarning, Globe, PieChart, RefreshCw, Upload } from "lucide-react";
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, CalendarClock, CheckCircle2, Clock, FileWarning, Globe, PieChart, RefreshCw, Upload } from "lucide-react";
 import CountUp from "@/components/reactbits/CountUp";
 import { AreaChart } from "@/components/charts/AreaChart";
 import { Segmented } from "@/components/kit/Segmented";
@@ -90,6 +90,15 @@ function useAttention(data: HoldingsResponse | undefined): Attention[] {
       id: "history",
       icon: <FileWarning />,
       text: `${missingBuys} holding${missingBuys === 1 ? " was" : "s were"} sold that ${missingBuys === 1 ? "was" : "were"} bought before your files start, so their profit isn't counted. An older statement fixes that.`,
+      action: <Button size="xs" variant="outline" onClick={() => navigate("/accounts")}><Upload /> Add files</Button>,
+    });
+  }
+  const settled = s.settledAtExpiry ?? 0;
+  if (settled > 0) {
+    items.push({
+      id: "expiry",
+      icon: <CalendarClock />,
+      text: `${settled} F&O contract${settled === 1 ? " was" : "s were"} still open at expiry in your files, so ${settled === 1 ? "it's" : "they're"} settled at the exchange's closing price. If you closed ${settled === 1 ? "it" : "them"} earlier, a newer tradebook replaces the estimate.`,
       action: <Button size="xs" variant="outline" onClick={() => navigate("/accounts")}><Upload /> Add files</Button>,
     });
   }

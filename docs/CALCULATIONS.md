@@ -16,6 +16,16 @@ deterministic, unit-tested** modules using `decimal.js` (no floats, no DB coupli
   profit is booked (the cost isn't known), the holding reports `soldWithoutPurchase`, and a later
   purchase starts a fresh holding rather than "covering" a short that never existed. A short
   bought back the same day (intraday) realises normally; F&O and commodity shorts are real.
+- **Expired F&O contracts settle at expiry.** Trade files never show the exchange settling a
+  contract held to expiry, so one still open after its expiry day gets a derived settlement row
+  (`source_broker = 'expiry'`): a sale (long) or buy-back (short) at the underlying's close that
+  day for a future, or the option's intrinsic value, max(0, S − K) for a call and max(0, K − S)
+  for a put. The expiry day is the one the contract names, or for a Zerodha monthly the month's
+  last Thursday (last Tuesday from September 2025), moved back to the last trading day in the
+  underlying's price history. Rows re-derive whenever trades change, so a real closing trade or a
+  P&L-report fill always replaces the estimate. MCX contracts have no public price source and stay
+  open. Closes come from public daily history (only the market symbol and dates are sent) and are
+  cached in `settlement_prices`.
 - **Ledger order** (every engine walks it the same way, `packages/core/src/order.ts`): by trade
   time; on a tie, splits and bonuses first (they take effect at the start of the ex-date), then
   buys / transfers-in, then sells / transfers-out, then income and cash; then the broker's trade id,

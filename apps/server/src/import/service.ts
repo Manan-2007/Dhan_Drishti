@@ -10,6 +10,7 @@ import { parseCsv } from "./csv.js";
 import { looksLikeXlsx, workbookToCsv } from "./xlsx.js";
 import { extractCasText, parseCasTransactions } from "./cas.js";
 import { getAdapter, detectBest } from "./registry.js";
+import { resettleExpired } from "./expiry.js";
 import { hasSnapshot, reconcileSnapshots, storeSnapshot, type Scope, type SnapshotPosition, type SnapshotSummary } from "./snapshot.js";
 import type { GenericMapping } from "./adapters/generic.js";
 import type { BrokerAdapter, NormalizedRow, NormalizedTx } from "./types.js";
@@ -259,7 +260,11 @@ export async function commitImport(db: DB, userId: string, params: ImportParams)
   // One atomic transaction for the whole write: if anything fails (e.g. a UNIQUE clash on an
   // external ref), it all rolls back — never a half-applied import, and never a replace-delete
   // left with nothing put back in its place.
-  const { c, imported, replaced, batchId } = await db.transaction((trx) => commitRowsInto(trx, userId, params, rows));
+  const { c, imported, replaced, batchId } = await db.transaction(async (trx) => {
+    const r = await commitRowsInto(trx, userId, params, rows);
+    await resettleExpired(trx, userId);
+    return r;
+  });
 
   // Auto-classify newly imported securities (sectors, sub-sectors, asset class) — best effort, and
   // OUTSIDE the import transaction so a classification hiccup can never roll back a good import.

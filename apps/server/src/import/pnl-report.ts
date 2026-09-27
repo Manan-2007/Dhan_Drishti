@@ -5,6 +5,7 @@ import type { Database } from "../db/index.js";
 import { securities, transactions } from "../db/schema.js";
 import { parseDerivativeSymbol } from "../market/derivative-symbol.js";
 import { parseCsv, pick, rowHash } from "./csv.js";
+import { EXPIRY_SOURCE } from "./expiry.js";
 
 /**
  * A broker's realised-P&L report (Dhan's "Realised PnL Report": one row per instrument closed in
@@ -143,7 +144,8 @@ export async function reconcileWithPnlReport(
     .all();
 
   const bySecurity = new Map<string, { symbol: string; name: string; txs: (typeof rows)[number]["tx"][] }>();
-  for (const r of rows) {
+  // Estimated expiry settlements give way to the broker's own figures (they re-derive afterwards).
+  for (const r of rows.filter((x) => x.tx.sourceBroker !== EXPIRY_SOURCE)) {
     const s = bySecurity.get(r.tx.securityId!) ?? { symbol: r.symbol, name: r.name, txs: [] };
     s.txs.push(r.tx);
     bySecurity.set(r.tx.securityId!, s);

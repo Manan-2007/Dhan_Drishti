@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, index, unique } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, index, unique, primaryKey } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
 
 /**
@@ -288,6 +288,23 @@ export const holdingSnapshots = sqliteTable(
     createdAt: text("created_at").notNull().default(now),
   },
   (t) => [index("idx_holding_snapshots_scope").on(t.userId, t.portfolioId, t.accountId)],
+);
+
+/**
+ * Closing prices of F&O underlyings on expiry days — public market data, cached so an expired
+ * contract can be settled offline and re-settled whenever trades change (import/expiry.ts).
+ * `close` is null when no price could be found (retried after a day).
+ */
+export const settlementPrices = sqliteTable(
+  "settlement_prices",
+  {
+    symbol: text("symbol").notNull(), // the underlying's market symbol, e.g. ^NSEI
+    nominalExpiry: text("nominal_expiry").notNull(), // YYYY-MM-DD the contract names or implies
+    tradingDay: text("trading_day"), // the last trading day on or before it (holidays move expiry earlier)
+    close: text("close"),
+    fetchedAt: text("fetched_at").notNull().default(now),
+  },
+  (t) => [primaryKey({ columns: [t.symbol, t.nominalExpiry] })],
 );
 
 export type User = typeof users.$inferSelect;

@@ -15,6 +15,7 @@ import { looksLikeXlsx, workbookToCsv } from "./xlsx.js";
 import type { NormalizedRow } from "./types.js";
 import { getAdapter } from "./registry.js";
 import { sameAsLatestSnapshot, type SnapshotSummary } from "./snapshot.js";
+import { resettleExpired } from "./expiry.js";
 
 /**
  * "Drop anything" import: identify each file with no hints, suggest whose account it is, then
@@ -299,6 +300,9 @@ export async function commitMany(db: DB, userId: string, items: CommitItem[]) {
       const reconcile = await reconcileWithPnlReport(trx, userId, target, report, { broker: account?.broker ?? "broker", filename: item.filename });
       out[i] = { ...out[i]!, imported: reconcile.filled.length, accountId: target.accountId, reconcile };
     }
+    // Expired contracts the files never close settle at expiry, from cached prices; the route then
+    // fetches any it's missing.
+    await resettleExpired(trx, userId);
     return out;
   });
 

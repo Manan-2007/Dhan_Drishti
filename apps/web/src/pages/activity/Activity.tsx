@@ -51,6 +51,7 @@ const SOURCES: Record<string, string> = {
   funds: "Funds statement",
   holdings: "Holdings statement",
   snapshot: "Holdings statement",
+  expiry: "Exchange settlement at expiry (estimated)",
   generic: "Imported file",
   manual: "Added by hand",
 };
@@ -71,9 +72,11 @@ function describe(t: Transaction): Described {
   const fromStatement = t.sourceBroker === "snapshot";
   switch (t.type) {
     case "buy":
-      return fromStatement ? { verb: "Opening balance", tone: "neutral", cash: null, tag: "from holdings statement" } : { verb: "Bought", tone: "buy", cash: -(gross + charges) };
+      return fromStatement
+        ? { verb: "Opening balance", tone: "neutral", cash: null, tag: "from holdings statement" }
+        : { verb: "Bought", tone: "buy", cash: -(gross + charges), tag: t.sourceBroker === "expiry" ? "settled at expiry, estimated" : undefined };
     case "sell":
-      return { verb: "Sold", tone: "sell", cash: gross - charges, tag: t.sourceBroker?.endsWith("-pnl") ? "filled from P&L report" : undefined };
+      return { verb: "Sold", tone: "sell", cash: gross - charges, tag: t.sourceBroker === "expiry" ? "settled at expiry, estimated" : t.sourceBroker?.endsWith("-pnl") ? "filled from P&L report" : undefined };
     case "dividend":
       return { verb: "Dividend", tone: "income", cash: gross };
     case "interest":

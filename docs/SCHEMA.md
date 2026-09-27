@@ -89,6 +89,11 @@ from the account's trades — `transactions` with `source_broker = 'snapshot'` (
 dated before the trade history, transfers out at cost) — re-derived from the latest statement
 whenever that account's trades change. See `IMPORTERS.md`.
 
+### settlement_prices  (public closes of F&O underlyings on expiry days)
+`symbol, nominal_expiry (pk together), trading_day?, close?, fetched_at` — the last trading day on or
+before a contract's expiry and the underlying's close then, cached so expired contracts settle
+offline. `close` null = none found yet (retried after a day). See `CALCULATIONS.md`.
+
 ## Derived (NOT tables — computed by the calc engine / query layer)
 - **Holdings** per (scope, security): net_qty, invested, avg_cost, current_value,
   unrealised_pnl, realised_pnl, dividends, weight%, plus base-currency conversions and the

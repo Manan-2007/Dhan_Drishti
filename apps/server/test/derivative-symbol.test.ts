@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseDerivativeSymbol, underlyingYahooSymbol } from "../src/market/derivative-symbol.js";
+import { monthlyExpiryDay, parseDerivativeSymbol, underlyingYahooSymbol } from "../src/market/derivative-symbol.js";
 
 describe("parseDerivativeSymbol — Zerodha raw NSE trading symbols", () => {
   it("parses a NIFTY option", () => {
@@ -9,6 +9,7 @@ describe("parseDerivativeSymbol — Zerodha raw NSE trading symbols", () => {
       expiryISO: "2025-06-30",
       strike: 26000,
       optionType: "CE",
+      expiryApprox: true,
     });
   });
 
@@ -22,6 +23,7 @@ describe("parseDerivativeSymbol — Zerodha raw NSE trading symbols", () => {
       kind: "future",
       underlying: "RELIANCE",
       expiryISO: "2025-06-30",
+      expiryApprox: true,
     });
   });
 
@@ -85,5 +87,17 @@ describe("underlyingYahooSymbol", () => {
 
   it("maps a stock underlying to its NSE Yahoo ticker", () => {
     expect(underlyingYahooSymbol("ICICIBANK")).toBe("ICICIBANK.NS");
+  });
+});
+
+describe("monthlyExpiryDay", () => {
+  it("is the last Thursday before September 2025", () => {
+    expect(monthlyExpiryDay("2025-06-30")).toBe("2025-06-26");
+    expect(monthlyExpiryDay("2025-05-31")).toBe("2025-05-29");
+  });
+  it("is the last Tuesday from September 2025", () => {
+    expect(monthlyExpiryDay("2025-09-30")).toBe("2025-09-30");
+    expect(monthlyExpiryDay("2026-05-31")).toBe("2026-05-26");
+    expect(monthlyExpiryDay("2026-04-30")).toBe("2026-04-28");
   });
 });

@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { inArray, isNotNull } from "drizzle-orm";
 import type { DB } from "../db/index.js";
 import { transactions, securities, quotes } from "../db/schema.js";
-import type { FxProvider, MarketDataProvider } from "../market/types.js";
+import type { BenchmarkProvider, FxProvider, MarketDataProvider } from "../market/types.js";
+import { refreshExpirySettlements } from "../import/expiry.js";
 import { backfillFxAtCost, refreshRates } from "../market/fx.js";
 import { writeAllScopes } from "../domain/snapshots.js";
 import { pruneQuotesToLatest } from "../market/service.js";
@@ -62,11 +63,29 @@ export async function refreshAllFx(db: DB, fx: FxProvider): Promise<void> {
   if (users.length) invalidateAllHoldings();
 }
 
+/** Settle F&O contracts that expired since the last pass (see import/expiry.ts). */
+export async function settleAllExpiries(db: DB, index: BenchmarkProvider): Promise<void> {
+  const users = await db.selectDistinct({ userId: transactions.userId }).from(transactions).all();
+  for (const u of users) {
+    try {
+      await refreshExpirySettlements(db, u.userId, index);
+    } catch {
+      /* best effort; the next pass retries */
+    }
+  }
+}
+
+export interface MaintenanceProviders {
+  fx?: FxProvider;
+  index?: BenchmarkProvider;
+}
+
 /** One maintenance pass: refresh prices (also prunes quotes + drops the holdings cache) and
- *  exchange rates, record the day's snapshots, and sweep expired sessions. */
-export async function runMaintenance(db: DB, provider: MarketDataProvider, fx?: FxProvider): Promise<void> {
+ *  exchange rates, settle expired contracts, record the day's snapshots, and sweep expired sessions. */
+export async function runMaintenance(db: DB, provider: MarketDataProvider, extra: MaintenanceProviders = {}): Promise<void> {
   await refreshAllHeldQuotes(db, provider);
-  if (fx) await refreshAllFx(db, fx);
+  if (extra.fx) await refreshAllFx(db, extra.fx);
+  if (extra.index) await settleAllExpiries(db, extra.index);
   await snapshotAllUsers(db);
   await deleteExpiredSessions(db).catch(() => undefined);
 }
@@ -75,9 +94,9 @@ export async function runMaintenance(db: DB, provider: MarketDataProvider, fx?: 
  * Start the background scheduler: an initial pass shortly after boot, then every `intervalHours`.
  * Returns a stop function. Not started inside buildApp so tests never spin timers.
  */
-export function startScheduler(db: DB, provider: MarketDataProvider, fx?: FxProvider, intervalHours = 6): () => void {
+export function startScheduler(db: DB, provider: MarketDataProvider, extra: MaintenanceProviders = {}, intervalHours = 6): () => void {
   const tick = () => {
-    runMaintenance(db, provider, fx).catch((err) => {
+    runMaintenance(db, provider, extra).catch((err) => {
       // eslint-disable-next-line no-console
       console.error("[scheduler] maintenance failed:", err);
     });

@@ -8,6 +8,8 @@ import { listAdapters } from "../import/registry.js";
 import { previewImport, commitImport, getBatch } from "../import/service.js";
 import { seedPricesFromHoldings } from "../import/seed-prices.js";
 import { commitMany, detectUpload } from "../import/batch.js";
+import type { BenchmarkProvider } from "../market/types.js";
+import { refreshExpirySettlements } from "../import/expiry.js";
 
 const mappingSchema = z.object({
   symbol: z.string().min(1),
@@ -80,8 +82,15 @@ const seedPricesSchema = z.object({
   encoding: z.enum(["base64"]).optional(),
 });
 
-export function registerImportRoutes(app: FastifyInstance, db: DB): void {
+/**
+ * `settle`: after an import, fetch any expiry prices still missing and settle those contracts —
+ * in the background, so the import answers at once. Off in tests (no network), on in the server.
+ */
+export function registerImportRoutes(app: FastifyInstance, db: DB, settle?: BenchmarkProvider): void {
   const opts = authed(app);
+  const settleLater = (userId: string) => {
+    if (settle) void refreshExpirySettlements(db, userId, settle).catch(() => undefined);
+  };
 
   app.get("/api/imports/brokers", opts, async () => ({ brokers: listAdapters() }));
 
@@ -93,6 +102,7 @@ export function registerImportRoutes(app: FastifyInstance, db: DB): void {
   app.post("/api/imports/commit", opts, async (req, reply) => {
     const body = importSchema.parse(req.body);
     const result = await commitImport(db, req.user!.id, body);
+    settleLater(req.user!.id);
     reply.code(201).send(result);
   });
 
@@ -105,7 +115,9 @@ export function registerImportRoutes(app: FastifyInstance, db: DB): void {
   // Step 2: commit a whole drop (several files, new accounts included) in one transaction.
   app.post("/api/imports/commit-many", opts, async (req, reply) => {
     const body = commitManySchema.parse(req.body);
-    reply.code(201).send(await commitMany(db, req.user!.id, body.items));
+    const result = await commitMany(db, req.user!.id, body.items);
+    settleLater(req.user!.id);
+    reply.code(201).send(result);
   });
 
   // Price-only seed from a holdings snapshot (e.g. Dhan "Holding" — a closing price, no cost basis).

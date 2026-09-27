@@ -57,6 +57,13 @@
       "when": 1790506585474,
       "tag": "0007_holding_snapshots",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1790522004469,
+      "tag": "0008_settlement_prices",
+      "breakpoints": true
     }
   ]
 }

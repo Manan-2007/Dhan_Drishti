@@ -10,9 +10,14 @@
  *     "FUT ICICIBANK 28 AUG 2025".
  */
 
+/**
+ * `expiryApprox` is set when the symbol names only a month (Zerodha monthlies): `expiryISO` is then
+ * the month's last day, and the real expiry is that month's last expiry weekday — see
+ * `monthlyExpiryDay`.
+ */
 export type ParsedDerivative =
-  | { kind: "option"; underlying: string; expiryISO: string; strike: number; optionType: "CE" | "PE" }
-  | { kind: "future"; underlying: string; expiryISO: string };
+  | { kind: "option"; underlying: string; expiryISO: string; strike: number; optionType: "CE" | "PE"; expiryApprox?: true }
+  | { kind: "future"; underlying: string; expiryISO: string; expiryApprox?: true };
 
 const MONTHS: Record<string, number> = {
   JAN: 0,
@@ -52,7 +57,7 @@ function parseZerodha(symbol: string): ParsedDerivative | null {
     const month0 = MONTHS[mmm!];
     if (month0 === undefined) return null;
     const year = 2000 + Number(yy);
-    return { kind: "option", underlying: underlying!, expiryISO: lastDayOfMonth(year, month0), strike: Number(strike), optionType: type as "CE" | "PE" };
+    return { kind: "option", underlying: underlying!, expiryISO: lastDayOfMonth(year, month0), strike: Number(strike), optionType: type as "CE" | "PE", expiryApprox: true };
   }
   const weekly = /^([A-Z0-9&-]+?)(\d{2})([1-9OND])(\d{2})(\d+(?:\.\d+)?)(CE|PE)$/.exec(symbol);
   if (weekly) {
@@ -68,9 +73,22 @@ function parseZerodha(symbol: string): ParsedDerivative | null {
     const month0 = MONTHS[mmm!];
     if (month0 === undefined) return null;
     const year = 2000 + Number(yy);
-    return { kind: "future", underlying: underlying!, expiryISO: lastDayOfMonth(year, month0) };
+    return { kind: "future", underlying: underlying!, expiryISO: lastDayOfMonth(year, month0), expiryApprox: true };
   }
   return null;
+}
+
+/**
+ * The day a monthly NSE contract expires: the month's last Thursday, or its last Tuesday from
+ * September 2025, when NSE moved its equity-derivative expiries to Tuesday. (A holiday moves it to
+ * the trading day before — settle.ts reads that off the underlying's own price history.)
+ */
+export function monthlyExpiryDay(lastDayISO: string): string {
+  const last = new Date(`${lastDayISO}T00:00:00Z`);
+  const weekday = lastDayISO >= "2025-09-01" ? 2 : 4; // Tue : Thu
+  const back = (last.getUTCDay() - weekday + 7) % 7;
+  last.setUTCDate(last.getUTCDate() - back);
+  return last.toISOString().slice(0, 10);
 }
 
 /** Dhan's descriptive form: "OPT <UNDERLYING> <DD> <MMM> <YYYY> <STRIKE> <CE|PE>" / "FUT <UNDERLYING> <DD> <MMM> <YYYY>". */

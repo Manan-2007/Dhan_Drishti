@@ -187,6 +187,8 @@ export interface HoldingsResponse {
     allPriced: boolean;
     /** Holdings with sales of shares bought before the imported history. */
     soldWithoutPurchase: number;
+    /** F&O contracts closed by an estimated expiry settlement. */
+    settledAtExpiry: number;
   };
   manualAssets: ManualAsset[];
   allocation: {

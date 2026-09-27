@@ -70,6 +70,8 @@ export interface AppOptions {
   benchmarkProvider?: BenchmarkProvider;
   /** Injectable per-security price history for time-weighted return; defaults to Yahoo. */
   historyProvider?: SecurityHistoryProvider;
+  /** Settle expired F&O contracts in the background after imports (needs network; the server turns it on). */
+  settleExpiries?: boolean;
   /** If set to a built web `dist` dir, the server also serves the SPA (single-service self-host). */
   webDir?: string;
 }
@@ -191,7 +193,7 @@ export function buildApp(db: DB, options: AppOptions = {}): FastifyInstance {
   registerSecurityRoutes(app, db);
   registerTransactionRoutes(app, db, fxProvider);
   registerHoldingsRoutes(app, db);
-  registerImportRoutes(app, db);
+  registerImportRoutes(app, db, options.settleExpiries ? benchmarkProvider : undefined);
   registerMarketRoutes(app, db, marketProvider);
   registerFxRoutes(app, db, fxProvider);
   registerPerformanceRoutes(app, db, benchmarkProvider, historyProvider);

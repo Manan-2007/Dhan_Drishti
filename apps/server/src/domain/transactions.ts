@@ -11,6 +11,7 @@ import type { FxProvider } from "../market/types.js";
 import { baseCurrencyOf, fxAtCost, rateMap } from "../market/fx.js";
 import { getPortfolioOwned } from "./portfolios.js";
 import { refreshSnapshots, SNAPSHOT_SOURCE } from "../import/snapshot.js";
+import { EXPIRY_SOURCE, resettleExpired } from "../import/expiry.js";
 
 const decimalStr = z
   .string()
@@ -102,6 +103,8 @@ async function activitySummary(db: DB, userId: string, rows: Transaction[]) {
 function derivedGuard(tx: Transaction): void {
   if (tx.sourceBroker === SNAPSHOT_SOURCE)
     throw new BadRequestError("derived_row", "This entry comes from your holdings statement and updates by itself. Import a newer statement to change it.");
+  if (tx.sourceBroker === EXPIRY_SOURCE)
+    throw new BadRequestError("derived_row", "This is an estimated expiry settlement and updates by itself. Add the trade that closed the contract instead.");
 }
 
 async function getTxOwned(db: DB, userId: string, id: string): Promise<Transaction> {
@@ -271,6 +274,7 @@ export function registerTransactionRoutes(app: FastifyInstance, db: DB, fxProvid
     await db.transaction(async (trx) => {
       await trx.insert(transactions).values(row as typeof transactions.$inferInsert).run();
       await refreshSnapshots(trx, [{ userId, portfolioId: row.portfolioId as string, accountId: (row.accountId as string | null) ?? null }]);
+      await resettleExpired(trx, userId);
     });
     reply.code(201).send({ transaction: await getTxOwned(db, userId, row.id as string) });
   });
@@ -301,6 +305,7 @@ export function registerTransactionRoutes(app: FastifyInstance, db: DB, fxProvid
         { userId, portfolioId: existing.portfolioId, accountId: existing.accountId ?? null },
         { userId, portfolioId: existing.portfolioId, accountId: (rebuilt.accountId as string | null | undefined) ?? null },
       ]);
+      await resettleExpired(trx, userId);
     });
     return { transaction: await getTxOwned(db, userId, id) };
   });
@@ -313,6 +318,7 @@ export function registerTransactionRoutes(app: FastifyInstance, db: DB, fxProvid
     await db.transaction(async (trx) => {
       await trx.delete(transactions).where(and(eq(transactions.id, id), eq(transactions.userId, userId))).run();
       await refreshSnapshots(trx, [{ userId, portfolioId: existing.portfolioId, accountId: existing.accountId ?? null }]);
+      await resettleExpired(trx, userId);
     });
     reply.send({ ok: true });
   });
