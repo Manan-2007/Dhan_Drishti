@@ -29,6 +29,14 @@ export class YahooSecurityHistoryProvider implements SecurityHistoryProvider {
   async getHistory(security: SecurityLike, fromISO: string, toISO: string): Promise<BenchmarkBar[]> {
     const sym = this.ysym(security);
     if (!sym) return [];
+    // An Indian share's deepest daily series is on NSE — Yahoo's BSE (.BO) feed can hold only recent
+    // days — so try NSE first whichever exchange the broker named, then BSE.
+    if (security.currency === "INR" && (sym.endsWith(".NS") || sym.endsWith(".BO"))) {
+      const base = sym.slice(0, -3);
+      const nse = await this.chart.getHistory(`${base}.NS`, fromISO, toISO);
+      if (nse.length > 0) return nse;
+      return this.chart.getHistory(`${base}.BO`, fromISO, toISO);
+    }
     return this.chart.getHistory(sym, fromISO, toISO);
   }
 }

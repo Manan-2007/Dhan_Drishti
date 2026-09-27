@@ -2,14 +2,14 @@ import { useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, CalendarClock, CheckCircle2, Clock, FileWarning, Globe, PieChart, RefreshCw, Upload } from "lucide-react";
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, CalendarClock, CheckCircle2, Clock, Loader2, FileWarning, Globe, PieChart, RefreshCw, Upload } from "lucide-react";
 import CountUp from "@/components/reactbits/CountUp";
-import { AreaChart } from "@/components/charts/AreaChart";
+import { StockChart } from "@/components/charts/StockChart";
 import { Segmented } from "@/components/kit/Segmented";
 import { ScopeSelect } from "@/components/shell/ScopeSelect";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useFilter, useHoldings, useNetWorth, usePortfolios, type NetWorthRange } from "@/lib/hooks";
+import { useFilter, useHoldings, usePortfolios, useValueHistory } from "@/lib/hooks";
 import { Onboarding } from "@/components/Onboarding";
 import { useMarketStatus, useRefreshPrices } from "@/lib/prices";
 import { assetColor } from "@/lib/assetColors";
@@ -19,7 +19,8 @@ import { cn } from "@/lib/utils";
 import { Panel } from "@/components/kit/Panel";
 import { displayName } from "@/lib/instrument";
 
-const RANGES: { value: NetWorthRange; label: string }[] = [
+type Range = "1m" | "3m" | "6m" | "1y" | "max";
+const RANGES: { value: Range; label: string }[] = [
   { value: "1m", label: "1M" },
   { value: "3m", label: "3M" },
   { value: "6m", label: "6M" },
@@ -117,8 +118,8 @@ function useAttention(data: HoldingsResponse | undefined): Attention[] {
 export function Home() {
   const { portfolioId } = useFilter();
   const { data, isLoading } = useHoldings(portfolioId);
-  const [range, setRange] = useState<NetWorthRange>("1y");
-  const nw = useNetWorth(portfolioId, range);
+  const [range, setRange] = useState<Range>("1y");
+  const history = useValueHistory(portfolioId, range);
   const attention = useAttention(data);
   const reduceMotion = useReducedMotion();
 
@@ -148,7 +149,11 @@ export function Home() {
     [open],
   );
 
-  const points = useMemo(() => (nw.data?.series ?? []).map((p) => ({ time: p.date.slice(0, 10), value: Number(p.netWorth) })), [nw.data]);
+  const series = useMemo(() => {
+    const pts = history.data?.points ?? [];
+    return { value: pts.map((p) => ({ time: p.date, value: p.value })), invested: pts.map((p) => ({ time: p.date, value: p.invested })) };
+  }, [history.data]);
+  const pending = history.data?.pending ?? 0;
   const allocation = (data?.allocation.byAssetClass ?? []).filter((s) => Number(s.weight) > 0);
 
   if (isLoading) {
@@ -217,16 +222,26 @@ export function Home() {
             </div>
           </dl>
 
-          <div className="mt-6 flex items-center justify-between gap-3">
-            <p className="text-xs text-muted-foreground">Net worth over time</p>
+          <div className="mt-7 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">
+              {pending > 0 ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <Loader2 className="size-3 animate-spin" /> Fetching price history · {pending} to go
+                </span>
+              ) : (
+                "Shares, ETFs and funds · F&O left out · dashed line is what you put in"
+              )}
+            </p>
             <Segmented ariaLabel="Chart range" size="xs" options={RANGES} value={range} onChange={setRange} />
           </div>
-          <div className="mt-2">
-            {points.length >= 2 ? (
-              <AreaChart points={points} height={240} />
+          <div className="mt-3">
+            {history.isLoading ? (
+              <Skeleton className="h-[300px] rounded-xl" />
+            ) : series.value.length >= 2 ? (
+              <StockChart points={series.value} compare={series.invested} compareLabel="Put in" measure="compare" label="Your investments" currency={data.baseCurrency} format={(n) => compactMoney(n, data.baseCurrency)} height={260} />
             ) : (
-              <div className="grid h-[240px] place-items-center rounded-xl border border-dashed text-center text-sm text-muted-foreground">
-                <p className="max-w-xs">History builds up one point a day from today, so this chart fills in as the days pass.</p>
+              <div className="grid h-[260px] place-items-center rounded-xl border border-dashed text-center text-sm text-muted-foreground">
+                <p className="max-w-xs">The chart draws once your trades are in and their price history arrives.</p>
               </div>
             )}
           </div>

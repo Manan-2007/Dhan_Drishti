@@ -45,6 +45,8 @@ import {
   toPublicUser,
 } from "./auth/service.js";
 import type { User } from "./db/schema.js";
+import { MfApiHistoryProvider } from "./market/providers/mfapi.js";
+import type { HistorySources } from "./market/history-store.js";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -70,8 +72,11 @@ export interface AppOptions {
   benchmarkProvider?: BenchmarkProvider;
   /** Injectable per-security price history for time-weighted return; defaults to Yahoo. */
   historyProvider?: SecurityHistoryProvider;
-  /** Settle expired F&O contracts in the background after imports (needs network; the server turns it on). */
-  settleExpiries?: boolean;
+  /**
+   * Network work in the background around requests: settling expired F&O contracts after an
+   * import, fetching price history for charts. The server turns it on; tests leave it off.
+   */
+  backgroundFetch?: boolean;
   /** If set to a built web `dist` dir, the server also serves the SPA (single-service self-host). */
   webDir?: string;
 }
@@ -193,15 +198,18 @@ export function buildApp(db: DB, options: AppOptions = {}): FastifyInstance {
   registerSecurityRoutes(app, db);
   registerTransactionRoutes(app, db, fxProvider);
   registerHoldingsRoutes(app, db);
-  registerImportRoutes(app, db, options.settleExpiries ? benchmarkProvider : undefined);
+  registerImportRoutes(app, db, options.backgroundFetch ? benchmarkProvider : undefined);
   registerMarketRoutes(app, db, marketProvider);
   registerFxRoutes(app, db, fxProvider);
-  registerPerformanceRoutes(app, db, benchmarkProvider, historyProvider);
+  const historySources: HistorySources | undefined = options.backgroundFetch
+    ? { shares: historyProvider, funds: { amfi: new AmfiProvider(), nav: new MfApiHistoryProvider() }, fx: fxProvider instanceof FrankfurterProvider ? fxProvider : undefined }
+    : undefined;
+  registerPerformanceRoutes(app, db, benchmarkProvider, historyProvider, historySources);
   registerDividendRoutes(app, db);
   registerRebalanceRoutes(app, db);
   registerManualAssetRoutes(app, db);
   registerReportRoutes(app, db);
-  registerSecurityDetailRoutes(app, db, historyProvider);
+  registerSecurityDetailRoutes(app, db, historyProvider, historySources);
   registerAccountManagementRoutes(app, db);
 
   // Single-service self-host: serve the built SPA and fall back to index.html for client routes.

@@ -21,7 +21,7 @@ const Returns = lazy(() => import("@/pages/performance/Returns").then((m) => ({ 
 const Rebalance = lazy(() => import("./pages/Rebalance.js").then((m) => ({ default: m.Rebalance })));
 const Dividends = lazy(() => import("./pages/Dividends.js").then((m) => ({ default: m.Dividends })));
 const Reports = lazy(() => import("./pages/Reports.js").then((m) => ({ default: m.Reports })));
-const SecurityDetail = lazy(() => import("./pages/SecurityDetail.js").then((m) => ({ default: m.SecurityDetail })));
+const Security = lazy(() => import("@/pages/portfolio/Security").then((m) => ({ default: m.Security })));
 const ManualAssets = lazy(() => import("./pages/ManualAssets.js").then((m) => ({ default: m.ManualAssets })));
 const Portfolios = lazy(() => import("./pages/Portfolios.js").then((m) => ({ default: m.Portfolios })));
 const Imports = lazy(() => import("./pages/Imports.js").then((m) => ({ default: m.Imports })));
@@ -81,7 +81,7 @@ function Gate() {
                   <Route path="allocation" element={<Lazy><Allocation /></Lazy>} />
                   <Route path="other" element={<Lazy><ManualAssets /></Lazy>} />
                 </Route>
-                <Route path="portfolio/security/:id" element={<Lazy><SecurityDetail /></Lazy>} />
+                <Route path="portfolio/security/:id" element={<Lazy><Security /></Lazy>} />
                 <Route
                   path="activity"
                   element={

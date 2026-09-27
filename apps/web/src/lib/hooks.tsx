@@ -182,6 +182,29 @@ export interface TwrResponse {
   missingHistory?: string[];
 }
 
+export interface ValueHistory {
+  available: boolean;
+  reason?: string;
+  baseCurrency: string;
+  from?: string;
+  to?: string;
+  pending?: number;
+  atCostShare?: number;
+  points?: { date: string; value: number; invested: number }[];
+}
+
+/** Investments' value per trading day. Polls while price history is still being fetched. */
+export function useValueHistory(portfolioId: string | null, range: string) {
+  const search = new URLSearchParams({ range });
+  if (portfolioId) search.set("portfolioId", portfolioId);
+  return useQuery({
+    queryKey: ["value-history", portfolioId, range],
+    queryFn: () => api.get<ValueHistory>(`/api/performance/value-history?${search.toString()}`),
+    placeholderData: (prev) => prev,
+    refetchInterval: (q) => ((q.state.data?.pending ?? 0) > 0 ? 4000 : false),
+  });
+}
+
 export function useTwr(portfolioId: string | null, enabled: boolean) {
   const qs = portfolioId ? `?portfolioId=${portfolioId}` : "";
   return useQuery({

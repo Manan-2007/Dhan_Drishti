@@ -4,6 +4,7 @@ import type { DB } from "../db/index.js";
 import { transactions, securities, quotes } from "../db/schema.js";
 import type { BenchmarkProvider, FxProvider, MarketDataProvider } from "../market/types.js";
 import { refreshExpirySettlements } from "../import/expiry.js";
+import { topUpHistory, type HistorySources } from "../market/history-store.js";
 import { backfillFxAtCost, refreshRates } from "../market/fx.js";
 import { writeAllScopes } from "../domain/snapshots.js";
 import { pruneQuotesToLatest } from "../market/service.js";
@@ -78,6 +79,8 @@ export async function settleAllExpiries(db: DB, index: BenchmarkProvider): Promi
 export interface MaintenanceProviders {
   fx?: FxProvider;
   index?: BenchmarkProvider;
+  /** Keeps cached price history current for the charts. */
+  history?: HistorySources;
 }
 
 /** One maintenance pass: refresh prices (also prunes quotes + drops the holdings cache) and
@@ -86,6 +89,7 @@ export async function runMaintenance(db: DB, provider: MarketDataProvider, extra
   await refreshAllHeldQuotes(db, provider);
   if (extra.fx) await refreshAllFx(db, extra.fx);
   if (extra.index) await settleAllExpiries(db, extra.index);
+  if (extra.history) await topUpHistory(db, extra.history).catch(() => undefined);
   await snapshotAllUsers(db);
   await deleteExpiredSessions(db).catch(() => undefined);
 }

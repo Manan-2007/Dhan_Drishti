@@ -204,6 +204,17 @@ Assets with no market price — FDs, PPF/EPF/NPS, physical gold, real estate, sa
 ledger, but their base-currency value is added to `net_worth` and folded into the by-asset-class and
 by-region allocation (and therefore into rebalancing). Nothing is estimated; every figure is entered.
 
+## Investments over time (implemented)
+`GET /api/performance/value-history?range=1m|3m|6m|1y|3y|max` rebuilds, for every weekday since the
+first trade, what open positions were worth at that day's close (base currency) and what had gone
+into them (cost basis, FX on the purchase day) — `valueTimeline` in core, with the same position
+arithmetic and delivery settlement as Holdings. Closes, fund NAVs and daily FX come from public
+sources (Yahoo — NSE first, then BSE; mfapi.in by AMFI scheme code, resolved from the ISIN;
+Frankfurter), cached in `price_history` / `fx_history` and topped up by the scheduler. Today uses
+the live quote. F&O is left out (no public daily prices). A position with no close yet counts at
+cost and the response reports `pending` series while they are fetched. The chart colours each
+point green while value ≥ money put in, red below — new money going in is not shown as gain.
+
 ## Net worth over time (implemented)
 A daily net-worth point is recorded per scope (portfolio, or the "all portfolios" aggregate) —
 forward-accruing: on the first holdings view of the day, on login, and by the nightly cron. The

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ChevronDown, HelpCircle, TrendingDown, TrendingUp, Upload } from "lucide-react";
 import CountUp from "@/components/reactbits/CountUp";
-import { CompareChart } from "@/components/charts/CompareChart";
+import { StockChart } from "@/components/charts/StockChart";
 import { Segmented } from "@/components/kit/Segmented";
 import { Panel } from "@/components/kit/Panel";
 import { Empty } from "@/components/kit/Empty";
@@ -178,10 +178,10 @@ function BenchmarkPanel() {
   const lines = useMemo(
     () =>
       data?.series && data.series.length >= 2
-        ? [
-            { label: "What you put in", color: "#9c978c", points: data.series.map((p) => ({ time: p.date.slice(0, 10), value: p.invested })), dashed: true },
-            { label: `The same money in ${data.label}`, color: "#f0b23e", points: data.series.map((p) => ({ time: p.date.slice(0, 10), value: p.index })) },
-          ]
+        ? {
+            index: data.series.map((p) => ({ time: p.date.slice(0, 10), value: p.index })),
+            invested: data.series.map((p) => ({ time: p.date.slice(0, 10), value: p.invested })),
+          }
         : null,
     [data],
   );
@@ -215,7 +215,7 @@ function BenchmarkPanel() {
           ) : (
             <p className="rounded-xl bg-raised/50 px-4 py-3 text-sm">{data.reason ?? "This comparison isn't ready yet."}</p>
           )}
-          {lines && <CompareChart lines={lines} height={240} />}
+          {lines && <StockChart points={lines.index} compare={lines.invested} measure="compare" label={`The same money in ${data.label}`} format={(n) => compactMoney(n)} height={260} />}
           {data.currencyNote && <p className="text-xs text-muted-foreground">{data.currencyNote}</p>}
         </div>
       )}

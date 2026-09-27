@@ -307,6 +307,44 @@ export const settlementPrices = sqliteTable(
   (t) => [primaryKey({ columns: [t.symbol, t.nominalExpiry] })],
 );
 
+/**
+ * Daily closes (a fund's NAV) per security — public market data cached so charts and the value
+ * history draw offline. `price_history_status` says how far each series has been fetched.
+ */
+export const priceHistory = sqliteTable(
+  "price_history",
+  {
+    securityId: text("security_id")
+      .notNull()
+      .references(() => securities.id, { onDelete: "cascade" }),
+    date: text("date").notNull(), // YYYY-MM-DD
+    close: text("close").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.securityId, t.date] })],
+);
+
+export const priceHistoryStatus = sqliteTable("price_history_status", {
+  securityId: text("security_id")
+    .primaryKey()
+    .references(() => securities.id, { onDelete: "cascade" }),
+  source: text("source"), // yahoo | mfapi | null when there is none
+  firstDate: text("first_date"),
+  lastDate: text("last_date"),
+  fetchedAt: text("fetched_at").notNull(),
+});
+
+/** Daily exchange rates (base per 1 unit of `currency`), for valuing foreign holdings on past days. */
+export const fxHistory = sqliteTable(
+  "fx_history",
+  {
+    currency: text("currency").notNull(),
+    base: text("base").notNull(),
+    date: text("date").notNull(),
+    rate: text("rate").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.currency, t.base, t.date] })],
+);
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Portfolio = typeof portfolios.$inferSelect;

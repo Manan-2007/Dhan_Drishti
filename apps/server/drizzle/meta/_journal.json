@@ -64,6 +64,13 @@
       "when": 1790522004469,
       "tag": "0008_settlement_prices",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1790522869445,
+      "tag": "0009_price_history",
+      "breakpoints": true
     }
   ]
 }

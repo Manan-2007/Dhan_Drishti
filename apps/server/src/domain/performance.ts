@@ -12,10 +12,13 @@ import { baseCurrencyOf, rateMap } from "../market/fx.js";
 import { getPortfolioOwned } from "./portfolios.js";
 import { computePortfolioHoldings } from "./holdings.js";
 import { getNetWorthSeries } from "./snapshots.js";
+import { computeValueHistory } from "./value-history.js";
+import type { HistorySources } from "../market/history-store.js";
 
 const querySchema = z.object({ portfolioId: z.string().optional() });
 const RANGES: Record<string, number | null> = { "1m": 30, "3m": 90, "6m": 182, "1y": 365, max: null };
 const netWorthQuerySchema = z.object({ portfolioId: z.string().optional(), range: z.enum(["1m", "3m", "6m", "1y", "max"]).default("max") });
+const valueHistoryQuerySchema = z.object({ portfolioId: z.string().optional(), range: z.enum(["1m", "3m", "6m", "1y", "3y", "max"]).default("1y") });
 const benchmarkQuerySchema = z.object({ portfolioId: z.string().optional(), benchmark: z.string().min(1) });
 
 /**
@@ -258,8 +261,15 @@ export async function computeTwr(db: DB, userId: string, historyProvider: Securi
   return { available: true as const, mode, from, asOf: today, twr: r.twr, annualized: r.annualized, subPeriods: r.subPeriods };
 }
 
-export function registerPerformanceRoutes(app: FastifyInstance, db: DB, benchmarkProvider: BenchmarkProvider, historyProvider: SecurityHistoryProvider): void {
+export function registerPerformanceRoutes(app: FastifyInstance, db: DB, benchmarkProvider: BenchmarkProvider, historyProvider: SecurityHistoryProvider, sources?: HistorySources): void {
   const opts = authed(app);
+
+  // Investments' value on every trading day (ledger × cached public closes) for the stock-style chart.
+  app.get("/api/performance/value-history", opts, async (req) => {
+    const { portfolioId, range } = valueHistoryQuerySchema.parse(req.query);
+    if (portfolioId) await getPortfolioOwned(db, req.user!.id, portfolioId);
+    return computeValueHistory(db, req.user!.id, portfolioId, range, sources);
+  });
   app.get("/api/performance/summary", opts, async (req) => {
     const { portfolioId } = querySchema.parse(req.query);
     if (portfolioId) await getPortfolioOwned(db, req.user!.id, portfolioId);
