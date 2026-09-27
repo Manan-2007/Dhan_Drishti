@@ -17,7 +17,7 @@ const Home = lazy(() => import("@/pages/home/Home").then((m) => ({ default: m.Ho
 const Positions = lazy(() => import("@/pages/portfolio/Positions").then((m) => ({ default: m.Positions })));
 const Allocation = lazy(() => import("@/pages/portfolio/Allocation").then((m) => ({ default: m.Allocation })));
 const Activity = lazy(() => import("@/pages/activity/Activity").then((m) => ({ default: m.Activity })));
-const Analytics = lazy(() => import("./pages/Analytics.js").then((m) => ({ default: m.Analytics })));
+const Returns = lazy(() => import("@/pages/performance/Returns").then((m) => ({ default: m.Returns })));
 const Rebalance = lazy(() => import("./pages/Rebalance.js").then((m) => ({ default: m.Rebalance })));
 const Dividends = lazy(() => import("./pages/Dividends.js").then((m) => ({ default: m.Dividends })));
 const Reports = lazy(() => import("./pages/Reports.js").then((m) => ({ default: m.Reports })));
@@ -112,7 +112,7 @@ function Gate() {
                     />
                   }
                 >
-                  <Route index element={<Lazy><Analytics /></Lazy>} />
+                  <Route index element={<Lazy><Returns /></Lazy>} />
                   <Route path="tax" element={<Lazy><Reports /></Lazy>} />
                   <Route path="rebalance" element={<Lazy><Rebalance /></Lazy>} />
                 </Route>

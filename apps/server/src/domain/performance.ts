@@ -18,6 +18,22 @@ const RANGES: Record<string, number | null> = { "1m": 30, "3m": 90, "6m": 182, "
 const netWorthQuerySchema = z.object({ portfolioId: z.string().optional(), range: z.enum(["1m", "3m", "6m", "1y", "max"]).default("max") });
 const benchmarkQuerySchema = z.object({ portfolioId: z.string().optional(), benchmark: z.string().min(1) });
 
+/**
+ * The ledger's money-weighted cashflows (buys −, sells +, income +), every one in the base
+ * currency — a foreign trade at its FX-at-cost, else today's rate (the scheduler backfills
+ * FX-at-cost, so that fallback is temporary). Sales of shares bought before the history are left
+ * out: with no purchase to set against them, their whole proceeds would read as return.
+ * `fxMissing` when some foreign flow has no rate at all.
+ */
+async function baseCashflows(db: DB, userId: string, txRows: CanonicalTx[]) {
+  const base = await baseCurrencyOf(db, userId);
+  const foreign = [...new Set(txRows.filter((t) => t.currency !== base).map((t) => t.currency))];
+  const today = await rateMap(db, foreign, base);
+  const rateOf = (t: CanonicalTx) => (t.currency === base ? 1 : t.fxRateToBase ? Number(t.fxRateToBase) : Number(today.get(t.currency) ?? NaN));
+  const flows = ledgerCashflows(withoutUnmatchedSales(txRows), rateOf);
+  return { base, flows, fxMissing: flows.some((f) => !Number.isFinite(f.amount)) };
+}
+
 export async function computePerformance(db: DB, userId: string, portfolioId?: string) {
   const clauses = [eq(transactions.userId, userId)];
   if (portfolioId) clauses.push(eq(transactions.portfolioId, portfolioId));
@@ -33,16 +49,7 @@ export async function computePerformance(db: DB, userId: string, portfolioId?: s
 
   // XIRR needs a terminal value for still-open positions; only compute when every open
   // position is priced (or nothing is open). Otherwise it would be misleading → null.
-  // Every flow in the base currency: a foreign trade at its FX-at-cost, else today's rate (the
-  // scheduler backfills FX-at-cost, so that fallback is temporary). No rate at all → no XIRR.
-  const base = await baseCurrencyOf(db, userId);
-  const foreign = [...new Set(txRows.filter((t) => t.currency !== base).map((t) => t.currency))];
-  const today = await rateMap(db, foreign, base);
-  const rateOf = (t: CanonicalTx) => (t.currency === base ? 1 : t.fxRateToBase ? Number(t.fxRateToBase) : Number(today.get(t.currency) ?? NaN));
-  // Sales of shares bought before the history have no purchase to set against them; left in, their
-  // whole proceeds would read as return.
-  const flows = ledgerCashflows(withoutUnmatchedSales(txRows), rateOf);
-  const fxMissing = flows.some((f) => !Number.isFinite(f.amount));
+  const { flows, fxMissing } = await baseCashflows(db, userId, txRows);
   let xirrValue: number | null = null;
   let xirrAvailable = false;
   if (fxMissing) {
@@ -98,10 +105,12 @@ export async function computeBenchmark(
     .where(and(...clauses))
     .all()) as unknown as CanonicalTx[];
 
-  const flows = ledgerCashflows(txRows);
+  // The same cashflows as the portfolio's own XIRR, so the two returns compare like for like.
+  const { base, flows, fxMissing } = await baseCashflows(db, userId, txRows);
   const meta = { benchmarkId: benchmark.id, label: benchmark.label, symbol: benchmark.symbol };
   const unavailable = (reason: string) => ({ ...meta, available: false, reason, portfolio: null, index: null });
   if (flows.length === 0) return unavailable("No cashflows to compare yet.");
+  if (fxMissing) return unavailable("Some foreign trades have no exchange rate yet. They fill in automatically within a few hours.");
 
   const perf = await computePerformance(db, userId, portfolioId);
 
@@ -115,12 +124,8 @@ export async function computeBenchmark(
   const bench = simulateBenchmark(flows, bars, latest.close);
   const series = benchmarkSeries(flows, bars);
 
-  // Cashflows are in each transaction's own currency; the comparison is exact only when they
-  // share the index's currency (typically an all-INR portfolio vs an Indian index).
-  const currencies = [...new Set(txRows.map((t) => t.currency))];
-  const currencyNote = currencies.some((c) => c !== benchmark.currency)
-    ? `Cashflows include ${currencies.join(", ")}; ${benchmark.label} is in ${benchmark.currency}, so the comparison mixes currencies.`
-    : undefined;
+  // Cashflows are in the base currency; exact when that's the index's own (INR vs an Indian index).
+  const currencyNote = base !== benchmark.currency ? `Your figures are in ${base}; ${benchmark.label} is in ${benchmark.currency}, so the comparison mixes currencies.` : undefined;
 
   return {
     ...meta,
