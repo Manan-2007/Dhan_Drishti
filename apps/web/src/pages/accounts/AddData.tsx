@@ -529,6 +529,17 @@ function AccountQuestion({ members, answer, onAnswer }: { members: Item[]; answe
   const mode = answer?.mode ?? (candidates.length > 0 ? "existing" : "new");
   const title = ref ? `Whose ${brokerName(family)} account is ${ref}?` : `Which account are ${members.length === 1 ? "this file's" : "these files'"} entries from?`;
 
+  // People load after the question first renders; don't leave it on "Someone new" when there's
+  // already a person to pick (that would block Import until a name is typed).
+  const ownerDefaulted = useRef(false);
+  useEffect(() => {
+    if (ownerDefaulted.current || !portfolios || !answer) return;
+    ownerDefaulted.current = true; // only the first default; a deliberate "Someone new" stays
+    if (answer.mode === "new" && answer.ownerId === "__new" && !answer.newOwnerName.trim() && portfolios.length) {
+      onAnswer({ ...answer, ownerId: portfolios[0]!.id });
+    }
+  }, [answer, portfolios, onAnswer]);
+
   const startNew = (): Extract<Answer, { mode: "new" }> => ({
     mode: "new",
     ownerId: portfolios?.[0]?.id ?? "__new",
