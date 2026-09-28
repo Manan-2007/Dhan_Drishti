@@ -8,6 +8,7 @@ import { NotFoundError } from "../lib/errors.js";
 import type { SecurityHistoryProvider } from "../market/types.js";
 import { getPortfolioOwned } from "./portfolios.js";
 import { computePortfolioHoldings } from "./holdings.js";
+import { fillHistory, hasHistory, loadHistory, type HistorySources } from "../market/history-store.js";
 
 const querySchema = z.object({ portfolioId: z.string().optional() });
 
@@ -17,7 +18,7 @@ const querySchema = z.object({ portfolioId: z.string().optional() });
  * and a public price-history series for the chart. The caller must actually hold/have traded the
  * security (a transaction in scope) — otherwise 404, so this never leaks the shared master.
  */
-export function registerSecurityDetailRoutes(app: FastifyInstance, db: DB, historyProvider: SecurityHistoryProvider): void {
+export function registerSecurityDetailRoutes(app: FastifyInstance, db: DB, historyProvider: SecurityHistoryProvider, sources?: HistorySources): void {
   const opts = authed(app);
 
   app.get("/api/securities/:id/detail", opts, async (req) => {
@@ -40,15 +41,23 @@ export function registerSecurityDetailRoutes(app: FastifyInstance, db: DB, histo
 
     // Public price history for the chart (only the ticker/ISIN + a date range leave the machine).
     // Mutual funds and unlisted assets have none → an empty series, handled gracefully by the UI.
+    // At least a year back, so a recent purchase still shows how the price had been moving.
     let history: { date: string; close: number }[] = [];
+    const to = new Date().toISOString().slice(0, 10);
+    const firstTrade = txRows[txRows.length - 1]!.tradeDate.slice(0, 10); // rows are newest first
+    const yearAgo = new Date(Date.now() - 366 * 86_400_000).toISOString().slice(0, 10);
+    const from = firstTrade < yearAgo ? firstTrade : yearAgo;
     try {
-      const from = txRows[txRows.length - 1]!.tradeDate.slice(0, 10); // earliest trade (rows are desc)
-      const to = new Date().toISOString().slice(0, 10);
-      history = await historyProvider.getHistory(
-        { id: security.id, symbol: security.symbol, isin: security.isin, amfiCode: security.amfiCode, assetClass: security.assetClass, exchange: security.exchange, currency: security.currency },
-        from,
-        to,
-      );
+      if (sources && hasHistory(security)) {
+        await fillHistory(db, [security.id], from, sources); // cached after the first view
+        history = (await loadHistory(db, [security.id], from)).get(security.id) ?? [];
+      } else {
+        history = await historyProvider.getHistory(
+          { id: security.id, symbol: security.symbol, isin: security.isin, amfiCode: security.amfiCode, assetClass: security.assetClass, exchange: security.exchange, currency: security.currency },
+          from,
+          to,
+        );
+      }
     } catch {
       history = [];
     }

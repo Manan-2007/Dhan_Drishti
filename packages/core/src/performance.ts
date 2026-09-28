@@ -1,6 +1,7 @@
 import { Decimal, d, ZERO, safeDiv } from "./money.js";
 import type { CanonicalTx, Segment } from "./types.js";
-import { applyBonus, applyBuy, applySell, applySplit, emptyPosition, type Position } from "./position.js";
+import { applyBonus, applyBuy, applySell, applySplit, emptyPosition, isDeliverySegment, settleUnmatchedSale, type Position } from "./position.js";
+import { sortLedger } from "./order.js";
 
 /**
  * Performance engine: realised-P&L events (avg-cost) rolled up by segment / month /
@@ -17,9 +18,6 @@ export interface RealisedEvent {
   realised: Decimal; // proceeds - cost - fees - taxes
 }
 
-function sortTxs(txs: CanonicalTx[]): CanonicalTx[] {
-  return [...txs].sort((a, b) => (a.tradeDate < b.tradeDate ? -1 : a.tradeDate > b.tradeDate ? 1 : a.id < b.id ? -1 : 1));
-}
 
 /**
  * Walk the ledger per security (average cost) and emit one realised event per position-closing
@@ -29,9 +27,20 @@ function sortTxs(txs: CanonicalTx[]): CanonicalTx[] {
  */
 export function realisedEvents(txs: CanonicalTx[]): RealisedEvent[] {
   const running = new Map<string, Position>();
+  // The same day-end delivery settlement as the holdings engine (see settleUnmatchedSale).
+  const lastDay = new Map<string, string>();
+  const deliveryShort = new Set<string>();
   const events: RealisedEvent[] = [];
-  for (const tx of sortTxs(txs)) {
+  for (const tx of sortLedger(txs)) {
     if (!tx.securityId) continue;
+    const day = tx.tradeDate.slice(0, 10);
+    if (day > (lastDay.get(tx.securityId) ?? "")) {
+      if (deliveryShort.delete(tx.securityId)) {
+        const settled = settleUnmatchedSale(running.get(tx.securityId) ?? emptyPosition());
+        if (settled) running.set(tx.securityId, settled.position);
+      }
+      lastDay.set(tx.securityId, day);
+    }
     let p = running.get(tx.securityId);
     if (!p) {
       p = emptyPosition();
@@ -63,6 +72,7 @@ export function realisedEvents(txs: CanonicalTx[]): RealisedEvent[] {
     } else if (tx.type === "sell" || tx.type === "transfer_out") {
       const out = applySell(p, qty, price, fees, taxes);
       running.set(tx.securityId, out.position);
+      if (out.wentShort && isDeliverySegment(tx.segment)) deliveryShort.add(tx.securityId);
       if (out.closedSomething) {
         events.push({
           date: tx.tradeDate,
@@ -151,18 +161,79 @@ export interface Cashflow {
 }
 
 /** Signed cashflows from the ledger (excludes any terminal valuation — caller adds it). */
-export function ledgerCashflows(txs: CanonicalTx[]): Cashflow[] {
+export function ledgerCashflows(txs: CanonicalTx[], rateOf: (tx: CanonicalTx) => number = () => 1): Cashflow[] {
   const flows: Cashflow[] = [];
   for (const tx of txs) {
     const qty = d(tx.quantity);
     const price = d(tx.price);
     const fees = d(tx.fees);
     const taxes = d(tx.taxes);
-    if (tx.type === "buy") flows.push({ date: tx.tradeDate, amount: -qty.times(price).plus(fees).plus(taxes).toNumber() });
-    else if (tx.type === "sell") flows.push({ date: tx.tradeDate, amount: qty.times(price).minus(fees).minus(taxes).toNumber() });
-    else if (tx.type === "dividend" || tx.type === "interest") flows.push({ date: tx.tradeDate, amount: d(tx.grossAmount).toNumber() });
+    let amount: Decimal | null = null;
+    if (tx.type === "buy") amount = qty.times(price).plus(fees).plus(taxes).negated();
+    else if (tx.type === "sell") amount = qty.times(price).minus(fees).minus(taxes);
+    else if (tx.type === "dividend" || tx.type === "interest") amount = d(tx.grossAmount);
+    // `rateOf` converts to one currency (base per 1 unit of the tx's): XIRR can't mix ₹ and $.
+    if (amount) flows.push({ date: tx.tradeDate, amount: amount.times(rateOf(tx)).toNumber() });
   }
   return flows;
+}
+
+/**
+ * The ledger with sales of shares bought before its history taken out (the part of each delivery
+ * sale that settled unmatched at day's end — see settleUnmatchedSale). Money-weighted returns
+ * need both sides of an investment; counting a sale whose purchase isn't on record would show
+ * its whole proceeds as return. Charges on a trimmed sale shrink in proportion.
+ */
+export function withoutUnmatchedSales(txs: CanonicalTx[]): CanonicalTx[] {
+  const unmatched = new Map<string, Decimal>(); // tx id → units sold with no purchase on record
+  const running = new Map<string, Position>();
+  const lastDay = new Map<string, string>();
+  const legs = new Map<string, { id: string; qty: Decimal }[]>(); // today's delivery short legs
+  const flush = (sid: string) => {
+    for (const leg of legs.get(sid) ?? []) if (leg.qty.greaterThan(0)) unmatched.set(leg.id, (unmatched.get(leg.id) ?? ZERO).plus(leg.qty));
+    legs.delete(sid);
+    const settled = settleUnmatchedSale(running.get(sid) ?? emptyPosition());
+    if (settled) running.set(sid, settled.position);
+  };
+  for (const tx of sortLedger(txs)) {
+    if (!tx.securityId) continue;
+    const sid = tx.securityId;
+    const day = tx.tradeDate.slice(0, 10);
+    if (day > (lastDay.get(sid) ?? "")) {
+      if (legs.has(sid)) flush(sid);
+      lastDay.set(sid, day);
+    }
+    const p = running.get(sid) ?? emptyPosition();
+    const qty = d(tx.quantity);
+    if (tx.type === "buy" || tx.type === "transfer_in") {
+      running.set(sid, applyBuy(p, qty, d(tx.price), d(tx.fees), d(tx.taxes)).position);
+      let cover = Decimal.min(qty, Decimal.max(p.qty.negated(), ZERO));
+      for (const leg of legs.get(sid) ?? []) {
+        const take = Decimal.min(cover, leg.qty);
+        leg.qty = leg.qty.minus(take);
+        cover = cover.minus(take);
+      }
+    } else if (tx.type === "sell" || tx.type === "transfer_out") {
+      const out = applySell(p, qty, d(tx.price), d(tx.fees), d(tx.taxes));
+      running.set(sid, out.position);
+      if (out.wentShort && isDeliverySegment(tx.segment)) {
+        const shortQty = qty.minus(Decimal.min(qty, Decimal.max(p.qty, ZERO)));
+        legs.set(sid, [...(legs.get(sid) ?? []), { id: tx.id, qty: shortQty }]);
+      }
+    } else if (tx.type === "split") running.set(sid, applySplit(p, d(tx.price)));
+    else if (tx.type === "bonus") running.set(sid, applyBonus(p, qty));
+  }
+  for (const sid of [...legs.keys()]) flush(sid);
+  if (unmatched.size === 0) return txs;
+  return txs.flatMap((t) => {
+    const u = unmatched.get(t.id);
+    if (!u) return [t];
+    const q = d(t.quantity);
+    const keep = q.minus(u);
+    if (!keep.greaterThan(0)) return [];
+    const share = keep.div(q);
+    return [{ ...t, quantity: keep.toFixed(), grossAmount: d(t.grossAmount).times(share).toFixed(), fees: d(t.fees).times(share).toFixed(), taxes: d(t.taxes).times(share).toFixed() }];
+  });
 }
 
 // ---------- Benchmark comparison (index-equivalent / PME-style mirror) ----------

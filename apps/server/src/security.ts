@@ -7,12 +7,12 @@ import { env } from "./env.js";
  * dependency-free and single-process — appropriate for a local self-host deployment.
  */
 
-// The SPA is same-origin; it only calls /api and loads its own bundled assets. `'unsafe-inline'`
-// is needed for the pre-paint theme script in index.html and Recharts' inline styles; a stricter
-// script policy would require hashing that bootstrap script.
+// The SPA is same-origin; it only calls /api and loads its own bundled assets. Scripts must come
+// from our own files (no inline script). Styles allow 'unsafe-inline' because the UI's animation
+// and chart libraries set inline styles and inject small <style> tags.
 const CSP = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
+  "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data:",
   "font-src 'self' data:",

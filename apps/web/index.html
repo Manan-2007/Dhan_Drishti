@@ -1,26 +1,17 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Dhan Drishti</title>
     <meta name="description" content="Private, self-hosted investment portfolio & wealth tracker" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#100F0F" />
+    <meta name="theme-color" content="#0b0b0d" />
+    <meta name="color-scheme" content="dark" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="apple-touch-icon" href="/icon.svg" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Dhan Drishti" />
-    <script>
-      // Apply saved theme before paint to avoid a flash of the wrong mode.
-      (function () {
-        try {
-          var t = localStorage.getItem("dd-theme");
-          var dark = t === "dark" || (!t && window.matchMedia("(prefers-color-scheme: dark)").matches);
-          if (dark) document.documentElement.classList.add("dark");
-        } catch (e) {}
-      })();
-    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -67,6 +67,24 @@ export interface Transaction {
   security: { id: string; symbol: string; name: string; isin: string | null; assetClass: string; sector: string | null; exchange: string | null } | null;
   account: { id: string; name: string; broker: string } | null;
 }
+/** Totals over every entry matching an Activity filter, in the base currency. */
+export interface ActivitySummary {
+  count: number;
+  baseCurrency: string;
+  bought: string;
+  sold: string;
+  income: string;
+  charges: string;
+  /** Foreign entries with no exchange rate yet, left out of the totals. */
+  unconverted: number;
+}
+export interface ActivityPage {
+  transactions: Transaction[];
+  total: number;
+  limit: number;
+  offset: number;
+  summary?: ActivitySummary;
+}
 export interface HoldingRow {
   security: { id: string; symbol: string; name: string; assetClass: string; sector: string | null; subSector: string | null; currency: string };
   netQty: string;
@@ -81,6 +99,9 @@ export interface HoldingRow {
   todayChange: string | null;
   netPnl: string | null;
   hasOversell: boolean;
+  /** Unsettled F&O contract past its expiry. */
+  expired?: boolean;
+  soldWithoutPurchase?: string;
   quote: { price: string; asOf: string; estimated: boolean } | null;
   baseInvested: string | null;
   baseCurrentValue: string | null;
@@ -167,6 +188,12 @@ export interface HoldingsResponse {
     openPositions: number;
     pricedPositions: number;
     allPriced: boolean;
+    /** Holdings with sales of shares bought before the imported history. */
+    soldWithoutPurchase: number;
+    /** F&O contracts closed by an estimated expiry settlement. */
+    settledAtExpiry: number;
+    /** Expired contracts still open (no public settlement price). */
+    expiredOpen: number;
   };
   manualAssets: ManualAsset[];
   allocation: {
@@ -267,6 +294,11 @@ export interface CapitalGainRow {
   gain: string;
   holdingDays: number;
   term: "short" | "long";
+  /** False for an opening balance: bought before the files start, real holding period unknown. */
+  buyDateKnown: boolean;
+  proceedsBase: string | null;
+  costBase: string | null;
+  gainBase: string | null;
 }
 export interface TermTotals {
   gain: string;
@@ -274,13 +306,26 @@ export interface TermTotals {
   cost: string;
   count: number;
 }
+export interface UnmatchedSaleRow {
+  securityId: string;
+  symbol: string;
+  name: string;
+  currency: string;
+  sellDate: string;
+  quantity: string;
+  proceeds: string;
+  proceedsBase: string | null;
+  fy: string;
+}
 export interface CapitalGainsReport {
+  baseCurrency: string;
   rows: CapitalGainRow[];
-  byFY: { key: string; shortTerm: TermTotals; longTerm: TermTotals }[];
+  byFY: { key: string; shortTerm: TermTotals; longTerm: TermTotals; unknownTerm: TermTotals }[];
   fyList: string[];
-  totals: { shortTerm: TermTotals; longTerm: TermTotals };
+  totals: { shortTerm: TermTotals; longTerm: TermTotals; unknownTerm: TermTotals };
+  unmatched: UnmatchedSaleRow[];
   currencies: string[];
-  currencyNote?: string;
+  fxApprox: boolean;
   disclaimer: string;
 }
 export interface SecurityDetail {
@@ -293,6 +338,7 @@ export interface SecurityDetail {
 }
 export interface ImportBatch {
   id: string;
+  accountId: string | null;
   broker: string;
   filename: string;
   status: string;
@@ -301,4 +347,92 @@ export interface ImportBatch {
   rowsSkipped: number;
   rowsInvalid: number;
   createdAt: string;
+}
+
+// ---- Drop-anything import ----
+export type FileKind = "transactions" | "prices" | "pnl_report" | "not_needed" | "needs_password" | "unrecognized";
+export interface AccountSuggestion {
+  accountId: string;
+  accountName: string;
+  portfolioId: string;
+  portfolioName: string;
+  why: string;
+  adoptRef: string | null;
+}
+export interface UploadDetection {
+  filename: string;
+  kind: FileKind;
+  /** A holdings statement: checked against the account's trades, never added on top of them. */
+  snapshot: boolean;
+  adapter: string | null;
+  confidence: number;
+  reason: string;
+  brokerFamily: string | null;
+  accountRef: string | null;
+  holderName: string | null;
+  sheet: string | null;
+  counts: {
+    rowsTotal: number;
+    valid: number;
+    invalid: number;
+    duplicates: number;
+    newSecurities: number;
+    toImport: number;
+    period: { from: string; to: string } | null;
+  } | null;
+  priceRows: number | null;
+  currency: string | null;
+  suggestion: AccountSuggestion | null;
+  error: string | null;
+}
+export type CommitTarget =
+  | { accountId: string; adoptRef?: string | null }
+  | { newAccount: { portfolioId?: string; newPortfolioName?: string; broker: string; accountRef?: string | null; name: string; currency?: string } };
+export interface CommitManyItem {
+  filename: string;
+  content: string;
+  encoding?: "base64";
+  casPassword?: string;
+  kind: "transactions" | "prices" | "pnl_report";
+  adapter?: string;
+  target?: CommitTarget;
+}
+export interface DropSnapshot {
+  netWorth: string;
+  currentValue: string;
+  invested: string;
+  realisedPnl: string;
+  openPositions: number;
+}
+/** What a broker's P&L report found when checked against the ledger. */
+export interface PnlReconcile {
+  /** Closing trades the statement left out, added from the report. */
+  filled: { contract: string; type: "buy" | "sell"; quantity: string; price: string; tradeDate: string }[];
+  unmatched: number;
+  check: {
+    broker: string;
+    ours: string;
+    difference: string;
+    from: string;
+    to: string;
+    /** Shares sold with no purchase in the files — bought before they start. */
+    soldWithoutPurchase: number;
+  } | null;
+}
+export interface CommitManyResult {
+  files: {
+    filename: string;
+    kind: "transactions" | "prices" | "pnl_report";
+    imported: number;
+    duplicates: number;
+    replaced: number;
+    invalid: number;
+    accountId: string | null;
+    prices?: { seeded: number; unmatchedCount: number };
+    reconcile?: PnlReconcile;
+    /** A holdings statement: what it added beyond the trades, and what the trades hold that it doesn't list. */
+    snapshot?: { asOf: string; opening: number; reduced: number; notInStatement: string[] };
+  }[];
+  before: DropSnapshot;
+  after: DropSnapshot;
 }

@@ -114,12 +114,12 @@ describe("price-seed from a holdings snapshot (no cost basis)", () => {
     const holdings = [
       "Instrument,ISIN,Qty.,Avg. cost",
       '"Reliance Industries",INE002A01018,10,1200', // will match by ISIN
-      '"Infosys",,20,1500', // no ISIN → must match by normalized name ("Infosys Ltd" ≈ "Infosys")
+      '"Infosys",,20,1500', // no ISIN → resolved to its NSE listing (INFY) by name
     ].join("\n");
     await post("/api/imports/commit", cookie, { portfolioId: pid, broker: "holdings", filename: "h.csv", content: holdings });
 
     let h = (await get("/api/holdings", cookie)).json();
-    expect(find(h.holdings, "RELIANCE INDUSTRIES")!.currentValue).toBeNull();
+    expect(find(h.holdings, "RELIANCE")!.currentValue).toBeNull();
 
     const seed = (await post("/api/imports/seed-prices", cookie, { portfolioId: pid, filename: "Holding.csv", content: dhanHolding })).json();
     expect(seed.seeded).toBe(2);
@@ -127,7 +127,7 @@ describe("price-seed from a holdings snapshot (no cost basis)", () => {
     expect(seed.unmatched).toContain("Unknown Corp");
 
     h = (await get("/api/holdings", cookie)).json();
-    expect(Number(find(h.holdings, "RELIANCE INDUSTRIES")!.currentValue)).toBeCloseTo(10 * 1240, 2);
-    expect(Number(find(h.holdings, "INFOSYS")!.currentValue)).toBeCloseTo(20 * 1060, 2);
+    expect(Number(find(h.holdings, "RELIANCE")!.currentValue)).toBeCloseTo(10 * 1240, 2);
+    expect(Number(find(h.holdings, "INFY")!.currentValue)).toBeCloseTo(20 * 1060, 2);
   });
 });

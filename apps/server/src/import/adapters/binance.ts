@@ -1,5 +1,6 @@
 import type { BrokerAdapter, ParsedCsv, NormalizedRow, DetectResult } from "../types.js";
 import { pick, hasHeader, rowHash } from "../csv.js";
+import { canonicalDate, UTC } from "../dates.js";
 
 // Binance — spot "Trade History" export. Each row is a pair trade (e.g. BTCUSDT); we key the
 // security by its BASE asset (BTC) as crypto, priced in the QUOTE currency (USDT→USD).
@@ -30,11 +31,7 @@ function normSide(raw: string | undefined): "buy" | "sell" | null {
 
 /** Binance timestamps are UTC; if the value has no timezone, treat it as UTC. */
 function parseDate(raw: string | undefined): string | null {
-  if (!raw) return null;
-  let v = raw.trim();
-  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(v) && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(v)) v = v.replace(" ", "T") + "Z";
-  const t = Date.parse(v);
-  return Number.isNaN(t) ? null : new Date(t).toISOString();
+  return canonicalDate(raw, UTC);
 }
 
 export const binanceAdapter: BrokerAdapter = {

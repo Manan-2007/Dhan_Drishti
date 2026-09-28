@@ -3,10 +3,10 @@ import { pick, hasHeader, rowHash } from "../csv.js";
 
 /**
  * Current-holdings snapshot — the "Holdings" / "Portfolio" export many brokers offer (one row
- * per open position: instrument, quantity, average cost, and usually a last price). We turn each
- * position into a single `buy` at its average cost, and seed the last price as a quote so the
- * dashboard shows current value immediately. Snapshots have no trade dates, so the buy is dated
- * to the import; realised P&L and time-based returns aren't meaningful from a snapshot alone.
+ * per open position: instrument, quantity, average cost, and usually a last price). Each position
+ * is emitted as a row at its average cost and the last price seeds a quote, but the importer
+ * stores them as a statement, not trades: the ledger only gets what they add beyond the account's
+ * trades (see import/snapshot.ts), so a tradebook and a holdings file never count a share twice.
  */
 const NAME = ["instrument", "name", "symbol", "tradingsymbol", "scrip", "stock", "company"];
 const QTY = ["qty.", "qty", "quantity", "units", "shares", "holding qty", "net qty", "netqty"];
@@ -28,6 +28,7 @@ function num(raw: string | undefined): number | null {
 
 export const holdingsAdapter: BrokerAdapter = {
   id: "holdings",
+  snapshot: true,
   label: "Current holdings (snapshot)",
 
   detect(csv: ParsedCsv): DetectResult {

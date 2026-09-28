@@ -1,6 +1,7 @@
 import type { Segment } from "@dhan-drishti/core";
 import type { BrokerAdapter, ParsedCsv, NormalizedRow, DetectResult } from "../types.js";
 import { pick, hasHeader, rowHash } from "../csv.js";
+import { canonicalDate, IST } from "../dates.js";
 
 // Dhan's tradebook keys securities by full Name (no ticker/ISIN in the export).
 const NAME = ["name", "security", "scrip"];
@@ -28,10 +29,7 @@ function parseDateTime(dateRaw: string | undefined, timeRaw: string | undefined)
   const dmy = dateRaw.match(/^(\d{2})[-/](\d{2})[-/](\d{4})/);
   const iso = dmy ? `${dmy[3]}-${dmy[2]}-${dmy[1]}` : dateRaw;
   const combined = timeRaw ? `${iso} ${timeRaw}` : iso;
-  const t = Date.parse(combined);
-  if (!Number.isNaN(t)) return new Date(t).toISOString();
-  const t2 = Date.parse(iso);
-  return Number.isNaN(t2) ? null : new Date(t2).toISOString();
+  return canonicalDate(combined, IST) ?? canonicalDate(iso, IST);
 }
 
 function normSide(raw: string | undefined): "buy" | "sell" | null {

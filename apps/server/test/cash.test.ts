@@ -80,4 +80,24 @@ describe("cash balance & net worth", () => {
     // Deposit 100000 → net worth 110800 (holdings 60000 + retained cash 50800) → +10.8%.
     expect(twr.twr).toBeCloseTo(0.108, 6);
   });
+
+  it("counts cash only for accounts that record deposits — a tradebook-only account adds none", async () => {
+    const cookie = await signup("cash4");
+    const pid = (await post("/api/portfolios", cookie, { name: "P" })).json().portfolio.id;
+    const sid = (await post("/api/securities", cookie, { symbol: "TCS", name: "TCS", assetClass: "equity" })).json().security.id;
+    const funded = (await post("/api/accounts", cookie, { portfolioId: pid, name: "Funded", broker: "dhan" })).json().account.id;
+    const tradebook = (await post("/api/accounts", cookie, { portfolioId: pid, name: "Tradebook only", broker: "zerodha" })).json().account.id;
+    await post("/api/transactions", cookie, { portfolioId: pid, accountId: funded, type: "deposit", tradeDate: "2024-01-01", grossAmount: "100000" });
+    await post("/api/transactions", cookie, { portfolioId: pid, accountId: funded, securityId: sid, type: "buy", tradeDate: "2024-02-01", quantity: "10", price: "5000" });
+    await post("/api/transactions", cookie, { portfolioId: pid, accountId: tradebook, securityId: sid, type: "buy", tradeDate: "2024-02-01", quantity: "5", price: "5000" });
+    await post("/api/market-data/refresh", cookie, {});
+
+    const h = (await get("/api/holdings", cookie)).json();
+    expect(h.cashTracked).toBe(true);
+    expect(h.summary.cash).toBe("50000"); // the funded account's own; not 25000 after the other's buy
+    expect(h.summary.netWorth).toBe("140000"); // 15 × 6000 + 50000
+
+    const twr = (await get("/api/performance/twr", cookie)).json();
+    expect(twr).toMatchObject({ available: true, mode: "mixed" });
+  });
 });

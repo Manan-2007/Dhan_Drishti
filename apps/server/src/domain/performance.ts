@@ -1,22 +1,41 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
-import { rollupRealised, ledgerCashflows, xirr, simulateBenchmark, benchmarkSeries, linkedTwr, priceAsOf, cashDeltas, cashBalanceAsOf, hasCashAccounting, d, ZERO, toStore, type CanonicalTx, type TwrPoint } from "@dhan-drishti/core";
+import { rollupRealised, ledgerCashflows, withoutUnmatchedSales, xirr, simulateBenchmark, benchmarkSeries, linkedTwr, priceAsOf, cashDeltas, cashBalanceAsOf, cashTrackedAccounts, d, ZERO, toStore, type CanonicalTx, type TwrPoint } from "@dhan-drishti/core";
 import type { DB } from "../db/index.js";
 import { transactions, securities } from "../db/schema.js";
 import { authed } from "../lib/routes.js";
 import { BadRequestError } from "../lib/errors.js";
 import type { BenchmarkProvider, SecurityHistoryProvider, BenchmarkBar } from "../market/types.js";
 import { BENCHMARKS, getBenchmark } from "../market/benchmarks.js";
-import { baseCurrencyOf } from "../market/fx.js";
+import { baseCurrencyOf, rateMap } from "../market/fx.js";
 import { getPortfolioOwned } from "./portfolios.js";
 import { computePortfolioHoldings } from "./holdings.js";
 import { getNetWorthSeries } from "./snapshots.js";
+import { computeValueHistory } from "./value-history.js";
+import type { HistorySources } from "../market/history-store.js";
 
 const querySchema = z.object({ portfolioId: z.string().optional() });
 const RANGES: Record<string, number | null> = { "1m": 30, "3m": 90, "6m": 182, "1y": 365, max: null };
 const netWorthQuerySchema = z.object({ portfolioId: z.string().optional(), range: z.enum(["1m", "3m", "6m", "1y", "max"]).default("max") });
+const valueHistoryQuerySchema = z.object({ portfolioId: z.string().optional(), range: z.enum(["1m", "3m", "6m", "1y", "3y", "max"]).default("1y") });
 const benchmarkQuerySchema = z.object({ portfolioId: z.string().optional(), benchmark: z.string().min(1) });
+
+/**
+ * The ledger's money-weighted cashflows (buys −, sells +, income +), every one in the base
+ * currency — a foreign trade at its FX-at-cost, else today's rate (the scheduler backfills
+ * FX-at-cost, so that fallback is temporary). Sales of shares bought before the history are left
+ * out: with no purchase to set against them, their whole proceeds would read as return.
+ * `fxMissing` when some foreign flow has no rate at all.
+ */
+async function baseCashflows(db: DB, userId: string, txRows: CanonicalTx[]) {
+  const base = await baseCurrencyOf(db, userId);
+  const foreign = [...new Set(txRows.filter((t) => t.currency !== base).map((t) => t.currency))];
+  const today = await rateMap(db, foreign, base);
+  const rateOf = (t: CanonicalTx) => (t.currency === base ? 1 : t.fxRateToBase ? Number(t.fxRateToBase) : Number(today.get(t.currency) ?? NaN));
+  const flows = ledgerCashflows(withoutUnmatchedSales(txRows), rateOf);
+  return { base, flows, fxMissing: flows.some((f) => !Number.isFinite(f.amount)) };
+}
 
 export async function computePerformance(db: DB, userId: string, portfolioId?: string) {
   const clauses = [eq(transactions.userId, userId)];
@@ -33,10 +52,12 @@ export async function computePerformance(db: DB, userId: string, portfolioId?: s
 
   // XIRR needs a terminal value for still-open positions; only compute when every open
   // position is priced (or nothing is open). Otherwise it would be misleading → null.
-  const flows = ledgerCashflows(txRows);
+  const { flows, fxMissing } = await baseCashflows(db, userId, txRows);
   let xirrValue: number | null = null;
   let xirrAvailable = false;
-  if (s.openPositions === 0) {
+  if (fxMissing) {
+    // leave unavailable
+  } else if (s.openPositions === 0) {
     xirrAvailable = true;
     xirrValue = xirr(flows);
   } else if (s.allPriced && Number(s.currentValue) > 0) {
@@ -87,10 +108,12 @@ export async function computeBenchmark(
     .where(and(...clauses))
     .all()) as unknown as CanonicalTx[];
 
-  const flows = ledgerCashflows(txRows);
+  // The same cashflows as the portfolio's own XIRR, so the two returns compare like for like.
+  const { base, flows, fxMissing } = await baseCashflows(db, userId, txRows);
   const meta = { benchmarkId: benchmark.id, label: benchmark.label, symbol: benchmark.symbol };
   const unavailable = (reason: string) => ({ ...meta, available: false, reason, portfolio: null, index: null });
   if (flows.length === 0) return unavailable("No cashflows to compare yet.");
+  if (fxMissing) return unavailable("Some foreign trades have no exchange rate yet. They fill in automatically within a few hours.");
 
   const perf = await computePerformance(db, userId, portfolioId);
 
@@ -104,12 +127,8 @@ export async function computeBenchmark(
   const bench = simulateBenchmark(flows, bars, latest.close);
   const series = benchmarkSeries(flows, bars);
 
-  // Cashflows are in each transaction's own currency; the comparison is exact only when they
-  // share the index's currency (typically an all-INR portfolio vs an Indian index).
-  const currencies = [...new Set(txRows.map((t) => t.currency))];
-  const currencyNote = currencies.some((c) => c !== benchmark.currency)
-    ? `Cashflows include ${currencies.join(", ")}; ${benchmark.label} is in ${benchmark.currency}, so the comparison mixes currencies.`
-    : undefined;
+  // Cashflows are in the base currency; exact when that's the index's own (INR vs an Indian index).
+  const currencyNote = base !== benchmark.currency ? `Your figures are in ${base}; ${benchmark.label} is in ${benchmark.currency}, so the comparison mixes currencies.` : undefined;
 
   return {
     ...meta,
@@ -176,15 +195,21 @@ export async function computeTwr(db: DB, userId: string, historyProvider: Securi
   const foreign = [...new Set(secRows.map((s) => s.currency).filter((c) => c !== base))];
   if (foreign.length) return unavailable(`Time-weighted return needs a single currency; this scope also holds ${foreign.join(", ")}.`);
 
-  // Two modes. With real cash accounting (deposits/withdrawals recorded), the portfolio value
-  // is holdings + cash and only deposits/withdrawals are external flows — so dividends and sale
-  // proceeds stay *retained* as cash. Without it, buys/sells are the external flows (holdings only).
-  const cashMode = hasCashAccounting(txs);
-  const deltas = cashDeltas(txs);
+  // Per account, two modes. An account that records its deposits/withdrawals is valued as holdings
+  // + cash, and only those deposits/withdrawals are external flows — dividends and sale proceeds
+  // stay *retained* as cash. For any other account (a tradebook alone), its buys/sells are the
+  // external flows and only its holdings count. A family mixes both, account by account.
+  const tracked = cashTrackedAccounts(txs);
+  const inCash = (tx: CanonicalTx) => tracked.has(tx.accountId ?? "");
+  const allCash = txs.every(inCash);
+  const anyCash = tracked.size > 0;
+  const deltas = cashDeltas(txs.filter(inCash));
   const flowByDate = new Map<string, number>();
-  for (const tx of txs) {
+  // Buy/sell flows (untracked accounts) leave out sales of shares bought before the history — the
+  // valuation never held them, so they'd look like money taken out of thin air.
+  for (const tx of [...txs.filter(inCash), ...withoutUnmatchedSales(txs.filter((t) => !inCash(t)))]) {
     const day = tx.tradeDate.slice(0, 10);
-    if (cashMode) {
+    if (inCash(tx)) {
       if (tx.type === "deposit") flowByDate.set(day, (flowByDate.get(day) ?? 0) + d(tx.grossAmount).abs().toNumber());
       else if (tx.type === "withdrawal") flowByDate.set(day, (flowByDate.get(day) ?? 0) - d(tx.grossAmount).abs().toNumber());
     } else {
@@ -193,11 +218,11 @@ export async function computeTwr(db: DB, userId: string, historyProvider: Securi
     }
   }
   const boundaryDates = [...flowByDate.keys()].sort();
-  if (boundaryDates.length === 0) return unavailable(cashMode ? "No deposits or withdrawals to measure yet." : "No buy/sell activity to measure yet.");
+  if (boundaryDates.length === 0) return unavailable(allCash ? "No deposits or withdrawals to measure yet." : "No buy/sell activity to measure yet.");
 
   const from = boundaryDates[0]!;
   const today = new Date().toISOString().slice(0, 10);
-  const cashStrictlyBefore = (day: string) => (cashMode ? deltas.filter((e) => e.currency === base && e.date.slice(0, 10) < day).reduce((a, e) => a + e.amount.toNumber(), 0) : 0);
+  const cashStrictlyBefore = (day: string) => deltas.filter((e) => e.currency === base && e.date.slice(0, 10) < day).reduce((a, e) => a + e.amount.toNumber(), 0);
 
   // Only public tickers + a date range are sent — never holdings.
   const histBySec = new Map<string, BenchmarkBar[]>();
@@ -211,7 +236,7 @@ export async function computeTwr(db: DB, userId: string, historyProvider: Securi
   const missing = new Set<string>();
   const points: TwrPoint[] = [];
   for (const day of boundaryDates) {
-    let value = cashStrictlyBefore(day); // cash held just before this date's flow (0 unless cashMode)
+    let value = cashStrictlyBefore(day); // cash held just before this date's flow (tracked accounts only)
     for (const sec of secRows) {
       const q = netQtyBefore(txsBySec.get(sec.id) ?? [], day);
       if (q <= 0) continue;
@@ -224,19 +249,27 @@ export async function computeTwr(db: DB, userId: string, historyProvider: Securi
 
   const holdings = await computePortfolioHoldings(db, userId, portfolioId);
   if (holdings.summary.openPositions > 0 && !holdings.summary.allPriced) return unavailable("Refresh prices for all open positions first.");
-  // In cash mode the ending value is net worth (holdings + retained cash); otherwise holdings only.
-  const endValue = cashMode ? Number(holdings.summary.netWorth) : Number(holdings.summary.currentValue);
+  // Holdings plus the cash of tracked accounts — the same thing each earlier point measures.
+  const endValue = Number(holdings.summary.currentValue) + (anyCash ? Number(holdings.summary.cash) : 0);
   points.push({ date: today, value: endValue, flow: 0 });
 
   if (missing.size) return unavailable(`No price history for ${[...missing].join(", ")} (e.g. mutual funds), so TWR can't be valued.`, { missingHistory: [...missing] });
 
   const r = linkedTwr(points);
   if (r.twr === null) return unavailable("Not enough valued history to compute TWR.");
-  return { available: true as const, mode: cashMode ? ("cash-inclusive" as const) : ("holdings" as const), from, asOf: today, twr: r.twr, annualized: r.annualized, subPeriods: r.subPeriods };
+  const mode = allCash ? ("cash-inclusive" as const) : anyCash ? ("mixed" as const) : ("holdings" as const);
+  return { available: true as const, mode, from, asOf: today, twr: r.twr, annualized: r.annualized, subPeriods: r.subPeriods };
 }
 
-export function registerPerformanceRoutes(app: FastifyInstance, db: DB, benchmarkProvider: BenchmarkProvider, historyProvider: SecurityHistoryProvider): void {
+export function registerPerformanceRoutes(app: FastifyInstance, db: DB, benchmarkProvider: BenchmarkProvider, historyProvider: SecurityHistoryProvider, sources?: HistorySources): void {
   const opts = authed(app);
+
+  // Investments' value on every trading day (ledger × cached public closes) for the stock-style chart.
+  app.get("/api/performance/value-history", opts, async (req) => {
+    const { portfolioId, range } = valueHistoryQuerySchema.parse(req.query);
+    if (portfolioId) await getPortfolioOwned(db, req.user!.id, portfolioId);
+    return computeValueHistory(db, req.user!.id, portfolioId, range, sources);
+  });
   app.get("/api/performance/summary", opts, async (req) => {
     const { portfolioId } = querySchema.parse(req.query);
     if (portfolioId) await getPortfolioOwned(db, req.user!.id, portfolioId);

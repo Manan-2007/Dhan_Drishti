@@ -8,8 +8,10 @@ import { transactions, securities, accounts, type Transaction } from "../db/sche
 import { BadRequestError, NotFoundError } from "../lib/errors.js";
 import { authed } from "../lib/routes.js";
 import type { FxProvider } from "../market/types.js";
-import { baseCurrencyOf, fxAtCost } from "../market/fx.js";
+import { baseCurrencyOf, fxAtCost, rateMap } from "../market/fx.js";
 import { getPortfolioOwned } from "./portfolios.js";
+import { refreshSnapshots, SNAPSHOT_SOURCE } from "../import/snapshot.js";
+import { EXPIRY_SOURCE, resettleExpired } from "../import/expiry.js";
 
 const decimalStr = z
   .string()
@@ -48,11 +50,62 @@ const searchSchema = z.object({
   accountId: z.string().optional(),
   securityId: z.string().optional(),
   type: z.enum(TX_TYPES).optional(),
+  /** Several types at once, comma-separated ("buy,sell") — how the Activity screen's groups filter. */
+  types: z
+    .string()
+    .optional()
+    .transform((s) => (s ? s.split(",").map((t) => t.trim()).filter(Boolean) : undefined))
+    .pipe(z.array(z.enum(TX_TYPES)).optional()),
+  /** Text to find in the security's symbol or name. */
+  q: z.string().trim().max(80).optional(),
+  /** "1" adds totals over every matching row (not just this page), in the base currency. */
+  summary: z.enum(["0", "1"]).optional(),
   from: z.string().optional(),
   to: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
   offset: z.coerce.number().int().min(0).default(0),
 });
+
+/**
+ * Totals for a filtered stretch of activity, in the base currency: what was bought, sold, earned
+ * and paid in charges. A foreign row converts at its FX-at-cost, else today's rate; one with
+ * neither is left out and flagged. Statement-derived rows (opening balances) aren't trades, so
+ * they don't count as buying or selling.
+ */
+async function activitySummary(db: DB, userId: string, rows: Transaction[]) {
+  const base = await baseCurrencyOf(db, userId);
+  const foreign = [...new Set(rows.map((r) => r.currency).filter((c) => c !== base))];
+  const today = await rateMap(db, foreign, base);
+  let bought = d("0");
+  let sold = d("0");
+  let income = d("0");
+  let charges = d("0");
+  let unconverted = 0;
+  for (const r of rows) {
+    const rate = r.currency === base ? d("1") : r.fxRateToBase ? d(r.fxRateToBase) : today.get(r.currency) ?? null;
+    if (!rate) {
+      unconverted++;
+      continue;
+    }
+    const gross = d(r.grossAmount).abs().times(rate);
+    const fees = d(r.fees).plus(r.taxes).times(rate);
+    const trade = r.sourceBroker !== SNAPSHOT_SOURCE;
+    if (r.type === "buy" && trade) bought = bought.plus(gross);
+    else if (r.type === "sell" && trade) sold = sold.plus(gross);
+    else if (r.type === "dividend" || r.type === "interest") income = income.plus(gross);
+    else if (r.type === "fee" || r.type === "tax") charges = charges.plus(gross);
+    if (r.type === "buy" || r.type === "sell") charges = charges.plus(fees);
+  }
+  return { count: rows.length, baseCurrency: base, bought: bought.toFixed(2), sold: sold.toFixed(2), income: income.toFixed(2), charges: charges.toFixed(2), unconverted };
+}
+
+/** Opening balances and adjustments come from a holdings statement and re-derive themselves. */
+function derivedGuard(tx: Transaction): void {
+  if (tx.sourceBroker === SNAPSHOT_SOURCE)
+    throw new BadRequestError("derived_row", "This entry comes from your holdings statement and updates by itself. Import a newer statement to change it.");
+  if (tx.sourceBroker === EXPIRY_SOURCE)
+    throw new BadRequestError("derived_row", "This is an estimated expiry settlement and updates by itself. Add the trade that closed the contract instead.");
+}
 
 async function getTxOwned(db: DB, userId: string, id: string): Promise<Transaction> {
   const row = await db
@@ -155,6 +208,13 @@ export function registerTransactionRoutes(app: FastifyInstance, db: DB, fxProvid
     if (q.accountId) clauses.push(eq(transactions.accountId, q.accountId));
     if (q.securityId) clauses.push(eq(transactions.securityId, q.securityId));
     if (q.type) clauses.push(eq(transactions.type, q.type));
+    if (q.types?.length) clauses.push(inArray(transactions.type, q.types));
+    if (q.q) {
+      const like = `%${q.q.toLowerCase().replace(/[%_]/g, (c) => `\\${c}`)}%`;
+      clauses.push(
+        sql`${transactions.securityId} in (select ${securities.id} from ${securities} where lower(${securities.symbol}) like ${like} escape '\\' or lower(${securities.name}) like ${like} escape '\\')`,
+      );
+    }
     if (q.from) clauses.push(gte(transactions.tradeDate, new Date(q.from).toISOString()));
     if (q.to) clauses.push(lte(transactions.tradeDate, new Date(q.to).toISOString()));
     const where = and(...clauses);
@@ -202,7 +262,8 @@ export function registerTransactionRoutes(app: FastifyInstance, db: DB, fxProvid
         : null,
     }));
 
-    return { transactions: enriched, total, limit: q.limit, offset: q.offset };
+    const summary = q.summary === "1" ? await activitySummary(db, userId, await db.select().from(transactions).where(where).all()) : undefined;
+    return { transactions: enriched, total, limit: q.limit, offset: q.offset, ...(summary ? { summary } : {}) };
   });
 
   app.post("/api/transactions", opts, async (req, reply) => {
@@ -210,7 +271,11 @@ export function registerTransactionRoutes(app: FastifyInstance, db: DB, fxProvid
     const userId = req.user!.id;
     const row = await validateAndBuild(db, userId, body);
     await withFxAtCost(userId, row);
-    await db.insert(transactions).values(row as typeof transactions.$inferInsert).run();
+    await db.transaction(async (trx) => {
+      await trx.insert(transactions).values(row as typeof transactions.$inferInsert).run();
+      await refreshSnapshots(trx, [{ userId, portfolioId: row.portfolioId as string, accountId: (row.accountId as string | null) ?? null }]);
+      await resettleExpired(trx, userId);
+    });
     reply.code(201).send({ transaction: await getTxOwned(db, userId, row.id as string) });
   });
 
@@ -223,25 +288,38 @@ export function registerTransactionRoutes(app: FastifyInstance, db: DB, fxProvid
     const { id } = req.params as { id: string };
     const userId = req.user!.id;
     const existing = await getTxOwned(db, userId, id);
+    derivedGuard(existing);
     const patch = updateSchema.parse(req.body);
     // Re-validate the merged result so invariants still hold.
     const merged = { ...existing, ...patch, portfolioId: existing.portfolioId } as z.infer<typeof createSchema>;
     const rebuilt = await validateAndBuild(db, userId, merged);
     delete (rebuilt as Record<string, unknown>).id;
     delete (rebuilt as Record<string, unknown>).userId;
-    await db
-      .update(transactions)
-      .set(rebuilt)
-      .where(and(eq(transactions.id, id), eq(transactions.userId, userId)))
-      .run();
+    await db.transaction(async (trx) => {
+      await trx
+        .update(transactions)
+        .set(rebuilt)
+        .where(and(eq(transactions.id, id), eq(transactions.userId, userId)))
+        .run();
+      await refreshSnapshots(trx, [
+        { userId, portfolioId: existing.portfolioId, accountId: existing.accountId ?? null },
+        { userId, portfolioId: existing.portfolioId, accountId: (rebuilt.accountId as string | null | undefined) ?? null },
+      ]);
+      await resettleExpired(trx, userId);
+    });
     return { transaction: await getTxOwned(db, userId, id) };
   });
 
   app.delete("/api/transactions/:id", opts, async (req, reply) => {
     const { id } = req.params as { id: string };
     const userId = req.user!.id;
-    await getTxOwned(db, userId, id);
-    await db.delete(transactions).where(and(eq(transactions.id, id), eq(transactions.userId, userId))).run();
+    const existing = await getTxOwned(db, userId, id);
+    derivedGuard(existing);
+    await db.transaction(async (trx) => {
+      await trx.delete(transactions).where(and(eq(transactions.id, id), eq(transactions.userId, userId))).run();
+      await refreshSnapshots(trx, [{ userId, portfolioId: existing.portfolioId, accountId: existing.accountId ?? null }]);
+      await resettleExpired(trx, userId);
+    });
     reply.send({ ok: true });
   });
 }

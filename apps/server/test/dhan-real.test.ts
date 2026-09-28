@@ -61,7 +61,7 @@ describe("Dhan real exports (with preamble)", () => {
     await post("/api/imports/commit", cookie, { portfolioId: pid, broker: "dhan-txn", filename: "t.csv", content: DHAN_TXN });
 
     const h = (await get("/api/holdings", cookie)).json();
-    const ril = h.holdings.find((r: { security: { symbol: string } }) => r.security.symbol === "RELIANCE INDUSTRIES");
+    const ril = h.holdings.find((r: { security: { symbol: string } }) => r.security.symbol === "RELIANCE"); // name → NSE ticker
     expect(ril.netQty).toBe("6"); // 10 − 4
     expect(ril.avgCost).toBe("1200.1"); // (12000 + ₹1 charge) / 10
   });

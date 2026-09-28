@@ -1,10 +1,12 @@
 import type { Segment } from "@dhan-drishti/core";
 import type { BrokerAdapter, ParsedCsv, NormalizedRow, DetectResult } from "../types.js";
 import { pick, hasHeader, rowHash } from "../csv.js";
+import { canonicalDate, IST } from "../dates.js";
 
 const SYMBOL = ["symbol", "tradingsymbol"];
 const ISIN = ["isin"];
 const DATE = ["trade_date", "tradedate", "trade date", "date"];
+const EXEC_TIME = ["order_execution_time", "execution_time", "trade_time"];
 const EXCH = ["exchange", "exch"];
 const SEGMENT = ["segment", "seg"];
 const TRADE_TYPE = ["trade_type", "tradetype", "trade type", "buysell", "type"];
@@ -28,8 +30,17 @@ function parseDate(raw: string | undefined): string | null {
   // Handles YYYY-MM-DD, ISO datetimes, and DD-MM-YYYY / DD/MM/YYYY.
   const dmy = raw.match(/^(\d{2})[-/](\d{2})[-/](\d{4})/);
   const iso = dmy ? `${dmy[3]}-${dmy[2]}-${dmy[1]}` : raw;
-  const t = Date.parse(iso);
-  return Number.isNaN(t) ? null : new Date(t).toISOString();
+  return canonicalDate(iso, IST);
+}
+
+/**
+ * The fill's real time, written in IST without a zone ("2025-04-01T09:15:26"). Without it every
+ * trade of a day shares one timestamp and a same-day buy/sell pair could be walked in either order.
+ */
+function parseExecTime(raw: string | undefined, tradeDate: string): string | null {
+  const t = canonicalDate(raw, IST);
+  // A fill always lands on its own trade date; anything else is a malformed column — ignore it.
+  return t && new Date(Date.parse(t) + IST * 60_000).toISOString().slice(0, 10) === tradeDate.slice(0, 10) ? t : null;
 }
 
 function normType(raw: string | undefined): "buy" | "sell" | null {
@@ -68,7 +79,8 @@ export const zerodhaAdapter: BrokerAdapter = {
       const qty = pick(raw, QTY);
       const price = pick(raw, PRICE);
       const dateRaw = pick(raw, DATE);
-      const tradeDate = parseDate(dateRaw);
+      const day = parseDate(dateRaw);
+      const tradeDate = day && (parseExecTime(pick(raw, EXEC_TIME), day) ?? day);
 
       if (!symbol) return { ok: false, error: "Missing symbol", raw, rowIndex };
       if (!type) return { ok: false, error: `Unrecognized trade type '${pick(raw, TRADE_TYPE) ?? ""}'`, raw, rowIndex };

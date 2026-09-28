@@ -48,6 +48,11 @@ export interface DetectResult {
 export interface BrokerAdapter {
   id: string;
   label: string;
+  /**
+   * A holdings statement (positions on a day), not trades: stored as a snapshot and reconciled
+   * against the account's trades rather than added to them (see import/snapshot.ts).
+   */
+  snapshot?: boolean;
   detect(csv: ParsedCsv): DetectResult;
   normalize(csv: ParsedCsv): NormalizedRow[];
 }

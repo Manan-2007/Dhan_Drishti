@@ -139,3 +139,27 @@ describe("Zerodha CSV import", () => {
     expect(res.json().error).toBe("format_unrecognized");
   });
 });
+
+describe("Zerodha trade times", () => {
+  it("uses the IST execution time, so same-day trades keep their real order", async () => {
+    const { parseCsv } = await import("../src/import/csv.js");
+    const { zerodhaAdapter } = await import("../src/import/adapters/zerodha.js");
+    const rows = zerodhaAdapter.normalize(parseCsv(CSV));
+    const ok = rows.flatMap((r) => (r.ok ? [r.tx.tradeDate] : []));
+    // 09:30 IST is 04:00 UTC — independent of the server's own timezone.
+    expect(ok[0]).toBe("2021-04-27T04:00:00.000Z");
+    expect(ok[3]).toBe("2021-05-12T06:30:00.000Z");
+  });
+
+  it("falls back to the trade date when the time is missing or on another day", async () => {
+    const { parseCsv } = await import("../src/import/csv.js");
+    const { zerodhaAdapter } = await import("../src/import/adapters/zerodha.js");
+    const csv = [
+      "symbol,trade_date,trade_type,quantity,price,order_execution_time",
+      "INFY,2024-03-01,buy,1,100,",
+      "INFY,2024-03-01,buy,1,100,2024-03-04T10:00:00",
+    ].join("\n");
+    const dates = zerodhaAdapter.normalize(parseCsv(csv)).map((r) => (r.ok ? r.tx.tradeDate : null));
+    expect(dates).toEqual(["2024-03-01T00:00:00.000Z", "2024-03-01T00:00:00.000Z"]);
+  });
+});

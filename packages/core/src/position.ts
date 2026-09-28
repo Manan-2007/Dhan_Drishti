@@ -169,6 +169,25 @@ export function averageBasis(p: Position): Decimal | null {
   return null;
 }
 
+/**
+ * Delivery shares and fund units can't be held short overnight in India. So an equity or MF
+ * position still below zero when its trading day ends isn't a short: it means shares bought BEFORE
+ * the imported history were sold. Every engine closes it at the day's end (`settleUnmatchedSale`)
+ * — no profit is booked, since the purchase price isn't known — and a later purchase starts a
+ * fresh holding instead of "covering" a short that never existed. A short bought back the same
+ * day (an intraday trade) is covered before this point and realises normally. F&O and commodity
+ * shorts are real positions and are never settled this way.
+ */
+export function isDeliverySegment(segment: string): boolean {
+  return segment === "equity" || segment === "mf";
+}
+
+/** The day-end settlement above: what was sold without a purchase on record, and a flat position. */
+export function settleUnmatchedSale(p: Position): { position: Position; quantity: Decimal; proceeds: Decimal } | null {
+  if (!p.qty.isNegative()) return null;
+  return { position: emptyPosition(), quantity: p.qty.negated(), proceeds: p.shortProceeds };
+}
+
 /** Scale a position's quantity by a split/consolidation ratio; total basis is unchanged. */
 export function applySplit(p: Position, ratio: Decimal): Position {
   if (!ratio.greaterThan(0)) return p;

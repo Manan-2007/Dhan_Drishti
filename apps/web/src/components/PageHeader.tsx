@@ -1,35 +1,24 @@
 import type { ReactNode } from "react";
-import { useFilter, usePortfolios } from "../lib/hooks.js";
-import { Select } from "./ui.js";
+import { ScopeSelect } from "@/components/shell/ScopeSelect";
 
+/** Kept for pages not yet rebuilt: the whose-money switcher, now the shared ScopeSelect. */
 export function PortfolioSelect() {
-  const { portfolioId, setPortfolioId } = useFilter();
-  const { data: portfolios } = usePortfolios();
-  return (
-    <Select
-      className="h-9 w-auto min-w-40"
-      value={portfolioId ?? "all"}
-      onChange={(e) => setPortfolioId(e.target.value === "all" ? null : e.target.value)}
-    >
-      <option value="all">All portfolios</option>
-      {portfolios?.map((p) => (
-        <option key={p.id} value={p.id}>
-          {p.name}
-        </option>
-      ))}
-    </Select>
-  );
+  return <ScopeSelect />;
 }
 
+/**
+ * A sub-page heading. The destination (Portfolio, Activity…) already shows the big title and
+ * tabs, so this stays a quiet second level: a short title, an optional line, and the actions.
+ */
 export function PageHeader({ title, subtitle, actions, showFilter = true }: { title: string; subtitle?: string; actions?: ReactNode; showFilter?: boolean }) {
   return (
-    <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+    <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h1 className="font-serif text-2xl">{title}</h1>
+        <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
         {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
       </div>
-      <div className="flex items-center gap-2 max-sm:w-full max-sm:flex-wrap">
-        {showFilter && <PortfolioSelect />}
+      <div className="flex flex-wrap items-center gap-2 max-sm:w-full">
+        {showFilter && <ScopeSelect />}
         {actions}
       </div>
     </div>

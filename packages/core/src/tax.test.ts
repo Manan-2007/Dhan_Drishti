@@ -103,3 +103,40 @@ describe("fifoCapitalGains", () => {
     expect(rows).toHaveLength(0);
   });
 });
+
+describe("fifoCapitalGains — what the ledger can't know", () => {
+  const t = (p: Partial<CanonicalTx> & Pick<CanonicalTx, "type" | "tradeDate">): CanonicalTx => ({
+    id: Math.random().toString(36), userId: "u", portfolioId: "p", accountId: null, securityId: "S", settleDate: null,
+    quantity: "0", price: "0", grossAmount: "0", fees: "0", taxes: "0", currency: "INR", fxRateToBase: null,
+    segment: "equity", externalRef: null, rawRowHash: Math.random().toString(36), sourceBroker: null, notes: null, ...p,
+  });
+
+  it("reports sales with no purchase on record instead of dropping them", () => {
+    const seen: unknown[] = [];
+    const rows = fifoCapitalGains([t({ type: "sell", tradeDate: "2025-05-02T00:00:00Z", quantity: "5", price: "100" })], { longTermDays: () => 365, onUnmatchedSale: (s) => seen.push(s) });
+    expect(rows).toEqual([]);
+    expect(seen).toEqual([{ securityId: "S", sellDate: "2025-05-02", quantity: "5", proceeds: "500" }]);
+  });
+
+  it("flags lots from a holdings statement as bought on an unknown day", () => {
+    const rows = fifoCapitalGains(
+      [
+        t({ type: "buy", tradeDate: "2025-03-31T00:00:00Z", quantity: "5", price: "80", sourceBroker: "snapshot" }),
+        t({ type: "sell", tradeDate: "2025-05-02T00:00:00Z", quantity: "5", price: "100" }),
+      ],
+      { longTermDays: () => 365 },
+    );
+    expect(rows[0]).toMatchObject({ buyDateKnown: false, gain: "100" });
+  });
+
+  it("leaves commodity futures out", () => {
+    const rows = fifoCapitalGains(
+      [
+        t({ type: "buy", tradeDate: "2025-03-01T00:00:00Z", quantity: "1", price: "90000", segment: "commodity" }),
+        t({ type: "sell", tradeDate: "2025-03-20T00:00:00Z", quantity: "1", price: "95000", segment: "commodity" }),
+      ],
+      { longTermDays: () => 365 },
+    );
+    expect(rows).toEqual([]);
+  });
+});

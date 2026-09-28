@@ -183,7 +183,11 @@ export function Imports() {
 
   return (
     <>
-      <PageHeader title="Import" subtitle="Bring transactions in from a broker CSV" showFilter={false} />
+      <PageHeader
+        title="Choose the importer yourself"
+        subtitle="For a file the Add data tab didn't recognise: pick the broker format (or match the columns), check the preview, then import."
+        showFilter={false}
+      />
 
       {noPortfolios ? (
         <Card className="text-sm text-muted-foreground">Create a portfolio first, then import into it.</Card>
@@ -273,7 +277,7 @@ export function Imports() {
                     type="file"
                     accept={isCas ? ".pdf,application/pdf" : ".csv,.xlsx,.xls,.pdf,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
                     onChange={(e) => e.target.files?.[0] && void onFile(e.target.files[0])}
-                    className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:bg-card file:px-3 file:py-2 file:text-sm"
+                    className="block w-full cursor-pointer text-sm text-muted-foreground file:mr-3 file:cursor-pointer file:rounded-full file:border file:border-border file:bg-card file:px-4 file:py-2 file:text-sm file:text-foreground hover:file:bg-raised"
                   />
                 </Field>
                 {filename && <p className="text-xs text-muted-foreground">Loaded {filename}{encoding === "base64" ? "" : ` (${content.length.toLocaleString()} chars)`}</p>}

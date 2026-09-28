@@ -6,7 +6,7 @@ import type { MarketDataProvider, SecurityLike, QuoteData } from "../types.js";
  */
 export class AmfiProvider implements MarketDataProvider {
   id = "amfi";
-  private cache: { at: number; map: Map<string, { nav: string; date: string }> } | null = null;
+  private cache: { at: number; map: Map<string, { nav: string; date: string }>; byIsin: Map<string, string> } | null = null;
 
   constructor(
     private url = "https://www.amfiindia.com/spages/NAVAll.txt",
@@ -15,16 +15,19 @@ export class AmfiProvider implements MarketDataProvider {
   ) {}
 
   private async load(): Promise<Map<string, { nav: string; date: string }>> {
-    if (this.cache && Date.now() - this.cache.at < this.ttlMs) return this.cache.map;
+    return (await this.loadAll()).map;
+  }
+
+  private async loadAll() {
+    if (this.cache && Date.now() - this.cache.at < this.ttlMs) return this.cache;
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), this.timeoutMs);
     try {
       const res = await fetch(this.url, { signal: ctrl.signal });
       if (!res.ok) throw new Error(`AMFI ${res.status}`);
       const text = await res.text();
-      const map = this.parse(text);
-      this.cache = { at: Date.now(), map };
-      return map;
+      this.cache = { at: Date.now(), map: this.parse(text), byIsin: this.parseIsins(text) };
+      return this.cache;
     } finally {
       clearTimeout(t);
     }
@@ -46,13 +49,34 @@ export class AmfiProvider implements MarketDataProvider {
     return map;
   }
 
+  /** The file lists each scheme's growth and reinvestment ISINs: ISIN → scheme code. */
+  parseIsins(text: string): Map<string, string> {
+    const byIsin = new Map<string, string>();
+    for (const line of text.split(/\r?\n/)) {
+      const parts = line.split(";");
+      if (parts.length < 6 || !/^\d+$/.test(parts[0]!.trim())) continue;
+      for (const isin of [parts[1], parts[2]]) if (isin && /^INF[A-Z0-9]{9}$/.test(isin.trim())) byIsin.set(isin.trim(), parts[0]!.trim());
+    }
+    return byIsin;
+  }
+
+  /** A fund's AMFI scheme code from its ISIN (brokers give the ISIN, not the code). */
+  async codeForIsin(isin: string): Promise<string | null> {
+    try {
+      return (await this.loadAll()).byIsin.get(isin.trim().toUpperCase()) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   async getQuotes(securities: SecurityLike[]): Promise<QuoteData[]> {
-    const mfs = securities.filter((s) => s.amfiCode);
+    const mfs = securities.filter((s) => s.amfiCode || (s.assetClass === "mf" && s.isin));
     if (mfs.length === 0) return [];
-    const map = await this.load();
+    const { map, byIsin } = await this.loadAll();
     const out: QuoteData[] = [];
     for (const s of mfs) {
-      const hit = map.get(String(s.amfiCode));
+      const code = s.amfiCode ? String(s.amfiCode) : byIsin.get(String(s.isin));
+      const hit = code ? map.get(code) : undefined;
       if (!hit) continue;
       const parsed = new Date(`${hit.date} UTC`);
       out.push({

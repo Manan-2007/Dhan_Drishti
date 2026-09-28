@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { api, type Portfolio, type Account, type HoldingsResponse, type Transaction, type ImportBatch, type NetWorthSeries, type RebalanceResponse, type RebalanceDimension, type ManualAssetsResult, type CapitalGainsReport, type SecurityDetail } from "./api.js";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { api, type ActivityPage, type Portfolio, type Account, type HoldingsResponse, type Transaction, type ImportBatch, type NetWorthSeries, type RebalanceResponse, type RebalanceDimension, type ManualAssetsResult, type CapitalGainsReport, type SecurityDetail } from "./api.js";
 
 export function useCapitalGains(portfolioId: string | null) {
   const qs = portfolioId ? `?portfolioId=${portfolioId}` : "";
@@ -64,11 +64,48 @@ export function useAccounts(portfolioId: string | null) {
   });
 }
 
+/** Every account the user has, across all portfolios. */
+export function useAllAccounts() {
+  return useQuery({
+    queryKey: ["accounts", "all"],
+    queryFn: () => api.get<{ accounts: Account[] }>("/api/accounts").then((r) => r.accounts),
+  });
+}
+
 export function useHoldings(portfolioId: string | null) {
   const qs = portfolioId ? `?portfolioId=${portfolioId}` : "";
   return useQuery({
     queryKey: ["holdings", portfolioId],
     queryFn: () => api.get<HoldingsResponse>(`/api/holdings${qs}`),
+  });
+}
+
+export interface ActivityFilter {
+  portfolioId: string | null;
+  accountId?: string;
+  types?: string[];
+  q?: string;
+  from?: string;
+  to?: string;
+}
+
+/** The Activity timeline: newest first, a page at a time, with totals for the whole filter. */
+export function useActivity(filter: ActivityFilter, pageSize = 150) {
+  return useInfiniteQuery({
+    queryKey: ["transactions", "activity", filter, pageSize],
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) => {
+      const search = new URLSearchParams({ limit: String(pageSize), offset: String(pageParam) });
+      if (filter.portfolioId) search.set("portfolioId", filter.portfolioId);
+      if (filter.accountId) search.set("accountId", filter.accountId);
+      if (filter.types?.length) search.set("types", filter.types.join(","));
+      if (filter.q) search.set("q", filter.q);
+      if (filter.from) search.set("from", filter.from);
+      if (filter.to) search.set("to", filter.to);
+      if (pageParam === 0) search.set("summary", "1");
+      return api.get<ActivityPage>(`/api/transactions?${search.toString()}`);
+    },
+    getNextPageParam: (last) => (last.offset + last.transactions.length < last.total ? last.offset + last.transactions.length : undefined),
   });
 }
 
@@ -135,7 +172,7 @@ export interface BenchmarkComparison {
 
 export interface TwrResponse {
   available: boolean;
-  mode?: "holdings" | "cash-inclusive";
+  mode?: "holdings" | "cash-inclusive" | "mixed";
   reason?: string;
   from?: string;
   asOf?: string;
@@ -143,6 +180,29 @@ export interface TwrResponse {
   annualized?: number | null;
   subPeriods?: number;
   missingHistory?: string[];
+}
+
+export interface ValueHistory {
+  available: boolean;
+  reason?: string;
+  baseCurrency: string;
+  from?: string;
+  to?: string;
+  pending?: number;
+  atCostShare?: number;
+  points?: { date: string; value: number; invested: number }[];
+}
+
+/** Investments' value per trading day. Polls while price history is still being fetched. */
+export function useValueHistory(portfolioId: string | null, range: string) {
+  const search = new URLSearchParams({ range });
+  if (portfolioId) search.set("portfolioId", portfolioId);
+  return useQuery({
+    queryKey: ["value-history", portfolioId, range],
+    queryFn: () => api.get<ValueHistory>(`/api/performance/value-history?${search.toString()}`),
+    placeholderData: (prev) => prev,
+    refetchInterval: (q) => ((q.state.data?.pending ?? 0) > 0 ? 4000 : false),
+  });
 }
 
 export function useTwr(portfolioId: string | null, enabled: boolean) {

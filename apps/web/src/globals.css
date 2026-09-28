@@ -1,29 +1,32 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
-/* Fonts (Flexoki-family look: Inter for UI, JetBrains Mono for figures, Merriweather for display) */
-@import "@fontsource-variable/inter";
-@import "@fontsource/jetbrains-mono/400.css";
-@import "@fontsource/jetbrains-mono/500.css";
-@import "@fontsource/jetbrains-mono/600.css";
-@import "@fontsource/merriweather/700.css";
+/* IBM Plex Sans for UI and every figure (tabular numerals); Instrument Serif for display type. */
+@import "@fontsource-variable/ibm-plex-sans";
+@import "@fontsource/instrument-serif/400.css";
+@import "@fontsource/instrument-serif/400-italic.css";
 
-/* Class-based dark mode */
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
- * Dhan Drishti design tokens.
- * Palette: Flexoki (Steph Ango, MIT) — reused as an open color system, not any product's
- * branding. Semantic layer follows the shadcn convention. See docs/PLANNING_REPORT.md §L.
+ * Dhan Drishti design tokens — dark only, solid colours only (no gradients anywhere).
+ * Ink surfaces, warm ivory text, one marigold accent; green/red reserved for gain/loss and
+ * always paired with a sign or arrow so colour is never the only signal.
  */
 @theme inline {
-  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Merriweather", ui-serif, Georgia, serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: "IBM Plex Sans Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Instrument Serif", ui-serif, Georgia, serif;
+  /* Legacy aliases so pages not yet rebuilt keep rendering with the new type. */
+  --font-serif: var(--font-display);
+  --font-mono: var(--font-sans);
 
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 6px);
+  --radius-md: calc(var(--radius) - 4px);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --radius-xl: calc(var(--radius) + 6px);
+  --radius-2xl: calc(var(--radius) + 12px);
+
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -45,6 +48,9 @@
   --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
+  --color-gain: var(--gain);
+  --color-loss: var(--loss);
+  --color-raised: var(--raised);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -54,6 +60,7 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
 
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
@@ -62,87 +69,95 @@
 }
 
 :root {
-  --radius: 0.625rem;
+  --radius: 1rem;
+  color-scheme: dark;
 
-  /* Flexoki light (HSL components) */
-  --flexoki-bg: 48 100% 97%;
-  --flexoki-bg-2: 51 59% 95%;
-  --flexoki-ui: 51 21% 88%;
-  --flexoki-ui-2: 50 14% 83%;
-  --flexoki-ui-3: 55 10% 79%;
-  --flexoki-tx: 0 3% 6%;
-  --flexoki-tx-2: 50 3% 42%;
-  --flexoki-re: 3 62% 42%;   /* red — losses / destructive */
-  --flexoki-gr: 73 84% 27%;  /* green — gains / success */
-  --flexoki-ye: 45 99% 34%;  /* yellow — warning */
+  --background: #0b0b0d;
+  --foreground: #f3efe6;
+  --card: #141417;
+  --card-foreground: #f3efe6;
+  --popover: #18181c;
+  --popover-foreground: #f3efe6;
+  --raised: #1d1d22;
 
-  --background: hsl(var(--flexoki-bg));
-  --foreground: hsl(var(--flexoki-tx));
-  --card: hsl(var(--flexoki-bg-2));
-  --card-foreground: hsl(var(--flexoki-tx));
-  --popover: hsl(var(--flexoki-bg-2));
-  --popover-foreground: hsl(var(--flexoki-tx));
-  --primary: hsl(var(--flexoki-tx));
-  --primary-foreground: hsl(var(--flexoki-bg));
-  --secondary: hsl(var(--flexoki-ui-2));
-  --secondary-foreground: hsl(var(--flexoki-tx-2));
-  --muted: hsl(var(--flexoki-ui));
-  --muted-foreground: hsl(var(--flexoki-tx-2));
-  --accent: hsl(var(--flexoki-ui));
-  --accent-foreground: hsl(var(--flexoki-tx-2));
-  --destructive: hsl(var(--flexoki-re));
-  --destructive-foreground: hsl(var(--flexoki-bg));
-  --success: hsl(var(--flexoki-gr));
-  --success-foreground: hsl(var(--flexoki-bg));
-  --warning: hsl(var(--flexoki-ye));
-  --warning-foreground: hsl(var(--flexoki-bg));
-  --border: hsl(var(--flexoki-ui));
-  --input: hsl(var(--flexoki-ui));
-  --ring: hsl(var(--flexoki-ui-3));
+  --primary: #f0b23e;
+  --primary-foreground: #16120a;
+  --secondary: #1d1d22;
+  --secondary-foreground: #f3efe6;
+  --muted: #1d1d22;
+  --muted-foreground: #9c978c;
+  --accent: #1d1d22;
+  --accent-foreground: #f3efe6;
 
-  /* Allocation palette: forest / sage / sand / clay / plum */
-  --chart-1: #355c4c;
-  --chart-2: #7e9f8c;
-  --chart-3: #cbba8c;
-  --chart-4: #c08a5f;
-  --chart-5: #9a7e92;
+  --gain: #3ec98a;
+  --loss: #f2665e;
+  --success: var(--gain);
+  --success-foreground: #0b0b0d;
+  --destructive: var(--loss);
+  --destructive-foreground: #0b0b0d;
+  --warning: #f0b23e;
+  --warning-foreground: #16120a;
 
-  --sidebar: hsl(var(--flexoki-bg));
-  --sidebar-foreground: hsl(var(--flexoki-tx));
-  --sidebar-accent: hsl(var(--flexoki-ui));
-  --sidebar-border: hsl(var(--flexoki-ui));
-}
+  --border: #26262c;
+  --input: #2c2c33;
+  --ring: #f0b23e;
 
-.dark {
-  --flexoki-bg: 0 3% 6%;
-  --flexoki-bg-2: 30 4% 11%;
-  --flexoki-ui: 30 3% 15%;
-  --flexoki-ui-2: 40 3% 20%;
-  --flexoki-ui-3: 30 3% 24%;
-  --flexoki-tx: 55 10% 79%;
-  --flexoki-tx-2: 43 3% 52%;
-  --flexoki-re: 5 61% 54%;
-  --flexoki-gr: 72 46% 41%;
-  --flexoki-ye: 45 82% 45%;
+  /* One fixed, solid colour per asset class, used identically on every chart. */
+  --chart-1: #f0b23e; /* equity — marigold */
+  --chart-2: #5fb7a6; /* debt — sage teal */
+  --chart-3: #d97757; /* gold / commodities — terracotta */
+  --chart-4: #8c8fe0; /* mutual funds — periwinkle */
+  --chart-5: #d9d2c3; /* cash — ivory */
+  --chart-6: #7fa66b; /* other — olive */
 
-  --input: hsl(var(--flexoki-ui-2));
-  --chart-1: hsl(156 28% 44%);
+  --sidebar: var(--background);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-accent: var(--raised);
+  --sidebar-border: var(--border);
 }
 
 @layer base {
   * {
     border-color: var(--color-border);
   }
+  html {
+    background-color: var(--color-background);
+  }
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
+    font-feature-settings: "tnum" 1;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
-  /* Tabular figures for money so columns align */
-  .font-mono,
-  .tabular {
-    font-family: var(--font-mono);
+  ::selection {
+    background-color: var(--color-primary);
+    color: var(--color-primary-foreground);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+  .tabular,
+  .font-mono {
     font-variant-numeric: tabular-nums;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* Horizontal pill rows scroll on narrow screens without showing a bar. */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
   }
 }

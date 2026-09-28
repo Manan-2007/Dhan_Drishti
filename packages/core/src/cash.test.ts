@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { cashDeltas, cashBalances, cashBalanceAsOf, hasCashAccounting } from "./cash.js";
+import { cashDeltas, cashBalances, cashBalanceAsOf, hasCashAccounting, cashTrackedAccounts, cashTrackedTxs } from "./cash.js";
 import type { CanonicalTx, TxType } from "./types.js";
 
 let seq = 0;
@@ -9,7 +9,7 @@ function tx(p: Partial<CanonicalTx> & { type: TxType }): CanonicalTx {
     id: `t${String(seq).padStart(4, "0")}`,
     userId: "u1",
     portfolioId: "p1",
-    accountId: null,
+    accountId: p.accountId ?? null,
     securityId: "securityId" in p ? p.securityId : "SEC",
     type: p.type,
     tradeDate: p.tradeDate ?? "2024-01-01T00:00:00Z",
@@ -67,5 +67,18 @@ describe("cash-balance engine", () => {
 
   it("reports no cash accounting when there are no deposits/withdrawals", () => {
     expect(hasCashAccounting([tx({ type: "buy", quantity: "1", price: "100" })])).toBe(false);
+  });
+});
+
+describe("cash per account", () => {
+  it("tracks only accounts that record their own deposits or withdrawals", () => {
+    const txs = [
+      tx({ type: "deposit", accountId: "funded", grossAmount: "1000" }),
+      tx({ type: "buy", accountId: "funded", quantity: "1", price: "400" }),
+      tx({ type: "buy", accountId: "tradebook", quantity: "1", price: "900" }), // no deposits → no cash story
+      tx({ type: "withdrawal", grossAmount: "50" }), // no account: its own group
+    ];
+    expect([...cashTrackedAccounts(txs)].sort()).toEqual(["", "funded"]);
+    expect(cashBalances(cashTrackedTxs(txs)).get("INR")!.toString()).toBe("550"); // 1000 − 400 − 50
   });
 });

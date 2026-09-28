@@ -4,9 +4,9 @@ import { pick, hasHeader, rowHash } from "../csv.js";
 
 /**
  * Zerodha "Holdings Statement" (.xlsx) — the Console export with an Equity, a Mutual Funds and a
- * combined sheet, each carrying Average Price and Previous Closing Price. We turn every position
- * into a single `buy` at its average cost and seed the previous close as a quote so current value
- * shows immediately.
+ * combined sheet, each carrying Average Price and Previous Closing Price. Every position is emitted
+ * at its average cost with the previous close as a quote; the importer keeps them as a statement
+ * and adds to the ledger only what the tradebook doesn't already explain (import/snapshot.ts).
  *
  * Quantity is split across buckets. Reconciling every row against its Unrealized P&L
  * (qty = UPL ÷ (prevClose − avgCost)) shows the true holding is:
@@ -43,6 +43,7 @@ function fundCategory(instrumentType: string): { sector: string; subSector?: str
 
 export const zerodhaHoldingsAdapter: BrokerAdapter = {
   id: "zerodha-holdings",
+  snapshot: true,
   label: "Zerodha — Holdings statement (.xlsx)",
 
   detect(csv: ParsedCsv): DetectResult {

@@ -19,6 +19,29 @@ export class FrankfurterProvider implements FxProvider {
     return this.fetchRate(day, from, to);
   }
 
+  /** Daily rates between two dates (ECB business days only): date → units of `to` per 1 `from`. */
+  async getSeries(from: string, to: string, startISO: string, endISO: string): Promise<Map<string, number>> {
+    const out = new Map<string, number>();
+    if (from === to) return out;
+    const url = `https://api.frankfurter.app/${startISO.slice(0, 10)}..${endISO.slice(0, 10)}?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), this.timeoutMs * 2);
+    try {
+      const res = await fetch(url, { signal: ctrl.signal });
+      if (!res.ok) return out;
+      const json = (await res.json()) as { rates?: Record<string, Record<string, number>> };
+      for (const [date, r] of Object.entries(json.rates ?? {})) {
+        const v = r[to];
+        if (v != null && Number.isFinite(v)) out.set(date, v);
+      }
+      return out;
+    } catch {
+      return out;
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
   private async fetchRate(path: string, from: string, to: string): Promise<string | null> {
     if (from === to) return "1";
     const url = `https://api.frankfurter.app/${path}?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;

@@ -59,6 +59,11 @@ const ADAPTER_BROKERS: Record<string, string[]> = {
   generic: ["*"],
 };
 
+/** Broker families an importer belongs to (["*"] = any broker, e.g. a generic dividend statement). */
+export function brokerFamiliesOf(adapterId: string): string[] {
+  return ADAPTER_BROKERS[adapterId] ?? ["*"];
+}
+
 export function listAdapters(): AdapterInfo[] {
   const brokersOf = (id: string) => ADAPTER_BROKERS[id] ?? ["*"];
   const fixed: AdapterInfo[] = Object.values(ADAPTERS).map((a) => ({ id: a.id, label: a.label, configurable: false, kind: "transactions", brokers: brokersOf(a.id) }));

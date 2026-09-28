@@ -10,9 +10,14 @@
  *     "FUT ICICIBANK 28 AUG 2025".
  */
 
+/**
+ * `expiryApprox` is set when the symbol names only a month (Zerodha monthlies): `expiryISO` is then
+ * the month's last day, and the real expiry is that month's last expiry weekday — see
+ * `monthlyExpiryDay`.
+ */
 export type ParsedDerivative =
-  | { kind: "option"; underlying: string; expiryISO: string; strike: number; optionType: "CE" | "PE" }
-  | { kind: "future"; underlying: string; expiryISO: string };
+  | { kind: "option"; underlying: string; expiryISO: string; strike: number; optionType: "CE" | "PE"; expiryApprox?: true }
+  | { kind: "future"; underlying: string; expiryISO: string; expiryApprox?: true };
 
 const MONTHS: Record<string, number> = {
   JAN: 0,
@@ -37,30 +42,58 @@ function exactDay(day: number, month0: number, year: number): string {
   return new Date(Date.UTC(year, month0, day)).toISOString().slice(0, 10);
 }
 
-/** Zerodha's raw NSE trading symbol: SYMBOL + YY + MMM + (STRIKE + CE|PE, or FUT). */
+/** Weekly expiry month codes in NSE symbols: 1–9 for Jan–Sep, then O, N, D. */
+const WEEKLY_MONTH: Record<string, number> = { "1": 0, "2": 1, "3": 2, "4": 3, "5": 4, "6": 5, "7": 6, "8": 7, "9": 8, O: 9, N: 10, D: 11 };
+
+/**
+ * Zerodha's raw NSE trading symbol. Monthly: SYMBOL + YY + MMM + (STRIKE + CE|PE, or FUT).
+ * Weekly options carry the exact day: SYMBOL + YY + M + DD + STRIKE + CE|PE ("NIFTY2560524000CE").
+ * Underlyings can hold digits, "&" and "-" (360ONE, M&M, BAJAJ-AUTO); strikes can be decimal.
+ */
 function parseZerodha(symbol: string): ParsedDerivative | null {
-  const opt = /^([A-Z]+)(\d{2})([A-Z]{3})(\d+)(CE|PE)$/.exec(symbol);
+  const opt = /^([A-Z0-9&-]+?)(\d{2})([A-Z]{3})(\d+(?:\.\d+)?)(CE|PE)$/.exec(symbol);
   if (opt) {
     const [, underlying, yy, mmm, strike, type] = opt;
     const month0 = MONTHS[mmm!];
     if (month0 === undefined) return null;
     const year = 2000 + Number(yy);
-    return { kind: "option", underlying: underlying!, expiryISO: lastDayOfMonth(year, month0), strike: Number(strike), optionType: type as "CE" | "PE" };
+    return { kind: "option", underlying: underlying!, expiryISO: lastDayOfMonth(year, month0), strike: Number(strike), optionType: type as "CE" | "PE", expiryApprox: true };
   }
-  const fut = /^([A-Z]+)(\d{2})([A-Z]{3})FUT$/.exec(symbol);
+  const weekly = /^([A-Z0-9&-]+?)(\d{2})([1-9OND])(\d{2})(\d+(?:\.\d+)?)(CE|PE)$/.exec(symbol);
+  if (weekly) {
+    const [, underlying, yy, m, dd, strike, type] = weekly;
+    const month0 = WEEKLY_MONTH[m!]!;
+    const day = Number(dd);
+    if (day < 1 || day > 31) return null;
+    return { kind: "option", underlying: underlying!, expiryISO: exactDay(day, month0, 2000 + Number(yy)), strike: Number(strike), optionType: type as "CE" | "PE" };
+  }
+  const fut = /^([A-Z0-9&-]+?)(\d{2})([A-Z]{3})FUT$/.exec(symbol);
   if (fut) {
     const [, underlying, yy, mmm] = fut;
     const month0 = MONTHS[mmm!];
     if (month0 === undefined) return null;
     const year = 2000 + Number(yy);
-    return { kind: "future", underlying: underlying!, expiryISO: lastDayOfMonth(year, month0) };
+    return { kind: "future", underlying: underlying!, expiryISO: lastDayOfMonth(year, month0), expiryApprox: true };
   }
   return null;
 }
 
+/**
+ * The day a monthly NSE contract expires: the month's last Thursday, or its last Tuesday from
+ * September 2025, when NSE moved its equity-derivative expiries to Tuesday. (A holiday moves it to
+ * the trading day before — settle.ts reads that off the underlying's own price history.)
+ */
+export function monthlyExpiryDay(lastDayISO: string): string {
+  const last = new Date(`${lastDayISO}T00:00:00Z`);
+  const weekday = lastDayISO >= "2025-09-01" ? 2 : 4; // Tue : Thu
+  const back = (last.getUTCDay() - weekday + 7) % 7;
+  last.setUTCDate(last.getUTCDate() - back);
+  return last.toISOString().slice(0, 10);
+}
+
 /** Dhan's descriptive form: "OPT <UNDERLYING> <DD> <MMM> <YYYY> <STRIKE> <CE|PE>" / "FUT <UNDERLYING> <DD> <MMM> <YYYY>". */
 function parseDhan(text: string): ParsedDerivative | null {
-  const opt = /^OPT\s+([A-Z0-9&]+)\s+(\d{1,2})\s+([A-Z]{3})\s+(\d{4})\s+(\d+(?:\.\d+)?)\s+(CE|PE)$/.exec(text);
+  const opt = /^OPT\s+([A-Z0-9&-]+)\s+(\d{1,2})\s+([A-Z]{3})\s+(\d{4})\s+(\d+(?:\.\d+)?)\s+(CE|PE)$/.exec(text);
   if (opt) {
     const [, underlying, dd, mmm, yyyy, strike, type] = opt;
     const month0 = MONTHS[mmm!];
@@ -73,7 +106,7 @@ function parseDhan(text: string): ParsedDerivative | null {
       optionType: type as "CE" | "PE",
     };
   }
-  const fut = /^FUT\s+([A-Z0-9&]+)\s+(\d{1,2})\s+([A-Z]{3})\s+(\d{4})$/.exec(text);
+  const fut = /^FUT\s+([A-Z0-9&-]+)\s+(\d{1,2})\s+([A-Z]{3})\s+(\d{4})$/.exec(text);
   if (fut) {
     const [, underlying, dd, mmm, yyyy] = fut;
     const month0 = MONTHS[mmm!];

@@ -43,6 +43,34 @@
       "when": 1790042246442,
       "tag": "0005_fluffy_wild_pack",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1790505381609,
+      "tag": "0006_canonical_trade_dates",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1790506585474,
+      "tag": "0007_holding_snapshots",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1790522004469,
+      "tag": "0008_settlement_prices",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1790522869445,
+      "tag": "0009_price_history",
+      "breakpoints": true
     }
   ]
 }

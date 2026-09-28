@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, index, unique } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, index, unique, primaryKey } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
 
 /**
@@ -256,6 +256,95 @@ export const manualAssets = sqliteTable(
   (t) => [index("idx_manual_assets_user").on(t.userId)],
 );
 
+/**
+ * A holdings statement: what one account (or, for an account-less import, one portfolio) held on
+ * a day. Deliberately NOT ledger rows. The trades already build most of those positions, so the
+ * ledger only gets the difference — opening balances and adjustments that `import/snapshot.ts`
+ * derives from the latest snapshot and re-derives whenever that account's trades change, so the
+ * order files arrive in never double-counts anything.
+ */
+export const holdingSnapshots = sqliteTable(
+  "holding_snapshots",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    portfolioId: text("portfolio_id")
+      .notNull()
+      .references(() => portfolios.id, { onDelete: "cascade" }),
+    accountId: text("account_id").references(() => accounts.id, { onDelete: "cascade" }),
+    /** One statement = one batch; its rows share `asOf`. */
+    importBatchId: text("import_batch_id")
+      .notNull()
+      .references(() => importBatches.id, { onDelete: "cascade" }),
+    securityId: text("security_id")
+      .notNull()
+      .references(() => securities.id, { onDelete: "restrict" }),
+    quantity: text("quantity").notNull(),
+    avgPrice: text("avg_price").notNull(),
+    currency: text("currency").notNull().default("INR"),
+    asOf: text("as_of").notNull(),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [index("idx_holding_snapshots_scope").on(t.userId, t.portfolioId, t.accountId)],
+);
+
+/**
+ * Closing prices of F&O underlyings on expiry days — public market data, cached so an expired
+ * contract can be settled offline and re-settled whenever trades change (import/expiry.ts).
+ * `close` is null when no price could be found (retried after a day).
+ */
+export const settlementPrices = sqliteTable(
+  "settlement_prices",
+  {
+    symbol: text("symbol").notNull(), // the underlying's market symbol, e.g. ^NSEI
+    nominalExpiry: text("nominal_expiry").notNull(), // YYYY-MM-DD the contract names or implies
+    tradingDay: text("trading_day"), // the last trading day on or before it (holidays move expiry earlier)
+    close: text("close"),
+    fetchedAt: text("fetched_at").notNull().default(now),
+  },
+  (t) => [primaryKey({ columns: [t.symbol, t.nominalExpiry] })],
+);
+
+/**
+ * Daily closes (a fund's NAV) per security — public market data cached so charts and the value
+ * history draw offline. `price_history_status` says how far each series has been fetched.
+ */
+export const priceHistory = sqliteTable(
+  "price_history",
+  {
+    securityId: text("security_id")
+      .notNull()
+      .references(() => securities.id, { onDelete: "cascade" }),
+    date: text("date").notNull(), // YYYY-MM-DD
+    close: text("close").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.securityId, t.date] })],
+);
+
+export const priceHistoryStatus = sqliteTable("price_history_status", {
+  securityId: text("security_id")
+    .primaryKey()
+    .references(() => securities.id, { onDelete: "cascade" }),
+  source: text("source"), // yahoo | mfapi | null when there is none
+  firstDate: text("first_date"),
+  lastDate: text("last_date"),
+  fetchedAt: text("fetched_at").notNull(),
+});
+
+/** Daily exchange rates (base per 1 unit of `currency`), for valuing foreign holdings on past days. */
+export const fxHistory = sqliteTable(
+  "fx_history",
+  {
+    currency: text("currency").notNull(),
+    base: text("base").notNull(),
+    date: text("date").notNull(),
+    rate: text("rate").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.currency, t.base, t.date] })],
+);
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Portfolio = typeof portfolios.$inferSelect;
@@ -264,3 +353,4 @@ export type Security = typeof securities.$inferSelect;
 export type Transaction = typeof transactions.$inferSelect;
 export type AllocationTarget = typeof allocationTargets.$inferSelect;
 export type ManualAsset = typeof manualAssets.$inferSelect;
+export type HoldingSnapshot = typeof holdingSnapshots.$inferSelect;

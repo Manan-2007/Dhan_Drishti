@@ -27,6 +27,37 @@ export function compactMoney(value: string | number | null | undefined, currency
   return money(value, currency);
 }
 
+/** Money with an explicit sign and a true minus (−), compact in L/Cr: "+₹41.2 K" style for changes. */
+export function signedMoney(value: string | number | null | undefined, currency = "INR", compact = true): string {
+  const n = num(value);
+  if (n === null) return "—";
+  const body = compact ? compactMoney(Math.abs(n), currency) : money(Math.abs(n), currency);
+  if (n === 0) return body;
+  return `${n > 0 ? "+" : "−"}${body}`;
+}
+
+/** A fraction as a signed percentage with a true minus: 0.0123 → "+1.23%". */
+export function signedPct(value: string | number | null | undefined, digits = 2): string {
+  const n = num(value);
+  if (n === null) return "—";
+  const body = `${Math.abs(n * 100).toFixed(digits)}%`;
+  if (n === 0) return body;
+  return `${n > 0 ? "+" : "−"}${body}`;
+}
+
+/** "3 min ago", "5 h ago", "2 d ago" — for as-of stamps. */
+export function ago(iso: string | null | undefined): string {
+  if (!iso) return "never";
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms)) return "—";
+  const min = Math.round(ms / 60000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min} min ago`;
+  const h = Math.round(min / 60);
+  if (h < 48) return `${h} h ago`;
+  return `${Math.round(h / 24)} d ago`;
+}
+
 export function qty(value: string | number | null | undefined): string {
   const n = num(value);
   if (n === null) return "—";
@@ -52,9 +83,14 @@ export function signGlyph(value: string | number | null | undefined): string {
   return n > 0 ? "▲ " : "▼ ";
 }
 
+/**
+ * A trade's calendar date. Read in UTC on purpose: date-only rows are stored at UTC midnight of the
+ * broker's date, and timed Indian trades (09:15–23:55 IST) fall on the same UTC day — so this shows
+ * the date the broker printed on any computer, in any timezone.
+ */
 export function dateShort(iso: string): string {
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString("en-IN", { year: "numeric", month: "short", day: "2-digit" });
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString("en-IN", { year: "numeric", month: "short", day: "2-digit", timeZone: "UTC" });
 }
 
 /** Indian financial year label for a date (Apr–Mar), e.g. "FY 24-25" — mirrors the server. */
