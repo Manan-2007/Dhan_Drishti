@@ -16,10 +16,10 @@ if errorlevel 1 (
 
 echo Dhan Drishti - starting...
 
-if not exist node_modules (
-  echo Installing dependencies ^(first run, this can take a minute^)...
-  call pnpm install || exit /b 1
-)
+REM Sync dependencies to the lockfile every run - a no-op when already up to date,
+REM but it picks up new packages after a `git pull` (stale node_modules otherwise).
+echo Syncing dependencies...
+call pnpm install || exit /b 1
 
 echo Building the web app...
 call pnpm --filter @dhan-drishti/web build || exit /b 1

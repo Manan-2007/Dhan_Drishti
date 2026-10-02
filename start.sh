@@ -15,10 +15,10 @@ fi
 
 echo "Dhan Drishti — starting…"
 
-if [ ! -d node_modules ]; then
-  echo "Installing dependencies (first run, this can take a minute)…"
-  pnpm install
-fi
+# Sync dependencies to the lockfile every run — a no-op when already up to date,
+# but it picks up new packages after a `git pull` (stale node_modules otherwise).
+echo "Syncing dependencies…"
+pnpm install
 
 echo "Building the web app…"
 pnpm --filter @dhan-drishti/web build
