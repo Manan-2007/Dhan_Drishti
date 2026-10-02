@@ -65,6 +65,10 @@ describe("news parsing", () => {
   it("only turns AI on with a full Azure config", () => {
     expect(azureConfigFromEnv({ AZURE_OPENAI_ENDPOINT: "https://r.openai.azure.com/", AZURE_OPENAI_API_KEY: "k" })).toBeNull();
     expect(azureConfigFromEnv({ AZURE_OPENAI_ENDPOINT: "https://r.openai.azure.com/", AZURE_OPENAI_API_KEY: "k", AZURE_OPENAI_DEPLOYMENT: "gpt" })).toMatchObject({ endpoint: "https://r.openai.azure.com", apiVersion: "2024-10-21" });
+    // The full request URL copied from the Azure portal works too.
+    expect(
+      azureConfigFromEnv({ AZURE_OPENAI_API_KEY: "k", AZURE_OPENAI_ENDPOINT: "https://r.cognitiveservices.azure.com/openai/deployments/gpt-4o/chat/completions?api-version=2025-01-01-preview" }),
+    ).toEqual({ endpoint: "https://r.cognitiveservices.azure.com", apiKey: "k", deployment: "gpt-4o", apiVersion: "2025-01-01-preview" });
   });
 });
 

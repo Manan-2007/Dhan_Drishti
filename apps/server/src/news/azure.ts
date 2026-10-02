@@ -57,12 +57,28 @@ export interface AzureConfig {
   apiVersion: string;
 }
 
+/**
+ * The endpoint may be the resource address ("https://x.openai.azure.com") or the full request URL
+ * copied from the Azure portal (".../openai/deployments/gpt-4o/chat/completions?api-version=…");
+ * the deployment and api-version are read from the latter when not set on their own.
+ */
 export function azureConfigFromEnv(env: NodeJS.ProcessEnv = process.env): AzureConfig | null {
-  const endpoint = env.AZURE_OPENAI_ENDPOINT?.trim();
+  const raw = env.AZURE_OPENAI_ENDPOINT?.trim();
   const apiKey = env.AZURE_OPENAI_API_KEY?.trim();
-  const deployment = env.AZURE_OPENAI_DEPLOYMENT?.trim();
-  if (!endpoint || !apiKey || !deployment) return null;
-  return { endpoint: endpoint.replace(/\/+$/, ""), apiKey, deployment, apiVersion: env.AZURE_OPENAI_API_VERSION?.trim() || "2024-10-21" };
+  if (!raw || !apiKey) return null;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  const at = url.pathname.indexOf("/openai");
+  const prefix = (at >= 0 ? url.pathname.slice(0, at) : url.pathname).replace(/\/+$/, "");
+  const fromPath = url.pathname.match(/\/openai\/deployments\/([^/]+)/)?.[1];
+  const deployment = env.AZURE_OPENAI_DEPLOYMENT?.trim() || (fromPath ? decodeURIComponent(fromPath) : "");
+  if (!deployment) return null;
+  const apiVersion = env.AZURE_OPENAI_API_VERSION?.trim() || url.searchParams.get("api-version") || "2024-10-21";
+  return { endpoint: `${url.origin}${prefix}`, apiKey, deployment, apiVersion };
 }
 
 export class AzureNewsAnalyst implements NewsAnalyst {
