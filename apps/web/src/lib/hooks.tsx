@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { useAuth } from "@/auth/AuthContext";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { api, type ActivityPage, type Portfolio, type Account, type HoldingsResponse, type Transaction, type ImportBatch, type NetWorthSeries, type RebalanceResponse, type RebalanceDimension, type ManualAssetsResult, type CapitalGainsReport, type SecurityDetail } from "./api.js";
 
@@ -289,30 +290,46 @@ export function useImports() {
   });
 }
 
-// ---- Selected-portfolio filter (persisted per browser) ----
+// ---- Selected-portfolio filter (remembered per login, in this browser) ----
 interface FilterCtx {
   portfolioId: string | null; // null = All portfolios
   setPortfolioId: (id: string | null) => void;
 }
 const Ctx = createContext<FilterCtx | null>(null);
 
+const filterKey = (userId: string | undefined) => `dd-portfolio:${userId ?? "anon"}`;
+
 export function FilterProvider({ children }: { children: ReactNode }) {
-  const [portfolioId, setId] = useState<string | null>(() => {
+  const { user } = useAuth();
+  const key = filterKey(user?.id);
+  const read = (): string | null => {
     try {
-      const v = localStorage.getItem("dd-portfolio");
+      const v = localStorage.getItem(key);
       return v && v !== "all" ? v : null;
     } catch {
       return null;
     }
-  });
+  };
+  const [state, setState] = useState<{ key: string; id: string | null }>(() => ({ key, id: read() }));
+  // A different login in the same browser starts from its own choice, never the last one's.
+  const portfolioId = state.key === key ? state.id : read();
   const setPortfolioId = (id: string | null) => {
-    setId(id);
+    setState({ key, id });
     try {
-      localStorage.setItem("dd-portfolio", id ?? "all");
+      localStorage.setItem(key, id ?? "all");
     } catch {
       /* ignore */
     }
   };
+
+  // A remembered person who isn't one of this login's (deleted, or left over from before) would
+  // make every screen ask for data it may not see — and look empty. Fall back to everyone.
+  const { data: portfolios } = usePortfolios();
+  useEffect(() => {
+    if (portfolioId && portfolios && !portfolios.some((p) => p.id === portfolioId)) setPortfolioId(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [portfolioId, portfolios]);
+
   return <Ctx.Provider value={{ portfolioId, setPortfolioId }}>{children}</Ctx.Provider>;
 }
 

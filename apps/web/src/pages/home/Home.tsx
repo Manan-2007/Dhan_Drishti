@@ -126,7 +126,7 @@ function useAttention(data: HoldingsResponse | undefined): Attention[] {
 
 export function Home() {
   const { portfolioId } = useFilter();
-  const { data, isLoading } = useHoldings(portfolioId);
+  const { data, isLoading, isError, refetch } = useHoldings(portfolioId);
   const [range, setRange] = useState<Range>("1y");
   const history = useValueHistory(portfolioId, range);
   const attention = useAttention(data);
@@ -171,6 +171,19 @@ export function Home() {
         <Skeleton className="h-[440px] rounded-2xl lg:col-span-8" />
         <Skeleton className="h-[440px] rounded-2xl lg:col-span-4" />
       </div>
+    );
+  }
+
+  // A failed load is not "no data yet": say so, rather than inviting a fresh import.
+  if (isError && !data) {
+    return (
+      <section className="mx-auto max-w-xl rounded-2xl border bg-card p-8 text-center">
+        <p className="font-display text-4xl">Couldn't load your numbers.</p>
+        <p className="mt-3 text-sm text-muted-foreground">Your data is safe. Check the server is running, then try again.</p>
+        <Button className="mt-6" onClick={() => void refetch()}>
+          <RefreshCw /> Try again
+        </Button>
+      </section>
     );
   }
 
