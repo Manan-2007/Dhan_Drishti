@@ -1,3 +1,4 @@
+import "./load-env.js";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";

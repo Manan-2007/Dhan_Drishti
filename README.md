@@ -37,11 +37,14 @@ broker CSV / Excel / CAS PDF ─▶ adapter ─▶ canonical ledger ─▶ deriv
   valued at each trade from real historical prices, and a **benchmark overlay** that mirrors your
   exact cashflows into Nifty 50 / Sensex — a chart, not just a stat.
 - 💰 **Full net worth** — holdings + cash + **manual assets** (FDs, PPF / EPF / NPS, physical gold,
-  real estate, savings), a **net‑worth‑over‑time** chart, and allocation by asset class, sector,
+  real estate, savings) — FDs and bonds valued daily from their **rate and maturity date** — a **net‑worth‑over‑time** chart, and allocation by asset class, sector,
   **region** and currency. Foreign gains split into **asset vs. currency**.
 - 🎯 **Plan, income & tax** — set **target weights** and see the drift in percent and rupees
   ("trim ₹X"), a trailing **dividend yield** with an estimated payout calendar, and a **FIFO
   capital‑gains** report (short‑ vs long‑term) you can export as CSV for your ITR.
+- 📰 **Live news on what you hold** — headlines for your largest shares and the market, refreshed
+  on their own, with an optional **AI read** (Azure OpenAI) of each stock's risks and what to
+  watch next. A live **Nifty 50 / Bank Nifty / Sensex** strip runs across the dashboard.
 - ⚙️ **Fresh & installable** — prices refresh nightly in the background and on login; the UI is an
   installable **PWA** with an offline shell.
 - 🔒 **Private by design** — runs on your machine; only public ticker symbols ever leave it.
@@ -58,7 +61,8 @@ broker CSV / Excel / CAS PDF ─▶ adapter ─▶ canonical ledger ─▶ deriv
 | **Rebalance** | Target weights per asset class / sector, with the drift shown in both percent and rupees |
 | **Dividends** | Income by financial year and security, trailing yield, and an estimated forward calendar |
 | **Capital gains** | FIFO short‑ & long‑term gains by financial year, with a CSV export for your tax return |
-| **Other assets** | Manual, non‑market assets (FDs, PPF, gold, real estate…) that fold straight into net worth |
+| **Other assets** | Manual, non‑market assets (FDs, PPF, gold, real estate…) that fold straight into net worth; FDs and bonds show rate, maturity, interest so far and the maturity value |
+| **News** | Live headlines for your largest shares and the market; with AI on, each stock gets a tailwind / headwind read, risks to watch and a near‑term outlook |
 | **Portfolios · Imports · Settings** | Grouping & accounts, the import wizard, data export & account controls |
 
 ## 🧱 Tech stack
@@ -82,6 +86,12 @@ browser once it's ready. Your data persists in `./data` across runs.
 ```
 
 On Windows, double‑click **`start.bat`** (or run it from a terminal). Both need **Node.js + pnpm**.
+
+### AI reading on the News page (optional)
+
+Copy `apps/server/.env.example` to `apps/server/.env`, fill in your Azure OpenAI endpoint, key and
+deployment name, and restart. Without it the News page still shows live headlines. The model is
+sent a company's public name and its public headlines — never what you hold or how much.
 
 ## 🐳 Self‑host (single container)
 
@@ -108,7 +118,9 @@ The web app is one client of a fully headless‑ready REST API.
 argon2id password hashing · httpOnly `SameSite=Lax` session cookies · per‑user data isolation ·
 a same‑origin (CSRF) guard on mutating requests · rate‑limited auth · a Content‑Security‑Policy and
 security headers (HSTS behind HTTPS). Portfolio data never leaves your machine — only public ticker
-symbols and currency codes are ever sent to price providers, and only when you refresh.
+symbols and currency codes are ever sent to price providers, and only when you refresh. The News
+page searches Google News by company name, and (if you turn AI on) sends those public headlines and
+the company name to your own Azure OpenAI deployment; amounts and weights stay local.
 
 ## 🧪 Development
 

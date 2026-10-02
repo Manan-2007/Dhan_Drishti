@@ -448,3 +448,68 @@ export interface CommitManyResult {
   before: DropSnapshot;
   after: DropSnapshot;
 }
+
+// ---- Live market + news ------------------------------------------------------------------
+
+export interface IndexQuote {
+  id: string;
+  name: string;
+  value: number;
+  change: number | null;
+  changePct: number | null;
+  asOf: string;
+}
+export interface IndicesResponse {
+  live: boolean;
+  indices: IndexQuote[];
+}
+
+export type NewsTone = "positive" | "negative" | "neutral";
+export type NewsStance = "tailwind" | "headwind" | "mixed" | "quiet";
+export interface Headline {
+  id: string;
+  title: string;
+  source: string | null;
+  link: string;
+  publishedAt: string;
+}
+export interface CompanyRead {
+  stance: NewsStance;
+  summary: string;
+  risks: string[];
+  outlook: string;
+  confidence: "low" | "medium" | "high";
+  tones: Record<string, NewsTone>;
+}
+export interface MarketRead {
+  mood: "positive" | "negative" | "mixed";
+  summary: string;
+  themes: string[];
+  tones: Record<string, NewsTone>;
+}
+export interface NewsCompany {
+  securityId: string;
+  symbol: string;
+  ticker: string;
+  name: string;
+  /** Share of your shares (by value) — worked out on this machine, never sent out. */
+  weight: number;
+  loaded: boolean;
+  items: Headline[];
+  read: CompanyRead | null;
+  readAt: string | null;
+  reading: boolean;
+}
+export interface FeedItem extends Headline {
+  tone: NewsTone | null;
+  companies: { securityId: string; symbol: string; name: string }[];
+  market: boolean;
+}
+export interface NewsResponse {
+  live: boolean;
+  ai: { enabled: boolean; label: string | null };
+  refreshing: boolean;
+  market: { items: Headline[]; read: MarketRead | null; readAt: string | null };
+  companies: NewsCompany[];
+  feed: FeedItem[];
+}

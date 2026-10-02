@@ -25,6 +25,7 @@ const OtherAssets = lazy(() => import("@/pages/portfolio/OtherAssets").then((m) 
 const People = lazy(() => import("@/pages/accounts/People").then((m) => ({ default: m.People })));
 const Imports = lazy(() => import("./pages/Imports.js").then((m) => ({ default: m.Imports })));
 const AddData = lazy(() => import("@/pages/accounts/AddData").then((m) => ({ default: m.AddData })));
+const News = lazy(() => import("@/pages/news/News").then((m) => ({ default: m.News })));
 const Settings = lazy(() => import("./pages/Settings.js").then((m) => ({ default: m.Settings })));
 
 function PageFallback() {
@@ -132,6 +133,7 @@ function Gate() {
                   <Route path="portfolios" element={<Lazy><People /></Lazy>} />
                   <Route path="manual" element={<Lazy><Imports /></Lazy>} />
                 </Route>
+                <Route path="news" element={<Lazy><News /></Lazy>} />
                 <Route path="settings" element={<Lazy><Settings /></Lazy>} />
 
                 {/* Old addresses */}

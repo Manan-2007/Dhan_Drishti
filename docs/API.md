@@ -99,7 +99,7 @@ curl "$BASE/api/openapi.json" | less
 |---|---|---|
 | GET | `/api/rebalance?dimension=asset_class\|sector&portfolioId=` | Target weights vs live allocation, with weight & rupee drift |
 | PUT | `/api/rebalance` | Replace the target weights for a scope + dimension |
-| GET/POST | `/api/manual-assets?portfolioId=` | List (with base-currency values) / add a non-market asset |
+| GET/POST | `/api/manual-assets?portfolioId=` | List (with base-currency values) / add a non-market asset; FDs and bonds can be given as amount + rate + dates and are valued daily |
 | PUT/DELETE | `/api/manual-assets/{id}` | Update / delete a manual asset |
 
 ### Market data & FX
@@ -107,6 +107,8 @@ curl "$BASE/api/openapi.json" | less
 |---|---|---|
 | POST | `/api/market-data/refresh` | Refresh quotes for held securities (only public tickers sent) |
 | GET | `/api/market-data/status` | Last price refresh time |
+| GET | `/api/market/indices` | Live Nifty 50, Bank Nifty and Sensex values |
+| GET | `/api/news?portfolioId=` | Headlines for the largest held shares and the market, with an AI read when configured |
 | GET | `/api/exchange-rates` | Latest rate per pair |
 | POST | `/api/exchange-rates/refresh` | Refresh rates for held foreign currencies |
 | POST | `/api/exchange-rates/backfill` | Backfill FX-at-cost on foreign trades |

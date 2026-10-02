@@ -161,3 +161,16 @@
     display: none;
   }
 }
+
+/* The live index strip: two identical halves slide left forever; hover pauses it. */
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+@utility marquee-track {
+  animation: marquee var(--marquee-duration, 36s) linear infinite;
+}

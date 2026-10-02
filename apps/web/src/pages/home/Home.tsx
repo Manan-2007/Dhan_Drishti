@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, CalendarClock, CheckCircle2, Clock, Loader2, FileWarning, Globe, PieChart, RefreshCw, Upload } from "lucide-react";
+import { IndexTicker } from "@/components/market/IndexTicker";
 import CountUp from "@/components/reactbits/CountUp";
 import { StockChart } from "@/components/charts/StockChart";
 import { Segmented } from "@/components/kit/Segmented";
@@ -208,6 +209,7 @@ export function Home() {
 
   return (
     <div className="space-y-5">
+      <IndexTicker />
       <div className="grid gap-5 lg:grid-cols-12">
         {/* Hero: where you stand today */}
         <section className="rounded-2xl border bg-card p-6 lg:col-span-8">

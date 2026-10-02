@@ -55,6 +55,7 @@ export const openApiSpec = {
     { name: "Holdings", description: "Derived holdings, allocation, base-currency & FX impact" },
     { name: "Imports", description: "Broker CSV import (preview + commit)" },
     { name: "Market data", description: "Price refresh and status" },
+    { name: "News", description: "Headlines about held shares and the market, with an optional AI read" },
     { name: "Exchange rates", description: "FX rates, refresh, backfill" },
     { name: "Performance", description: "Realised P&L, XIRR, benchmark comparison" },
     { name: "Dividends", description: "Dividend & interest income, trailing yield & estimated calendar" },
@@ -144,6 +145,8 @@ export const openApiSpec = {
 
     "/api/market-data/refresh": { post: op("Market data", "Refresh quotes for held securities (only public tickers sent)", { requestBody: json({ type: "object", properties: { portfolioId: { type: "string" } } }), responses: { "200": { description: "Refresh result", ...json({ type: "object", properties: { requested: { type: "integer" }, updated: { type: "integer" }, failed: { type: "integer" }, provider: { type: "string" }, asOf: { type: "string" } } }) }, ...AUTH_ERRORS } }) },
     "/api/market-data/status": { get: op("Market data", "Last price refresh time", { parameters: [portfolioIdParam] }) },
+    "/api/market/indices": { get: op("Market data", "Live Nifty 50, Bank Nifty and Sensex values (cached a few seconds)") },
+    "/api/news": { get: op("News", "Headlines about the largest held shares and the market, with an AI read when Azure OpenAI is configured (only names and public headlines are sent)", { parameters: [portfolioIdParam] }) },
 
     "/api/exchange-rates": {
       get: op("Exchange rates", "Latest rate per currency pair"),
@@ -220,7 +223,8 @@ export const openApiSpec = {
       RateInput: { type: "object", required: ["from", "to", "rate"], properties: { from: { type: "string", minLength: 3, maxLength: 3 }, to: { type: "string", minLength: 3, maxLength: 3 }, rate: { type: "string", description: "Units of `to` per 1 `from`" } } },
       ManualAssetInput: {
         type: "object",
-        required: ["name", "currentValue"],
+        required: ["name"],
+        description: "Give either currentValue, or (for a deposit or bond) cost + interestRate + startDate and the value is worked out daily.",
         properties: {
           name: { type: "string" },
           assetClass: { type: "string", enum: ["fd", "ppf", "epf", "nps", "savings", "gold", "real_estate", "bond", "other"], default: "other" },
@@ -231,6 +235,10 @@ export const openApiSpec = {
           notes: { type: ["string", "null"] },
           valueAsOf: { type: ["string", "null"], description: "YYYY-MM-DD" },
           portfolioId: { type: ["string", "null"] },
+          interestRate: { type: ["string", "null"], description: "Percent a year, e.g. \"7.1\"" },
+          startDate: { type: ["string", "null"], description: "YYYY-MM-DD" },
+          maturityDate: { type: ["string", "null"], description: "YYYY-MM-DD" },
+          compounding: { type: ["string", "null"], enum: ["quarterly", "monthly", "half_yearly", "yearly", "simple", "payout", null] },
         },
       },
     },

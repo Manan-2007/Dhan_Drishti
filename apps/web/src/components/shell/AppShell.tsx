@@ -81,8 +81,8 @@ export function AppShell() {
           <div className="ml-auto flex items-center gap-2">
             <Button variant="outline" className="hidden text-muted-foreground sm:inline-flex" onClick={() => setCmdOpen(true)} aria-label="Search">
               <Search />
-              <span className="hidden lg:inline">Search</span>
-              <kbd className="ml-1 hidden rounded-md border bg-raised px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground lg:inline">
+              <span className="hidden xl:inline">Search</span>
+              <kbd className="ml-1 hidden rounded-md border bg-raised px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground xl:inline">
                 {isMac ? "⌘K" : "Ctrl K"}
               </kbd>
             </Button>

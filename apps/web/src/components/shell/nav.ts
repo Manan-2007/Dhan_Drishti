@@ -1,9 +1,10 @@
-/** The five destinations. Every other page lives under one of them. */
+/** The six destinations. Every other page lives under one of them. */
 export const DESTINATIONS = [
   { label: "Home", href: "/" },
   { label: "Portfolio", href: "/portfolio" },
   { label: "Activity", href: "/activity" },
   { label: "Performance", href: "/performance" },
+  { label: "News", href: "/news" },
   { label: "Accounts", href: "/accounts" },
 ] as const;
 
@@ -26,6 +27,7 @@ export const JUMP_TARGETS = [
   { label: "Returns", to: "/performance", keywords: "analytics xirr twr benchmark nifty pnl" },
   { label: "Tax", to: "/performance/tax", keywords: "capital gains ltcg stcg report" },
   { label: "Rebalance", to: "/performance/rebalance", keywords: "targets drift" },
+  { label: "News", to: "/news", keywords: "headlines ai risks outlook market today live" },
   { label: "Import files", to: "/accounts", keywords: "upload csv excel cas add data broker" },
   { label: "People & accounts", to: "/accounts/portfolios", keywords: "family members brokers portfolios groups" },
   { label: "Settings", to: "/settings", keywords: "export delete account fx rates" },

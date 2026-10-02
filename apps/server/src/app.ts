@@ -32,6 +32,11 @@ import { FrankfurterProvider } from "./market/providers/frankfurter.js";
 import { YahooBenchmarkProvider } from "./market/providers/yahoo-benchmark.js";
 import { YahooSecurityHistoryProvider } from "./market/providers/yahoo-security-history.js";
 import { registerFxRoutes } from "./domain/fx.js";
+import { registerNewsRoutes } from "./domain/news.js";
+import { NewsHub } from "./news/hub.js";
+import { GoogleNewsSource, YahooNameSource } from "./news/google-news.js";
+import { YahooIndexSource } from "./news/yahoo-indices.js";
+import { analystFromEnv } from "./news/azure.js";
 import { refreshQuotes } from "./market/service.js";
 import { writeAllScopes } from "./domain/snapshots.js";
 import { bumpHoldings } from "./domain/holdings-cache.js";
@@ -77,6 +82,11 @@ export interface AppOptions {
    * import, fetching price history for charts. The server turns it on; tests leave it off.
    */
   backgroundFetch?: boolean;
+  /**
+   * Live index values and news for held companies. Defaults to Yahoo + Google News (+ Azure OpenAI
+   * when configured) with `backgroundFetch`, and to none otherwise.
+   */
+  newsHub?: NewsHub | null;
   /** If set to a built web `dist` dir, the server also serves the SPA (single-service self-host). */
   webDir?: string;
 }
@@ -201,6 +211,13 @@ export function buildApp(db: DB, options: AppOptions = {}): FastifyInstance {
   registerImportRoutes(app, db, options.backgroundFetch ? benchmarkProvider : undefined);
   registerMarketRoutes(app, db, marketProvider);
   registerFxRoutes(app, db, fxProvider);
+  const newsHub =
+    options.newsHub !== undefined
+      ? options.newsHub
+      : options.backgroundFetch
+        ? new NewsHub({ news: new GoogleNewsSource(), names: new YahooNameSource(), indices: new YahooIndexSource(), analyst: analystFromEnv() })
+        : null;
+  registerNewsRoutes(app, db, newsHub);
   const historySources: HistorySources | undefined = options.backgroundFetch
     ? { shares: historyProvider, funds: { amfi: new AmfiProvider(), nav: new MfApiHistoryProvider() }, fx: fxProvider instanceof FrankfurterProvider ? fxProvider : undefined }
     : undefined;

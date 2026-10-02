@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { useAuth } from "@/auth/AuthContext";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { api, type ActivityPage, type Portfolio, type Account, type HoldingsResponse, type Transaction, type ImportBatch, type NetWorthSeries, type RebalanceResponse, type RebalanceDimension, type ManualAssetsResult, type CapitalGainsReport, type SecurityDetail } from "./api.js";
+import { api, type ActivityPage, type Portfolio, type Account, type HoldingsResponse, type Transaction, type ImportBatch, type NetWorthSeries, type RebalanceResponse, type RebalanceDimension, type ManualAssetsResult, type CapitalGainsReport, type SecurityDetail, type IndicesResponse, type NewsResponse } from "./api.js";
 
 export function useCapitalGains(portfolioId: string | null) {
   const qs = portfolioId ? `?portfolioId=${portfolioId}` : "";
@@ -19,6 +19,29 @@ export function useSecurityDetail(id: string | undefined, portfolioId: string | 
     enabled: !!id,
     queryKey: ["security-detail", id, portfolioId],
     queryFn: () => api.get<SecurityDetail>(`/api/securities/${id}/detail${qs ? `?${qs}` : ""}`),
+  });
+}
+
+/** Nifty 50, Bank Nifty, Sensex — polled every few seconds. */
+export function useIndices() {
+  return useQuery({
+    queryKey: ["indices"],
+    queryFn: () => api.get<IndicesResponse>("/api/market/indices"),
+    refetchInterval: 5000,
+    refetchIntervalInBackground: false,
+    placeholderData: (prev) => prev,
+  });
+}
+
+/** News about what you hold. Polls quickly while the server is still fetching, then every 15 s. */
+export function useNews(portfolioId: string | null) {
+  const qs = portfolioId ? `?portfolioId=${portfolioId}` : "";
+  return useQuery({
+    queryKey: ["news", portfolioId],
+    queryFn: () => api.get<NewsResponse>(`/api/news${qs}`),
+    refetchInterval: (q) => (q.state.data?.refreshing ? 3000 : 15000),
+    refetchIntervalInBackground: false,
+    placeholderData: (prev) => prev,
   });
 }
 
