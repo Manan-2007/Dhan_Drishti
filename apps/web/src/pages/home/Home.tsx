@@ -103,6 +103,18 @@ function useAttention(data: HoldingsResponse | undefined): Attention[] {
       action: <Button size="xs" variant="outline" onClick={() => navigate("/accounts")}><Upload /> Add files</Button>,
     });
   }
+  const today = new Date().toISOString().slice(0, 10);
+  for (const m of (data.manualAssets ?? []).filter((a) => a.deposit?.maturityDate && (a.deposit.daysToMaturity ?? 99) <= 30)) {
+    const dep = m.deposit!;
+    items.push({
+      id: `mature-${m.id}`,
+      icon: <CalendarClock />,
+      text: dep.matured
+        ? `${m.name} matured on ${dep.maturityDate === today ? "today" : dep.maturityDate}. Renew it or move the money, then update it here.`
+        : `${m.name} matures in ${dep.daysToMaturity} day${dep.daysToMaturity === 1 ? "" : "s"}${dep.maturityValue ? ` — about ${compactMoney(dep.maturityValue, data.baseCurrency)}` : ""}.`,
+      action: <Button size="xs" variant="ghost" onClick={() => navigate("/portfolio/other")}>View</Button>,
+    });
+  }
   const stuck = s.expiredOpen ?? 0;
   if (stuck > 0) {
     items.push({

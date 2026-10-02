@@ -250,6 +250,12 @@ export const manualAssets = sqliteTable(
     cost: text("cost"), // optional amount invested/contributed, for a gain figure
     notes: text("notes"),
     valueAsOf: text("value_as_of"), // when currentValue was last set (YYYY-MM-DD)
+    // Deposits and bonds: with a rate and a start date the value is worked out daily from `cost`
+    // (the amount put in) instead of being typed in. See core/deposit.ts.
+    interestRate: text("interest_rate"), // percent a year, e.g. "7.1"
+    startDate: text("start_date"), // YYYY-MM-DD
+    maturityDate: text("maturity_date"), // YYYY-MM-DD
+    compounding: text("compounding"), // quarterly | monthly | half_yearly | yearly | simple | payout
     createdAt: text("created_at").notNull().default(now),
     updatedAt: text("updated_at").notNull().default(now),
   },

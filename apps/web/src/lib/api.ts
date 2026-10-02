@@ -157,6 +157,18 @@ export interface ManualAsset {
   notes: string | null;
   valueAsOf: string | null;
   portfolioId: string | null;
+  /** A deposit or bond valued from its terms. */
+  deposit?: {
+    interestRate: string;
+    startDate: string;
+    maturityDate: string | null;
+    compounding: string;
+    maturityValue: string | null;
+    interestSoFar: string;
+    daysToMaturity: number | null;
+    matured: boolean;
+    elapsed: number | null;
+  } | null;
 }
 export interface ManualAssetsResult {
   baseCurrency: string;

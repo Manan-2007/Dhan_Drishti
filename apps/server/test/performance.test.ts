@@ -2,7 +2,15 @@ import { describe, it, expect, beforeEach } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { createDb } from "../src/db/index.js";
 import { buildApp } from "../src/app.js";
-import type { MarketDataProvider, SecurityLike, QuoteData, BenchmarkProvider, BenchmarkBar, SecurityHistoryProvider } from "../src/market/types.js";
+import type { MarketDataProvider, SecurityLike, QuoteData, BenchmarkProvider, BenchmarkBar, SecurityHistoryProvider, FxProvider } from "../src/market/types.js";
+
+/** Keeps the multi-currency case off the network. */
+class FakeFx implements FxProvider {
+  id = "fakefx";
+  async getRate(from: string, to: string): Promise<string | null> {
+    return from === to ? "1" : from === "USD" && to === "INR" ? "83" : null;
+  }
+}
 
 class FakeProvider implements MarketDataProvider {
   id = "fake";
@@ -48,7 +56,7 @@ const get = (url: string, cookie: string) => app.inject({ method: "GET", url, he
 
 beforeEach(async () => {
   const { db } = await createDb(":memory:");
-  app = buildApp(db, { marketProvider: new FakeProvider(150), benchmarkProvider: new FakeBenchmark(), historyProvider: new FakeHistory() });
+  app = buildApp(db, { marketProvider: new FakeProvider(150), benchmarkProvider: new FakeBenchmark(), historyProvider: new FakeHistory(), fxProvider: new FakeFx() });
   await app.ready();
 });
 
