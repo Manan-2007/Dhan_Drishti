@@ -1,10 +1,11 @@
 import type { IndexQuote, IndexSource } from "./types.js";
 
-/** The three numbers an Indian investor glances at. Yahoo index symbols, public. */
+/** The numbers an Indian investor glances at. Yahoo symbols, public. `INR=X` is USD→INR. */
 export const INDICES = [
   { id: "nifty50", name: "Nifty 50", symbol: "^NSEI" },
   { id: "banknifty", name: "Bank Nifty", symbol: "^NSEBANK" },
   { id: "sensex", name: "Sensex", symbol: "^BSESN" },
+  { id: "usdinr", name: "USD / INR", symbol: "INR=X" },
 ] as const;
 
 /** Live index values from Yahoo's public chart endpoint (no key). */
