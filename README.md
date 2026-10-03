@@ -8,7 +8,7 @@
 
 <br/>
 
-![Tests](https://img.shields.io/badge/tests-310%20passing-3ec98a?style=flat-square&labelColor=0b0b0d)
+![Tests](https://img.shields.io/badge/tests-313%20passing-3ec98a?style=flat-square&labelColor=0b0b0d)
 &nbsp;![Money](https://img.shields.io/badge/money-never%20a%20float-f0b23e?style=flat-square&labelColor=0b0b0d)
 &nbsp;![TypeScript](https://img.shields.io/badge/TypeScript-strict-5fb7a6?style=flat-square&labelColor=0b0b0d)
 &nbsp;![Stack](https://img.shields.io/badge/React%20·%20Fastify%20·%20SQLite-informational-8c8fe0?style=flat-square&labelColor=0b0b0d)
@@ -22,36 +22,96 @@ Dhan Drishti turns a pile of broker exports into one clear picture of your wealt
 the dashboard is **derived from your own transaction ledger** — nothing is placeholder, silently
 faked or sent to a server you don't control.
 
+## 🔭 How it works
+
+From a messy folder of exports to one honest dashboard — each arrow is a step you can trace back.
+
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'primaryColor':'#141417','primaryTextColor':'#f3efe6','primaryBorderColor':'#26262c','lineColor':'#f0b23e','secondaryColor':'#1d1d22','tertiaryColor':'#18181c','fontFamily':'IBM Plex Sans, Segoe UI, sans-serif'}}}%%
+flowchart LR
+  A["Broker exports<br/>CSV · Excel · CAS PDF"] --> B{"Broker adapter"}
+  B --> C[("Canonical ledger<br/>every transaction")]
+  C --> D["Derived holdings<br/>avg cost · gains"]
+  D --> E["Analytics<br/>XIRR · TWR · tax · benchmark"]
+  E --> F["Dashboard"]
+  M["Manual assets<br/>FD · gold · property"] --> D
+  P["Prices · FX · news<br/>public tickers only"] -. refresh .-> D
+  P -. refresh .-> E
+  classDef accent fill:#f0b23e,stroke:#f0b23e,color:#16120a;
+  classDef ledger fill:#1d1d22,stroke:#f0b23e,color:#f3efe6;
+  class F accent
+  class C ledger
 ```
-broker CSV / Excel / CAS PDF ─▶ adapter ─▶ canonical ledger ─▶ derived holdings ─▶ analytics ─▶ dashboard
+
+**The import pipeline is atomic** — a file is detected, normalized, validated and classified, shown
+to you as a preview, then committed all-or-nothing (and reconciled against the broker's own P&amp;L).
+
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'primaryColor':'#141417','primaryTextColor':'#f3efe6','primaryBorderColor':'#26262c','lineColor':'#f0b23e','secondaryColor':'#1d1d22','tertiaryColor':'#18181c','fontFamily':'IBM Plex Sans, Segoe UI, sans-serif'}}}%%
+flowchart LR
+  U["Upload file"] --> D["Detect broker"]
+  D --> N["Normalize rows"]
+  N --> V["Validate"]
+  V --> C{"Classify"}
+  C -->|new| L["Add to ledger"]
+  C -->|duplicate| S["Skip — idempotent"]
+  C -->|invalid| R["Report, never guess"]
+  L --> PV["Preview counts"]
+  PV --> K["Commit — atomic"]
+  K --> DB[("SQLite")]
+  classDef accent fill:#f0b23e,stroke:#f0b23e,color:#16120a;
+  class K accent
+```
+
+**One process, your machine.** The browser talks to a single Fastify service that owns the database
+and a pure calculation engine; only public identifiers ever reach the outside world.
+
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'primaryColor':'#141417','primaryTextColor':'#f3efe6','primaryBorderColor':'#26262c','lineColor':'#f0b23e','secondaryColor':'#1d1d22','tertiaryColor':'#18181c','fontFamily':'IBM Plex Sans, Segoe UI, sans-serif','clusterBkg':'#101014','clusterBorder':'#26262c'}}}%%
+flowchart TB
+  subgraph BROWSER["Your browser"]
+    W["React SPA<br/>Vite · Tailwind · shadcn/ui"]
+  end
+  subgraph HOST["Your machine · one process"]
+    S["Fastify API<br/>argon2 auth · sessions"]
+    CORE["Core engine<br/>pure · decimal.js"]
+    DBx[("SQLite<br/>Drizzle + libsql")]
+  end
+  EXT["Public providers<br/>Yahoo · AMFI · FX · news"]
+  W <-->|"REST /api"| S
+  S --> CORE
+  S --> DBx
+  S -. "public tickers only" .-> EXT
+  classDef accent fill:#f0b23e,stroke:#f0b23e,color:#16120a;
+  class CORE accent
 ```
 
 ## ✨ Highlights
 
 - 🔌 **Every broker, one ledger** — Zerodha, Dhan, Vested & Interactive Brokers (US), Binance
   (crypto), Excel (`.xlsx`) holdings, and a mutual‑fund **CAS PDF** (CAMS / KFintech — one
-  password‑protected file covers every AMC), plus a generic column‑mapping importer for anything
-  else. **Drop a file and it works out the rest** — checked against the broker's own P&L so the
-  numbers reconcile. Imports are idempotent, deduped and **atomic** (all‑or‑nothing).
-- 🧮 **Holdings you can trust** — average‑cost positions, invested value and realised P&L derived
+  password‑protected file covers every AMC), plus a generic column‑mapping importer. **Drop a file
+  and it works out the rest**, reconciled against the broker's own P&amp;L. Imports are idempotent,
+  deduped and **atomic**.
+- 🧮 **Holdings you can trust** — average‑cost positions, invested value and realised gains derived
   from the ledger, a **diversification / concentration score**, and a per‑security detail page with
   a **stock‑style price chart** drawn from real history. Missing prices show `—`, never a fake `0`.
-- 📈 **Honest performance** — realised P&L by financial year, **XIRR**, a **time‑weighted return**
+- 📈 **Honest performance** — realised gains by financial year, **XIRR**, a **time‑weighted return**
   valued at each trade from real historical prices, and a **benchmark overlay** that mirrors your
   exact cashflows into Nifty 50 / Sensex — a chart, not just a stat.
 - 💰 **Full net worth** — holdings + cash + **manual assets** (FDs & bonds that **track their rate
-  and maturity**, PPF / EPF / NPS, physical gold, real estate, savings), a **net‑worth‑over‑time**
-  chart, and allocation by asset class, sector, **region** and currency. Foreign gains split into
-  **asset vs. currency**.
-- 🎯 **Plan, income & tax** — set **target weights** and see the drift in percent and rupees
-  ("trim ₹X"), a trailing **dividend yield** with an estimated payout calendar, and a **FIFO
-  capital‑gains** report (short‑ vs long‑term) you can export as CSV for your ITR.
-- 📰 **Markets in context** — a **live index strip** and a **News page** that surfaces headlines for
-  what you actually hold, with *checked‑at* vs *published‑at* times so you know how fresh it is.
+  and maturity**, PPF / EPF / NPS, gold with **weight & purity**, real estate with **area &
+  purchase date**), a **net‑worth‑over‑time** chart, and allocation by asset class, sector, **region**
+  and currency. Foreign gains split into **asset vs. currency**.
+- 🎯 **Plan, income & tax** — set **target weights** and see the drift in percent and rupees, a
+  trailing **dividend yield** with an estimated payout calendar, and a **FIFO capital‑gains** report
+  (short‑ vs long‑term) you can export as CSV for your ITR.
+- 📰 **Markets in context** — a **live index strip** (Nifty 50 · Bank Nifty · Sensex · **USD / INR**)
+  and a **News page** that surfaces headlines for what you actually hold, freshness‑stamped.
 - ⚙️ **Fresh & installable** — prices refresh nightly in the background and on login; the UI is an
   installable **PWA** with an offline shell.
-- 🔒 **Private by design** — runs on your machine; only public ticker symbols (to price providers)
-  and company names + headlines (to the News provider) ever leave it.
+- 🔒 **Private by design** — runs on your machine; only public ticker symbols and company names ever
+  leave it.
 
 ## 🖥️ The app
 
@@ -59,11 +119,11 @@ Six destinations; everything else lives under one of them.
 
 | Destination | What's inside |
 |---|---|
-| 🏠 **Home** | Net‑worth headline + composition (holdings / cash / manual assets), net‑worth‑over‑time chart, allocation, top holdings, recent activity |
-| 📦 **Portfolio** | **Positions** (avg cost, value, unrealised & realised P&L, class/sector filters), **Allocation** (asset class · sector · region · currency), a per‑**Security** detail page with price chart & contribution, and **Other assets** (FDs, bonds, gold, property…) |
-| 🧾 **Activity** | The full ledger as a readable **day‑by‑day timeline**, plus **Dividends** — income by FY and security, trailing yield, forward calendar |
-| 📈 **Performance** | **Returns** (realised P&L by FY, XIRR, TWR, benchmark overlay, diversification, FX‑impact), **Rebalance** (target weights, drift in % and ₹), and **Tax** (FIFO short/long‑term capital gains, CSV export) |
-| 📰 **News** | A live index strip and headlines for your holdings, freshness‑stamped |
+| 🏠 **Home** | Net‑worth headline + composition, the live index strip, net‑worth‑over‑time chart, allocation, top holdings, recent activity |
+| 📦 **Portfolio** | **Positions** (avg cost, value, gains, filters), **Allocation** (class · sector · region · currency), a per‑**Security** detail page, and **Other assets** (FDs, bonds, gold, property…) |
+| 🧾 **Activity** | The full ledger as a day‑by‑day **timeline**, plus **Dividends** — income by FY, trailing yield, forward calendar |
+| 📈 **Performance** | **Returns** (realised gains, XIRR, TWR, benchmark overlay, diversification, FX impact), **Rebalance** (drift in % and ₹), and **Tax** (FIFO capital gains, CSV export) |
+| 📰 **News** | Live index strip and headlines for your holdings, as tiles, freshness‑stamped |
 | 👥 **Accounts** | Drop‑anything **import wizard**, and **People & accounts** — family members, brokers, portfolios & groups |
 
 > **Settings** (data export, account delete, FX rates) sits alongside the six.
@@ -72,7 +132,7 @@ Six destinations; everything else lives under one of them.
 
 | Layer | Choice |
 |---|---|
-| Frontend | React + TypeScript + Vite (route‑level code‑split), Tailwind CSS v4, **shadcn/ui**, TanStack Query, Recharts |
+| Frontend | React 19 + TypeScript + Vite (route‑level code‑split), Tailwind CSS v4, **shadcn/ui**, TanStack Query, Recharts |
 | Design | Dark‑only, solid colours, one marigold accent · **IBM Plex Sans** (tabular figures) + **Instrument Serif** display |
 | Backend | Node + Fastify · argon2id auth · session cookies |
 | Data | SQLite via Drizzle ORM + libsql (WAL; dialect‑swappable to Postgres) |
@@ -98,6 +158,41 @@ identically on every chart. Green/red are reserved for gain/loss and always pair
 &nbsp;![Cash](https://img.shields.io/badge/Cash-d9d2c3?style=flat-square&labelColor=141417)
 &nbsp;![Other](https://img.shields.io/badge/Other-7fa66b?style=flat-square&labelColor=141417)
 
+## ✅ Requirements
+
+Dhan Drishti runs anywhere Node runs — **macOS, Windows or Linux**. You only need two tools (or just
+Docker). Everything else is self‑contained.
+
+| Need | Spec |
+|---|---|
+| **Node.js** | **20 or newer** (22 LTS recommended) |
+| **pnpm** | **10+** — comes with Node via `corepack enable` |
+| **Disk** | ~1.5 GB (dependencies) + your data in `./data` |
+| **Memory** | 4 GB RAM is plenty |
+| **Browser** | Any modern one — Chrome, Edge, Safari, Firefox |
+| **Ports** | **4000** for the app (and **5173** in dev) |
+| **Git** | Optional — only to clone or update |
+
+<table>
+<tr><th>🍎 macOS</th><th>🪟 Windows</th></tr>
+<tr valign="top"><td>
+
+1. Install Node 20+ from [nodejs.org](https://nodejs.org) **or** `brew install node`
+2. `corepack enable` (turns on pnpm)
+3. In the project folder: `./start.sh`
+
+</td><td>
+
+1. Install Node 20+ from [nodejs.org](https://nodejs.org) (includes Corepack)
+2. In a terminal: `corepack enable` (turns on pnpm)
+3. Double‑click **`start.bat`** (or run it)
+
+</td></tr>
+</table>
+
+> **Prefer not to install anything?** With **Docker Desktop**, skip Node and pnpm entirely — see
+> *Self‑host* below.
+
 ## 🚀 Run it (one command)
 
 Syncs dependencies, builds the web app, starts the single‑service server (API + UI on one port), and
@@ -107,7 +202,7 @@ opens your browser once it's ready. Your data persists in `./data` across runs.
 ./start.sh          # macOS / Linux
 ```
 
-On Windows, double‑click **`start.bat`** (or run it from a terminal). Both need **Node.js + pnpm**.
+On Windows, double‑click **`start.bat`** (or run it from a terminal).
 
 > **Optional — the News page.** Copy `apps/server/.env.example` → `apps/server/.env` and add your
 > Azure OpenAI key. Without it the app runs fine; News just stays quiet. Only company names and
@@ -138,14 +233,14 @@ The web app is one client of a fully headless‑ready REST API.
 argon2id password hashing · httpOnly `SameSite=Lax` session cookies · per‑user data isolation ·
 a same‑origin (CSRF) guard on mutating requests · rate‑limited auth · a Content‑Security‑Policy and
 security headers (HSTS behind HTTPS). Portfolio data never leaves your machine — only public ticker
-symbols and currency codes (to price providers) and company names + headlines (to the News provider)
+symbols and currency codes (to price providers) and company names + headlines (to the news provider)
 are ever sent, and prices only when you refresh.
 
 ## 🧪 Development
 
 ```bash
 pnpm install
-pnpm -r test        # 310 tests: core engine (92) + server (214) + web (4)
+pnpm -r test        # 313 tests: core engine (92) + server (217) + web (4)
 pnpm -r typecheck
 pnpm --filter @dhan-drishti/server dev     # API on http://127.0.0.1:4000
 pnpm --filter @dhan-drishti/web dev        # UI on http://localhost:5173 (proxies /api → server)
