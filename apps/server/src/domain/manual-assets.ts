@@ -19,6 +19,11 @@ import { getPortfolioOwned } from "./portfolios.js";
 
 export const MANUAL_ASSET_CLASSES = ["fd", "ppf", "epf", "nps", "savings", "gold", "real_estate", "bond", "other"] as const;
 
+/** Only these grow from a single principal, so only these are valued from their terms (deposit.ts).
+ * PPF/EPF earn interest too, but on contributions made over time — a single-principal compound
+ * would be wrong, so their rate and maturity are kept as information and the balance stays by hand. */
+const DEPOSIT_CLASSES = new Set<string>(["fd", "bond"]);
+
 /** Region inferred from a security's currency (manual assets carry their own explicit region). */
 const REGION_BY_CURRENCY: Record<string, string> = {
   INR: "India",
@@ -54,11 +59,15 @@ const fields = {
   notes: z.string().trim().max(500).nullable().optional(),
   valueAsOf: dateStr.nullable().optional(),
   portfolioId: z.string().min(1).nullable().optional(),
-  // Deposit / bond terms: with these, the value is worked out from the amount put in (`cost`).
+  // Deposit / bond terms: with these (on an FD or bond), the value is worked out from the amount
+  // put in (`cost`). On a PPF/EPF/savings they are kept only as information.
   interestRate: decimalStr.nullable().optional(),
   startDate: dateStr.nullable().optional(),
   maturityDate: dateStr.nullable().optional(),
   compounding: z.enum(COMPOUNDING).nullable().optional(),
+  // A measured amount and its unit — gold weight ("10" grams, purity "24K") or a property's area.
+  quantity: decimalStr.nullable().optional(),
+  unit: z.string().trim().max(24).nullable().optional(),
 };
 const createSchema = z
   .object(fields)
@@ -68,8 +77,9 @@ const updateSchema = z.object(fields).partial();
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-/** A deposit's terms, when it has enough of them to be valued automatically. */
-function termsOf(r: { cost: string | null; interestRate: string | null; startDate: string | null; maturityDate: string | null; compounding: string | null }): DepositTerms | null {
+/** A deposit's terms, when it is a deposit kind and has enough of them to be valued automatically. */
+function termsOf(r: { assetClass: string; cost: string | null; interestRate: string | null; startDate: string | null; maturityDate: string | null; compounding: string | null }): DepositTerms | null {
+  if (!DEPOSIT_CLASSES.has(r.assetClass)) return null;
   if (!r.cost || !r.interestRate || !r.startDate) return null;
   return { principal: r.cost, ratePct: r.interestRate, start: r.startDate, maturity: r.maturityDate, compounding: (r.compounding as Compounding) ?? "quarterly" };
 }
@@ -90,7 +100,14 @@ export interface ManualAssetView {
   notes: string | null;
   valueAsOf: string | null;
   portfolioId: string | null;
-  /** Present for a deposit or bond valued from its terms. */
+  /** Measured amount + unit — gold weight & purity, or a property's area. */
+  quantity: string | null;
+  unit: string | null;
+  /** Stored terms, shown as information for non-deposit kinds (PPF/EPF rate & lock-in, etc.). */
+  interestRate: string | null;
+  startDate: string | null;
+  maturityDate: string | null;
+  /** Present for a deposit or bond valued from its terms (FD / bond). */
   deposit: {
     interestRate: string;
     startDate: string;
@@ -176,6 +193,11 @@ export async function computeManualAssets(db: DB, userId: string, portfolioId?: 
       notes: r.notes,
       valueAsOf: dep ? asOf : r.valueAsOf,
       portfolioId: r.portfolioId,
+      quantity: r.quantity,
+      unit: r.unit,
+      interestRate: r.interestRate,
+      startDate: r.startDate,
+      maturityDate: r.maturityDate,
       deposit:
         dep && terms
           ? {
@@ -243,6 +265,8 @@ export function registerManualAssetRoutes(app: FastifyInstance, db: DB): void {
       startDate: body.startDate ?? null,
       maturityDate: body.maturityDate ?? null,
       compounding: body.compounding ?? null,
+      quantity: body.quantity ?? null,
+      unit: body.unit ?? null,
       createdAt: now,
       updatedAt: now,
     };

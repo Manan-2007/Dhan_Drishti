@@ -157,7 +157,14 @@ export interface ManualAsset {
   notes: string | null;
   valueAsOf: string | null;
   portfolioId: string | null;
-  /** A deposit or bond valued from its terms. */
+  /** Measured amount + unit — gold weight & purity, or a property's area. */
+  quantity: string | null;
+  unit: string | null;
+  /** Stored terms, shown as information for non-deposit kinds (PPF/EPF rate & lock-in). */
+  interestRate: string | null;
+  startDate: string | null;
+  maturityDate: string | null;
+  /** A deposit or bond valued from its terms (FD / bond). */
   deposit?: {
     interestRate: string;
     startDate: string;

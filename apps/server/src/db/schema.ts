@@ -252,10 +252,12 @@ export const manualAssets = sqliteTable(
     valueAsOf: text("value_as_of"), // when currentValue was last set (YYYY-MM-DD)
     // Deposits and bonds: with a rate and a start date the value is worked out daily from `cost`
     // (the amount put in) instead of being typed in. See core/deposit.ts.
-    interestRate: text("interest_rate"), // percent a year, e.g. "7.1"
-    startDate: text("start_date"), // YYYY-MM-DD
-    maturityDate: text("maturity_date"), // YYYY-MM-DD
+    interestRate: text("interest_rate"), // percent a year, e.g. "7.1" (FD/bond rate; also PPF/EPF/savings for info)
+    startDate: text("start_date"), // YYYY-MM-DD — deposit start, or a property's purchase / account open date
+    maturityDate: text("maturity_date"), // YYYY-MM-DD — deposit maturity, or a PPF/EPF lock-in date
     compounding: text("compounding"), // quarterly | monthly | half_yearly | yearly | simple | payout
+    quantity: text("quantity"), // measured amount — gold weight in grams, or a property's area
+    unit: text("unit"), // the unit/label for `quantity` — e.g. "24K" (gold purity) or "sq ft" (area)
     createdAt: text("created_at").notNull().default(now),
     updatedAt: text("updated_at").notNull().default(now),
   },

@@ -84,6 +84,51 @@ describe("manual (non-market) assets", () => {
     expect((await get("/api/manual-assets", cookie)).json().count).toBe(0);
   });
 
+  it("stores gold weight & purity and surfaces them", async () => {
+    const cookie = await signup("ma5");
+    await post("/api/manual-assets", cookie, { name: "Coins", assetClass: "gold", currentValue: "150000", cost: "120000", quantity: "25", unit: "24K" });
+    const item = (await get("/api/manual-assets", cookie)).json().items[0];
+    expect(item.quantity).toBe("25");
+    expect(item.unit).toBe("24K");
+    expect(item.gain).toBe("30000");
+    expect(item.deposit).toBeNull(); // gold is never valued from terms
+  });
+
+  it("keeps a PPF's rate & lock-in as information without compounding its balance", async () => {
+    const cookie = await signup("ma6");
+    await post("/api/manual-assets", cookie, {
+      name: "PPF",
+      assetClass: "ppf",
+      currentValue: "200000",
+      cost: "150000",
+      interestRate: "7.1",
+      startDate: "2015-04-01",
+      maturityDate: "2030-04-01",
+    });
+    const item = (await get("/api/manual-assets", cookie)).json().items[0];
+    expect(item.currentValue).toBe("200000"); // the balance stays exactly as entered — NOT grown from terms
+    expect(item.deposit).toBeNull();
+    expect(item.interestRate).toBe("7.1");
+    expect(item.maturityDate).toBe("2030-04-01");
+  });
+
+  it("values an FD from its terms (unlike a PPF)", async () => {
+    const cookie = await signup("ma7");
+    await post("/api/manual-assets", cookie, {
+      name: "Bank FD",
+      assetClass: "fd",
+      cost: "100000",
+      interestRate: "7",
+      startDate: "2025-01-01",
+      maturityDate: "2026-01-01",
+      compounding: "quarterly",
+    });
+    const item = (await get("/api/manual-assets", cookie)).json().items[0];
+    expect(item.deposit).not.toBeNull();
+    expect(item.deposit.maturityValue).toBe("107185.90"); // 1,00,000 × (1+0.07/4)^4
+    expect(Number(item.currentValue)).toBeGreaterThan(100000); // grown from the amount put in
+  });
+
   it("scopes assets to their portfolio", async () => {
     const cookie = await signup("ma4");
     const a = (await post("/api/portfolios", cookie, { name: "A" })).json().portfolio.id;

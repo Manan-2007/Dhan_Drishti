@@ -36,6 +36,38 @@ const COMPOUNDING: { id: string; label: string }[] = [
   { id: "payout", label: "Paid out to me (coupons / payout FD)" },
 ];
 
+/**
+ * The extra details each non‑deposit kind asks for, so the stored value is backed by something real.
+ * FDs and bonds have their own dedicated form (valued from their terms); everything else keeps a
+ * hand‑entered value plus whatever of these makes it meaningful.
+ */
+interface KindSpec {
+  valueLabel: string; // the "current value" field
+  costLabel?: string; // an amount-in / purchase-price field
+  rateLabel?: string; // an interest-rate field (kept as information)
+  maturityLabel?: string; // a maturity / lock-in date
+  startLabel?: string; // a start / purchase date
+  measure?: { label: string; unitLabel: string; units: string[] }; // quantity + unit
+}
+const SPEC: Record<string, KindSpec> = {
+  ppf: { valueLabel: "Balance today (₹)", rateLabel: "Interest rate (% a year)", maturityLabel: "Matures / unlocks on", costLabel: "Total put in (₹, optional)", startLabel: "Opened on" },
+  epf: { valueLabel: "Balance today (₹)", rateLabel: "Interest rate (% a year)", costLabel: "Total put in (₹, optional)" },
+  nps: { valueLabel: "Value today (₹)", costLabel: "Total contributed (₹, optional)", startLabel: "Started on" },
+  savings: { valueLabel: "Balance today (₹)", rateLabel: "Interest rate (% a year)" },
+  gold: { valueLabel: "Worth today (₹)", costLabel: "You paid (₹, optional)", measure: { label: "Weight (grams)", unitLabel: "Purity", units: ["24K", "22K", "18K", "Other"] } },
+  real_estate: { valueLabel: "Worth today (₹)", costLabel: "Purchase price (₹, optional)", startLabel: "Bought on", measure: { label: "Area", unitLabel: "Unit", units: ["sq ft", "sq yd", "sq m", "acre"] } },
+  other: { valueLabel: "Worth today (₹)", costLabel: "You put in (₹, optional)" },
+};
+const DEFAULT_SPEC: KindSpec = { valueLabel: "Worth today (₹)", costLabel: "You put in (₹, optional)" };
+
+/** "10 g · 24K" for gold, "1200 sq ft" for a property — however the quantity + unit was entered. */
+function measureText(asset: ManualAsset): string | null {
+  if (!asset.quantity || Number(asset.quantity) <= 0) return null;
+  const qty = Number(asset.quantity).toLocaleString("en-IN");
+  if (asset.assetClass === "gold") return `${qty} g${asset.unit ? ` · ${asset.unit}` : ""}`;
+  return `${qty}${asset.unit ? ` ${asset.unit}` : ""}`;
+}
+
 /** "1 yr 4 mo", "23 days" — how long until a date. */
 function timeLeft(daysLeft: number): string {
   if (daysLeft <= 0) return "matured";
@@ -153,7 +185,16 @@ function AssetRow({ asset }: { asset: ManualAsset }) {
         ) : (
           <p className={cn("text-xs", stale ? "text-warning" : "text-muted-foreground")}>
             {stale && <Clock className="mr-1 inline size-3" />}
-            {[kind?.label ?? assetClassLabel(asset.assetClass), asset.region !== "India" && asset.region, asset.valueAsOf && (stale ? `value set ${ago(asset.valueAsOf)} — worth updating` : `as of ${dateShort(asset.valueAsOf)}`)].filter(Boolean).join(" · ")}
+            {[
+              kind?.label ?? assetClassLabel(asset.assetClass),
+              asset.region !== "India" && asset.region,
+              measureText(asset),
+              asset.interestRate && Number(asset.interestRate) > 0 && `${Number(asset.interestRate)}% a year`,
+              asset.maturityDate && `matures ${dateShort(asset.maturityDate)}`,
+              asset.valueAsOf && (stale ? `value set ${ago(asset.valueAsOf)} — worth updating` : `as of ${dateShort(asset.valueAsOf)}`),
+            ]
+              .filter(Boolean)
+              .join(" · ")}
           </p>
         )}
         {dep?.elapsed !== null && dep?.elapsed !== undefined && (
@@ -223,10 +264,15 @@ function AddDialog({ kind, onClose, defaultPortfolioId }: { kind: string | null;
   const [start, setStart] = useState(new Date().toISOString().slice(0, 10));
   const [maturity, setMaturity] = useState("");
   const [compounding, setCompounding] = useState("quarterly");
+  const [qty, setQty] = useState("");
+  const [unit, setUnit] = useState("");
+  const [since, setSince] = useState(""); // a property's purchase / account open date (kept empty by default)
   const k = KINDS.find((x) => x.id === kind);
+  const spec = (kind && SPEC[kind]) || DEFAULT_SPEC;
   // FDs and bonds are valued from their terms when a rate is given; otherwise by hand as before.
   const isDeposit = !!kind && DEPOSIT_KINDS.has(kind);
   const fromTerms = isDeposit && rate.trim() !== "" && cost.trim() !== "";
+  const unitValue = unit || spec.measure?.units[0] || "";
   const create = useMutation({
     mutationFn: () =>
       api.post("/api/manual-assets", {
@@ -236,7 +282,15 @@ function AddDialog({ kind, onClose, defaultPortfolioId }: { kind: string | null;
         currency: "INR",
         ...(fromTerms
           ? { cost: cost.trim(), interestRate: rate.trim(), startDate: start, maturityDate: maturity || null, compounding }
-          : { currentValue: value.trim(), cost: cost.trim() || undefined }),
+          : {
+              currentValue: value.trim(),
+              cost: cost.trim() || undefined,
+              // The details this kind asks for, sent only when filled.
+              ...(spec.rateLabel && rate.trim() ? { interestRate: rate.trim() } : {}),
+              ...(spec.startLabel && since ? { startDate: since } : {}),
+              ...(spec.maturityLabel && maturity ? { maturityDate: maturity } : {}),
+              ...(spec.measure && qty.trim() ? { quantity: qty.trim(), unit: unitValue } : {}),
+            }),
         valueAsOf: new Date().toISOString().slice(0, 10),
         portfolioId: owner || defaultPortfolioId || people?.[0]?.id || undefined,
       }),
@@ -246,6 +300,9 @@ function AddDialog({ kind, onClose, defaultPortfolioId }: { kind: string | null;
       setCost("");
       setRate("");
       setMaturity("");
+      setQty("");
+      setUnit("");
+      setSince("");
       invalidate();
       onClose();
       toast.success("Added to your net worth");
@@ -303,16 +360,60 @@ function AddDialog({ kind, onClose, defaultPortfolioId }: { kind: string | null;
               <p className="text-xs text-muted-foreground">Its value is worked out every day from these — nothing to update by hand.</p>
             </>
           ) : (
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block space-y-1.5">
-                <span className="text-sm text-muted-foreground">Worth today (₹)</span>
-                <Input type="number" min="0" step="any" value={value} onChange={(e) => setValue(e.target.value)} className="h-10 rounded-xl" required />
-              </label>
-              <label className="block space-y-1.5">
-                <span className="text-sm text-muted-foreground">You put in (₹, optional)</span>
-                <Input type="number" min="0" step="any" value={cost} onChange={(e) => setCost(e.target.value)} className="h-10 rounded-xl" />
-              </label>
-            </div>
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block space-y-1.5">
+                  <span className="text-sm text-muted-foreground">{spec.valueLabel}</span>
+                  <Input type="number" min="0" step="any" value={value} onChange={(e) => setValue(e.target.value)} className="h-10 rounded-xl" required />
+                </label>
+                {spec.costLabel && (
+                  <label className="block space-y-1.5">
+                    <span className="text-sm text-muted-foreground">{spec.costLabel}</span>
+                    <Input type="number" min="0" step="any" value={cost} onChange={(e) => setCost(e.target.value)} className="h-10 rounded-xl" />
+                  </label>
+                )}
+              </div>
+              {spec.measure && (
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block space-y-1.5">
+                    <span className="text-sm text-muted-foreground">{spec.measure.label}</span>
+                    <Input type="number" min="0" step="any" value={qty} onChange={(e) => setQty(e.target.value)} className="h-10 rounded-xl" />
+                  </label>
+                  <label className="block space-y-1.5">
+                    <span className="text-sm text-muted-foreground">{spec.measure.unitLabel}</span>
+                    <select value={unitValue} onChange={(e) => setUnit(e.target.value)} className="h-10 w-full cursor-pointer rounded-xl border border-input bg-background px-3.5 text-sm">
+                      {spec.measure.units.map((u) => (
+                        <option key={u} value={u}>
+                          {u}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              )}
+              {(spec.rateLabel || spec.maturityLabel || spec.startLabel) && (
+                <div className="grid grid-cols-2 gap-3">
+                  {spec.rateLabel && (
+                    <label className="block space-y-1.5">
+                      <span className="text-sm text-muted-foreground">{spec.rateLabel}</span>
+                      <Input type="number" min="0" max="50" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)} placeholder="e.g. 7.1" className="h-10 rounded-xl" />
+                    </label>
+                  )}
+                  {spec.startLabel && (
+                    <label className="block space-y-1.5">
+                      <span className="text-sm text-muted-foreground">{spec.startLabel}</span>
+                      <Input type="date" value={since} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setSince(e.target.value)} className="h-10 rounded-xl" />
+                    </label>
+                  )}
+                  {spec.maturityLabel && (
+                    <label className="block space-y-1.5">
+                      <span className="text-sm text-muted-foreground">{spec.maturityLabel}</span>
+                      <Input type="date" value={maturity} onChange={(e) => setMaturity(e.target.value)} className="h-10 rounded-xl" />
+                    </label>
+                  )}
+                </div>
+              )}
+            </>
           )}
           {people && people.length > 1 && (
             <label className="block space-y-1.5">
