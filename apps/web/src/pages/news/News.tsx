@@ -44,7 +44,7 @@ function UpdatedLabel({ at, busy }: { at: number; busy: boolean }) {
   if (busy) return <>Checking for news…</>;
   const secs = at ? Math.max(0, Math.round((now - at) / 1000)) : null;
   if (secs === null) return <>Live</>;
-  return <>Updated {secs < 5 ? "just now" : secs < 90 ? `${secs} s ago` : `${Math.round(secs / 60)} min ago`}</>;
+  return <>Checked for news {secs < 5 ? "just now" : secs < 90 ? `${secs} s ago` : `${Math.round(secs / 60)} min ago`}</>;
 }
 
 function HeadlineLink({ h, tone, dense }: { h: Headline; tone?: NewsTone | null; dense?: boolean }) {
@@ -54,7 +54,7 @@ function HeadlineLink({ h, tone, dense }: { h: Headline; tone?: NewsTone | null;
       <span className="min-w-0">
         <span className={cn("block leading-snug group-hover/h:text-primary", dense ? "text-sm" : "text-[15px]")}>{h.title}</span>
         <span className="mt-0.5 block text-xs text-muted-foreground">
-          {[h.source, ago(h.publishedAt)].filter(Boolean).join(" · ")}
+          {[h.source, `published ${ago(h.publishedAt)}`].filter(Boolean).join(" · ")}
         </span>
       </span>
     </a>
