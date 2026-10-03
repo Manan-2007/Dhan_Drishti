@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" width="1200" height="420" font-family="'IBM Plex Sans', -apple-system, 'Segoe UI', Roboto, sans-serif" role="img" aria-label="Dhan Drishti — All your money. One honest view.">
+  <defs>
+    <pattern id="dots" width="26" height="26" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.4" fill="#1d1d22"/>
+    </pattern>
+  </defs>
+
+  <!-- ink canvas -->
+  <rect x="1" y="1" width="1198" height="418" rx="24" fill="#0b0b0d" stroke="#26262c" stroke-width="1.5"/>
+  <rect x="1" y="1" width="1198" height="418" rx="24" fill="url(#dots)"/>
+
+  <!-- brand row -->
+  <rect x="72" y="52" width="56" height="56" rx="14" fill="#f0b23e"/>
+  <text x="100" y="92" text-anchor="middle" font-family="'Instrument Serif', Georgia, serif" font-size="34" fill="#16120a">&#x0926;</text>
+  <text x="148" y="90" font-size="20" font-weight="600" letter-spacing="4" fill="#f3efe6">DHAN DRISHTI</text>
+
+  <!-- serif headline -->
+  <text x="72" y="214" font-family="'Instrument Serif', Georgia, serif" font-size="74" fill="#f3efe6">All your money.</text>
+  <text x="72" y="292" font-family="'Instrument Serif', Georgia, serif" font-style="italic" font-size="74" fill="#f0b23e">One honest view.</text>
+
+  <!-- subtitle -->
+  <text x="74" y="342" font-size="20" fill="#9c978c">Private, self&#8209;hosted portfolio &amp; wealth tracker.</text>
+  <text x="74" y="372" font-size="20" fill="#9c978c">Every broker in one ledger &#183; every figure traced to a real trade.</text>
+
+  <!-- asset-class card (palette showcase) -->
+  <rect x="820" y="64" width="308" height="292" rx="20" fill="#141417" stroke="#26262c"/>
+  <text x="852" y="104" font-size="12.5" letter-spacing="2.5" fill="#9c978c">ASSET CLASSES</text>
+
+  <g font-size="16" fill="#f3efe6">
+    <circle cx="858" cy="140" r="6" fill="#f0b23e"/><text x="878" y="145">Equity</text>
+    <circle cx="858" cy="176" r="6" fill="#5fb7a6"/><text x="878" y="181">Debt &amp; bonds</text>
+    <circle cx="858" cy="212" r="6" fill="#d97757"/><text x="878" y="217">Gold &amp; commodities</text>
+    <circle cx="858" cy="248" r="6" fill="#8c8fe0"/><text x="878" y="253">Mutual funds</text>
+    <circle cx="858" cy="284" r="6" fill="#d9d2c3"/><text x="878" y="289">Cash</text>
+  </g>
+
+  <!-- palette strip -->
+  <g>
+    <rect x="852" y="318" width="42"  height="14" rx="4" fill="#f0b23e"/>
+    <rect x="896" y="318" width="42"  height="14" fill="#5fb7a6"/>
+    <rect x="940" y="318" width="42"  height="14" fill="#d97757"/>
+    <rect x="984" y="318" width="42"  height="14" fill="#8c8fe0"/>
+    <rect x="1028" y="318" width="42" height="14" fill="#d9d2c3"/>
+    <rect x="1072" y="318" width="24" height="14" rx="4" fill="#7fa66b"/>
+  </g>
+</svg>
