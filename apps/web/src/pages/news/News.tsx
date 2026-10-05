@@ -4,8 +4,9 @@ import { ChevronDown, ExternalLink, KeyRound, Loader2, ShieldAlert, Sparkles, Te
 import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/kit/Segmented";
 import { Skeleton } from "@/components/ui/skeleton";
+import { IndexTicker } from "@/components/market/IndexTicker";
 import { useFilter, useNews } from "@/lib/hooks";
-import type { FeedItem, Headline, NewsCompany, NewsStance, NewsTone } from "@/lib/api";
+import type { FeedItem, Headline, NewsCompany, NewsMarket, NewsStance, NewsTone } from "@/lib/api";
 import { ago } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -333,8 +334,13 @@ function LiveFeed({ feed }: { feed: FeedItem[] }) {
  */
 export function News() {
   const { portfolioId } = useFilter();
-  const { data, isLoading, isError, dataUpdatedAt, isFetching } = useNews(portfolioId);
+  const [marketSel, setMarketSel] = useState<NewsMarket | undefined>(undefined);
+  const { data, isLoading, isError, dataUpdatedAt, isFetching } = useNews(portfolioId, marketSel);
   const ai = !!data?.ai.enabled;
+  const region = data?.region ?? "in";
+  // Only offer the switch when you actually hold stocks in both markets.
+  const showToggle = !!data?.live && (data.markets?.in ?? 0) > 0 && (data.markets?.us ?? 0) > 0;
+  const marketLabel = region === "us" ? "US market today" : "Indian market today";
 
   const companies = [...(data?.companies ?? [])].sort((a, b) => {
     const ra = a.read ? STANCE[a.read.stance].rank : 4;
@@ -352,15 +358,29 @@ export function News() {
           <h1 className="font-display text-4xl leading-none tracking-tight sm:text-5xl">News</h1>
           <p className="mt-2 text-sm text-muted-foreground">What's being said about what you own. Refreshes on its own.</p>
         </div>
-        {data?.live && (
-          <p className="flex items-center gap-2 rounded-full border bg-card px-3.5 py-1.5 text-xs text-muted-foreground">
-            <span className="relative flex size-2">
-              <span className="absolute inline-flex size-full animate-ping rounded-full bg-gain opacity-60" />
-              <span className="relative inline-flex size-2 rounded-full bg-gain" />
-            </span>
-            <UpdatedLabel at={dataUpdatedAt} busy={data.refreshing || isFetching} />
-          </p>
-        )}
+        <div className="flex flex-wrap items-center gap-3">
+          {showToggle && (
+            <Segmented
+              size="sm"
+              ariaLabel="Which market"
+              value={marketSel ?? region}
+              onChange={(v) => setMarketSel(v as NewsMarket)}
+              options={[
+                { value: "in", label: "🇮🇳 India" },
+                { value: "us", label: "🇺🇸 US" },
+              ]}
+            />
+          )}
+          {data?.live && (
+            <p className="flex items-center gap-2 rounded-full border bg-card px-3.5 py-1.5 text-xs text-muted-foreground">
+              <span className="relative flex size-2">
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-gain opacity-60" />
+                <span className="relative inline-flex size-2 rounded-full bg-gain" />
+              </span>
+              <UpdatedLabel at={dataUpdatedAt} busy={data.refreshing || isFetching} />
+            </p>
+          )}
+        </div>
       </div>
 
       {isError && !data && <p className="rounded-2xl border bg-card p-6 text-sm text-muted-foreground">Couldn't reach the server for news. It'll try again on its own.</p>}
@@ -390,10 +410,12 @@ export function News() {
 
       {data?.live && (
         <>
+          <IndexTicker region={region} />
+
           {/* The market as a whole */}
           <section className="rounded-2xl border bg-card p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">Market today</h2>
+              <h2 className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">{marketLabel}</h2>
               {market?.read && <Tag className={MOOD[market.read.mood].className}>{MOOD[market.read.mood].label}</Tag>}
             </div>
             {market?.read ? (

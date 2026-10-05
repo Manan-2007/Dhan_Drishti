@@ -1,5 +1,11 @@
 import { createHash } from "node:crypto";
-import type { Headline, NameSource, NewsSource } from "./types.js";
+import type { Headline, NameSource, NewsEdition, NewsSource } from "./types.js";
+
+/** Google News locale params per edition. */
+const EDITION = {
+  in: { hl: "en-IN", gl: "IN", ceid: "IN:en" },
+  us: { hl: "en-US", gl: "US", ceid: "US:en" },
+} as const;
 
 const decode = (s: string) =>
   s
@@ -40,12 +46,14 @@ export function parseNewsRss(xml: string): Headline[] {
   return out;
 }
 
-/** Google News search (public RSS, Indian edition, no key). Only the search words are sent. */
+/** Google News search (public RSS, no key). Edition picks the India or US locale; only the search
+ *  words are sent. */
 export class GoogleNewsSource implements NewsSource {
   constructor(private timeoutMs = 8000) {}
 
-  async search(query: string): Promise<Headline[]> {
-    const url = `https://news.google.com/rss/search?${new URLSearchParams({ q: query, hl: "en-IN", gl: "IN", ceid: "IN:en" })}`;
+  async search(query: string, edition: NewsEdition = "in"): Promise<Headline[]> {
+    const loc = EDITION[edition];
+    const url = `https://news.google.com/rss/search?${new URLSearchParams({ q: query, ...loc })}`;
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), this.timeoutMs);
     try {

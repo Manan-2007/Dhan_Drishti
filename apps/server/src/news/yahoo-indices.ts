@@ -1,11 +1,15 @@
 import type { IndexQuote, IndexSource } from "./types.js";
 
-/** The numbers an Indian investor glances at. Yahoo symbols, public. `INR=X` is USD→INR. */
+/** The numbers an Indian investor glances at, plus the US indices for US holdings. Yahoo symbols,
+ *  public. `INR=X` is USD→INR and sits in the "fx" region so it shows on both market strips. */
 export const INDICES = [
-  { id: "nifty50", name: "Nifty 50", symbol: "^NSEI" },
-  { id: "banknifty", name: "Bank Nifty", symbol: "^NSEBANK" },
-  { id: "sensex", name: "Sensex", symbol: "^BSESN" },
-  { id: "usdinr", name: "USD / INR", symbol: "INR=X" },
+  { id: "nifty50", name: "Nifty 50", symbol: "^NSEI", region: "in" },
+  { id: "banknifty", name: "Bank Nifty", symbol: "^NSEBANK", region: "in" },
+  { id: "sensex", name: "Sensex", symbol: "^BSESN", region: "in" },
+  { id: "sp500", name: "S&P 500", symbol: "^GSPC", region: "us" },
+  { id: "nasdaq", name: "Nasdaq", symbol: "^IXIC", region: "us" },
+  { id: "dowjones", name: "Dow Jones", symbol: "^DJI", region: "us" },
+  { id: "usdinr", name: "USD / INR", symbol: "INR=X", region: "fx" },
 ] as const;
 
 /** Live index values from Yahoo's public chart endpoint (no key). */
@@ -30,6 +34,7 @@ export class YahooIndexSource implements IndexSource {
       return {
         id: ix.id,
         name: ix.name,
+        region: ix.region,
         value,
         change,
         changePct: prev && change !== null ? (change / prev) * 100 : null,

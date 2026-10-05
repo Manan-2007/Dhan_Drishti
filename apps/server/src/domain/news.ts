@@ -33,10 +33,19 @@ export function registerNewsRoutes(app: FastifyInstance, db: DB, hub: NewsHub | 
   }));
 
   app.get("/api/news", opts, async (req) => {
-    const { portfolioId } = req.query as { portfolioId?: string };
+    const { portfolioId, market } = req.query as { portfolioId?: string; market?: string };
     const data = await computePortfolioHoldings(db, req.user!.id, portfolioId);
-    const held = data.holdings.filter((h) => h.security.assetClass === "equity" && Number(h.netQty) > 0);
-    const valueOf = (h: (typeof held)[number]) => Math.max(0, Number(h.baseCurrentValue ?? h.baseInvested ?? 0));
+    const equities = data.holdings.filter((h) => h.security.assetClass === "equity" && Number(h.netQty) > 0);
+    const valueOf = (h: (typeof equities)[number]) => Math.max(0, Number(h.baseCurrentValue ?? h.baseInvested ?? 0));
+    // India vs US by the security's own currency (Vested / IBKR US holdings are USD).
+    const regionOf = (h: (typeof equities)[number]): "in" | "us" => (h.security.currency === "INR" ? "in" : "us");
+
+    // How many stocks in each market, and which one to show: the asked-for side, else the larger.
+    const markets = { in: equities.filter((h) => regionOf(h) === "in").length, us: equities.filter((h) => regionOf(h) === "us").length };
+    const valueIn = (r: "in" | "us") => equities.filter((h) => regionOf(h) === r).reduce((s, h) => s + valueOf(h), 0);
+    const region: "in" | "us" = market === "in" || market === "us" ? market : valueIn("us") > valueIn("in") ? "us" : "in";
+
+    const held = equities.filter((h) => regionOf(h) === region);
     const total = held.reduce((s, h) => s + valueOf(h), 0);
     const ranked = [...held].sort((a, b) => valueOf(b) - valueOf(a)).slice(0, MAX_COMPANIES);
 
@@ -65,9 +74,9 @@ export function registerNewsRoutes(app: FastifyInstance, db: DB, hub: NewsHub | 
         });
     }
 
-    if (!hub) return { live: false, ai: { enabled: false, label: null }, refreshing: false, market: { items: [], read: null, readAt: null }, companies: [], feed: [] };
+    if (!hub) return { live: false, ai: { enabled: false, label: null }, refreshing: false, region, markets, market: { items: [], read: null, readAt: null }, companies: [], feed: [] };
 
-    const snap = hub.snapshot([...companies.values()].map((c) => c.key));
+    const snap = hub.snapshot([...companies.values()].map((c) => c.key), region);
     const out = snap.companies.map((c) => {
       const meta = companies.get(c.ticker)!;
       return { securityId: meta.securityId, symbol: meta.symbol, weight: meta.weight, ...c };
@@ -91,6 +100,8 @@ export function registerNewsRoutes(app: FastifyInstance, db: DB, hub: NewsHub | 
       live: true,
       ai: { enabled: !!hub.analystLabel, label: hub.analystLabel },
       refreshing: snap.refreshing,
+      region,
+      markets,
       market: snap.market,
       companies: out,
       feed: [...feed.values()].sort((a, b) => (a.publishedAt < b.publishedAt ? 1 : -1)).slice(0, FEED_SIZE),

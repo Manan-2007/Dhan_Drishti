@@ -1,4 +1,4 @@
-import type { CompanyRead, Headline, IndexQuote, IndexSource, MarketRead, NameSource, NewsAnalyst, NewsSource } from "./types.js";
+import type { CompanyRead, Headline, IndexQuote, IndexSource, MarketRead, NameSource, NewsAnalyst, NewsEdition, NewsSource } from "./types.js";
 
 /**
  * Keeps the news fresh without making anyone wait. A request gets whatever is cached and, for
@@ -37,7 +37,11 @@ interface Stamped<T> {
   at: number;
 }
 
-const MARKET_QUERY = "(Sensex OR Nifty) stock market when:1d";
+/** The day's market headlines, per edition. */
+const MARKET_QUERY: Record<NewsEdition, string> = {
+  in: "(Sensex OR Nifty) stock market when:1d",
+  us: "(S&P 500 OR Nasdaq OR Dow Jones) stock market when:1d",
+};
 const companyQuery = (name: string) => `"${name}" (stock OR shares OR "share price") when:7d`;
 /** Headlines that decide whether a read is out of date. */
 const READ_BASIS = 8;
@@ -65,8 +69,8 @@ export class NewsHub {
   private names = new Map<string, string>();
   private feeds = new Map<string, Stamped<Headline[]>>();
   private reads = new Map<string, Stamped<CompanyRead> & { basis: string }>();
-  private market: Stamped<Headline[]> | null = null;
-  private marketRead: (Stamped<MarketRead> & { basis: string }) | null = null;
+  private markets = new Map<NewsEdition, Stamped<Headline[]>>();
+  private marketReads = new Map<NewsEdition, Stamped<MarketRead> & { basis: string }>();
   private indexCache: Stamped<IndexQuote[]> | null = null;
   private indexInFlight: Promise<IndexQuote[]> | null = null;
 
@@ -171,34 +175,37 @@ export class NewsHub {
     );
   }
 
-  private refreshMarket(): void {
-    this.background("news:market", () =>
+  private refreshMarket(region: NewsEdition): void {
+    this.background(`news:market:${region}`, () =>
       this.fetchLimit.run(async () => {
-        const items = (await this.src.news.search(MARKET_QUERY)).sort(newestFirst).slice(0, 15);
-        if (items.length || !this.market) this.market = { value: items, at: Date.now() };
-        else this.market.at = Date.now();
+        const items = (await this.src.news.search(MARKET_QUERY[region], region)).sort(newestFirst).slice(0, 15);
+        const had = this.markets.get(region);
+        if (items.length || !had) this.markets.set(region, { value: items, at: Date.now() });
+        else had.at = Date.now();
         const analyst = this.src.analyst;
         if (!analyst || !items.length) return;
         const basis = fingerprint(items);
-        const prev = this.marketRead;
+        const prev = this.marketReads.get(region);
         if (prev && (prev.basis === basis || Date.now() - prev.at < this.o.readGapMs)) return;
         const read = await this.readLimit.run(() => analyst.readMarket(items.slice(0, 12)));
-        if (read) this.marketRead = { value: read, at: Date.now(), basis };
+        if (read) this.marketReads.set(region, { value: read, at: Date.now(), basis });
       }),
     );
   }
 
-  /** What is known right now for these companies; refreshes anything stale in the background. */
-  snapshot(companies: CompanyKey[]) {
-    if (this.stale(this.market, this.o.marketTtlMs)) this.refreshMarket();
+  /** What is known right now for these companies and this market; refreshes anything stale. */
+  snapshot(companies: CompanyKey[], region: NewsEdition = "in") {
+    const market = this.markets.get(region) ?? null;
+    const marketRead = this.marketReads.get(region) ?? null;
+    if (this.stale(market, this.o.marketTtlMs)) this.refreshMarket(region);
     for (const c of companies) if (this.stale(this.feeds.get(c.ticker), this.o.newsTtlMs)) this.refreshCompany(c);
     const iso = (t: number | undefined) => (t ? new Date(t).toISOString() : null);
     return {
       refreshing: this.busy.size > 0,
       market: {
-        items: this.market?.value ?? [],
-        read: this.marketRead?.value ?? null,
-        readAt: iso(this.marketRead?.at),
+        items: market?.value ?? [],
+        read: marketRead?.value ?? null,
+        readAt: iso(marketRead?.at),
       },
       companies: companies.map((c) => ({
         ticker: c.ticker,

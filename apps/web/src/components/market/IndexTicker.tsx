@@ -31,9 +31,10 @@ function useTicks(indices: IndexQuote[]) {
  * Nifty 50, Bank Nifty and Sensex sliding past, refreshed every few seconds. Hover to hold it
  * still. Outside market hours it shows the last close and says so.
  */
-export function IndexTicker() {
+export function IndexTicker({ region }: { region?: "in" | "us" } = {}) {
   const { data } = useIndices();
-  const indices = data?.indices ?? [];
+  // When a market is given, show that market's indices plus FX (USD/INR sits in both).
+  const indices = (data?.indices ?? []).filter((q) => !region || q.region === region || q.region === "fx");
   const ticks = useTicks(indices);
   if (!data?.live || !indices.length) return null;
 

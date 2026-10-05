@@ -458,9 +458,15 @@ export interface CommitManyResult {
 
 // ---- Live market + news ------------------------------------------------------------------
 
+/** Which market strip a quote belongs to. "fx" (USD/INR) shows on both. */
+export type MarketRegion = "in" | "us" | "fx";
+/** The two markets news/holdings can be split into. */
+export type NewsMarket = "in" | "us";
+
 export interface IndexQuote {
   id: string;
   name: string;
+  region: MarketRegion;
   value: number;
   change: number | null;
   changePct: number | null;
@@ -516,6 +522,9 @@ export interface NewsResponse {
   live: boolean;
   ai: { enabled: boolean; label: string | null };
   refreshing: boolean;
+  /** Which market this response is for, and how many stocks you hold in each. */
+  region: NewsMarket;
+  markets: { in: number; us: number };
   market: { items: Headline[]; read: MarketRead | null; readAt: string | null };
   companies: NewsCompany[];
   feed: FeedItem[];

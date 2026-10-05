@@ -32,7 +32,10 @@ class FakeIndices implements IndexSource {
   calls = 0;
   async getIndices() {
     this.calls++;
-    return [{ id: "nifty50", name: "Nifty 50", value: 22421.95, change: -198.5, changePct: -0.88, asOf: at(0) }];
+    return [
+      { id: "nifty50", name: "Nifty 50", region: "in" as const, value: 22421.95, change: -198.5, changePct: -0.88, asOf: at(0) },
+      { id: "sp500", name: "S&P 500", region: "us" as const, value: 5800, change: 10, changePct: 0.17, asOf: at(0) },
+    ];
   }
 }
 class FakeAnalyst implements NewsAnalyst {
@@ -155,10 +158,30 @@ describe("GET /api/news", () => {
     for (const secret of ["3111", "2917", "146217", "37921", "news1"]) expect(outbound).not.toContain(secret);
   });
 
-  it("serves index values", async () => {
+  it("serves index values, each tagged with its market", async () => {
     const cookie = await login();
     const r = (await app.inject({ method: "GET", url: "/api/market/indices", headers: { cookie } })).json();
-    expect(r.indices[0]).toMatchObject({ name: "Nifty 50", value: 22421.95 });
+    expect(r.indices[0]).toMatchObject({ name: "Nifty 50", value: 22421.95, region: "in" });
+    expect(r.indices.some((q: { region: string }) => q.region === "us")).toBe(true);
+  });
+
+  it("splits news by market and counts your stocks in each", async () => {
+    const cookie = await login();
+    const pid = (await post(cookie, "/api/portfolios", { name: "P" })).json().portfolio.id;
+    const lt = (await post(cookie, "/api/securities", { symbol: "LT", name: "LT", exchange: "BSE" })).json().security.id;
+    const aapl = (await post(cookie, "/api/securities", { symbol: "AAPL", name: "Apple", currency: "USD" })).json().security.id;
+    await post(cookie, "/api/transactions", { portfolioId: pid, securityId: lt, type: "buy", tradeDate: "2024-01-01", quantity: "10", price: "3000" });
+    await post(cookie, "/api/transactions", { portfolioId: pid, securityId: aapl, type: "buy", tradeDate: "2024-01-01", quantity: "5", price: "180", currency: "USD" });
+    // The company list is populated from the ranked holdings synchronously — no need to wait on news.
+
+    const inRes = (await app.inject({ method: "GET", url: "/api/news?market=in", headers: { cookie } })).json();
+    expect(inRes.region).toBe("in");
+    expect(inRes.markets).toEqual({ in: 1, us: 1 });
+    expect(inRes.companies.map((c: { symbol: string }) => c.symbol)).toEqual(["LT"]);
+
+    const usRes = (await app.inject({ method: "GET", url: "/api/news?market=us", headers: { cookie } })).json();
+    expect(usRes.region).toBe("us");
+    expect(usRes.companies.map((c: { symbol: string }) => c.symbol)).toEqual(["AAPL"]);
   });
 
   it("is off without a news source", async () => {
