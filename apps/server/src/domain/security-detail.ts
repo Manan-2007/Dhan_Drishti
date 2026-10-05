@@ -1,5 +1,6 @@
 import { and, eq, desc } from "drizzle-orm";
 import { z } from "zod";
+import { computeTechnicals } from "@dhan-drishti/core";
 import type { FastifyInstance } from "fastify";
 import type { DB } from "../db/index.js";
 import { transactions, securities } from "../db/schema.js";
@@ -79,6 +80,8 @@ export function registerSecurityDetailRoutes(app: FastifyInstance, db: DB, histo
       baseCurrency: holdings.baseCurrency,
       transactions: txRows,
       history,
+      // Indicators derived from the same real history the chart draws (oldest → newest).
+      technicals: computeTechnicals([...history].sort((a, b) => (a.date < b.date ? -1 : 1)).map((p) => ({ date: p.date, close: p.close }))),
     };
   });
 }
