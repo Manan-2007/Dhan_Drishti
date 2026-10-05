@@ -347,6 +347,26 @@ export interface CapitalGainsReport {
   fxApprox: boolean;
   disclaimer: string;
 }
+export interface PriceRange {
+  low: string;
+  high: string;
+}
+/** Indicators derived from the real price-history series (see packages/core/technicals). */
+export interface Technicals {
+  last: string | null;
+  asOf: string | null;
+  sma: Record<string, string | null>; // keyed by period, e.g. "20" | "50" | "200"
+  ema: Record<string, string | null>;
+  rsi14: number | null;
+  trend: "above" | "below" | null;
+  ranges: { week: PriceRange | null; month: PriceRange | null; quarter: PriceRange | null; year: PriceRange | null };
+  rangePosition52w: number | null;
+  changePct: { week: number | null; month: number | null; quarter: number | null; year: number | null };
+  support: string | null;
+  resistance: string | null;
+  bars: number;
+}
+
 export interface SecurityDetail {
   security: { id: string; symbol: string; name: string; assetClass: string; sector: string | null; subSector: string | null; isin: string | null; exchange: string | null; currency: string };
   position: HoldingRow | null;
@@ -354,6 +374,7 @@ export interface SecurityDetail {
   baseCurrency: string;
   transactions: Transaction[];
   history: { date: string; close: number }[];
+  technicals: Technicals;
 }
 export interface ImportBatch {
   id: string;
