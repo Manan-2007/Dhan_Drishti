@@ -69,6 +69,23 @@ describe("GET /api/holdings", () => {
     expect(body.allocation.basis).toBe("current_value");
   });
 
+  it("includes a portfolio health x-ray that flags a dominant position", async () => {
+    const cookie = await signup("xray1");
+    const pid = (await post("/api/portfolios", cookie, { name: "P" })).json().portfolio.id;
+    const big = (await post("/api/securities", cookie, { symbol: "BIG", name: "Big Co", assetClass: "equity" })).json().security.id;
+    const small = (await post("/api/securities", cookie, { symbol: "SMALL", name: "Small Co", assetClass: "equity" })).json().security.id;
+    await post("/api/transactions", cookie, { portfolioId: pid, securityId: big, type: "buy", tradeDate: "2024-01-01", quantity: "100", price: "100" });
+    await post("/api/transactions", cookie, { portfolioId: pid, securityId: small, type: "buy", tradeDate: "2024-01-01", quantity: "10", price: "100" });
+    await db.insert(quotes).values({ id: randomUUID(), securityId: big, price: "100", currency: "INR", asOf: "2024-04-01T00:00:00Z", provider: "test" }).run();
+    await db.insert(quotes).values({ id: randomUUID(), securityId: small, price: "100", currency: "INR", asOf: "2024-04-01T00:00:00Z", provider: "test" }).run();
+
+    const body = (await get("/api/holdings", cookie)).json();
+    expect(body.health.available).toBe(true);
+    expect(typeof body.health.score).toBe("number");
+    const conc = body.health.findings.find((f: { id: string }) => f.id === "concentration");
+    expect(conc.severity).toBe("high"); // BIG is ~91% of the invested value
+  });
+
   it("scopes holdings to the requesting user", async () => {
     const a = await signup("holdA");
     const pid = (await post("/api/portfolios", a, { name: "P" })).json().portfolio.id;

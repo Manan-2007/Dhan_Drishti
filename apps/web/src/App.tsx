@@ -22,6 +22,7 @@ const Dividends = lazy(() => import("@/pages/activity/Dividends").then((m) => ({
 const Tax = lazy(() => import("@/pages/performance/Tax").then((m) => ({ default: m.Tax })));
 const Security = lazy(() => import("@/pages/portfolio/Security").then((m) => ({ default: m.Security })));
 const OtherAssets = lazy(() => import("@/pages/portfolio/OtherAssets").then((m) => ({ default: m.OtherAssets })));
+const Health = lazy(() => import("@/pages/portfolio/Health").then((m) => ({ default: m.Health })));
 const People = lazy(() => import("@/pages/accounts/People").then((m) => ({ default: m.People })));
 const Imports = lazy(() => import("./pages/Imports.js").then((m) => ({ default: m.Imports })));
 const AddData = lazy(() => import("@/pages/accounts/AddData").then((m) => ({ default: m.AddData })));
@@ -72,6 +73,7 @@ function Gate() {
                       tabs={[
                         { label: "Positions", to: "/portfolio", end: true },
                         { label: "Allocation", to: "/portfolio/allocation" },
+                        { label: "Health", to: "/portfolio/health" },
                         { label: "Other assets", to: "/portfolio/other" },
                       ]}
                     />
@@ -79,6 +81,7 @@ function Gate() {
                 >
                   <Route index element={<Lazy><Positions /></Lazy>} />
                   <Route path="allocation" element={<Lazy><Allocation /></Lazy>} />
+                  <Route path="health" element={<Lazy><Health /></Lazy>} />
                   <Route path="other" element={<Lazy><OtherAssets /></Lazy>} />
                 </Route>
                 <Route path="portfolio/security/:id" element={<Lazy><Security /></Lazy>} />

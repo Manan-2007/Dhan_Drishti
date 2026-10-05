@@ -22,6 +22,7 @@ export const JUMP_TARGETS = [
   { label: "Home", to: "/", keywords: "dashboard net worth overview" },
   { label: "Positions", to: "/portfolio", keywords: "holdings stocks funds portfolio" },
   { label: "Allocation", to: "/portfolio/allocation", keywords: "sector asset class diversification split" },
+  { label: "Health (X-ray)", to: "/portfolio/health", keywords: "xray health concentration cash drag risk diversification score" },
   { label: "Other assets", to: "/portfolio/other", keywords: "fd property gold epf ppf manual" },
   { label: "Timeline", to: "/activity", keywords: "activity transactions trades ledger buy sell bought sold" },
   { label: "Dividends", to: "/activity/income", keywords: "income interest payouts yield" },

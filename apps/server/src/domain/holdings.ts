@@ -6,6 +6,7 @@ import {
   cashBalances,
   cashTrackedTxs,
   computeDiversification,
+  portfolioXray,
   toStore,
   d,
   ZERO,
@@ -363,6 +364,24 @@ async function computeHoldingsUncached(db: DB, userId: string, portfolioId?: str
         }
       : null;
 
+  const alloc = allocation(serialized, cashByCurrency, cashBase, manualByClass, manualByRegion);
+  // Portfolio X-ray: a health read combining concentration (invested positions) with cash drag and
+  // asset-class skew (over the whole net worth). Pure; derived entirely from the figures above.
+  const health = portfolioXray({
+    netWorth: Number(netWorth.toFixed()),
+    cash: Number(cashBase.toFixed()),
+    manualAssets: Number(manual.total),
+    byAssetClass: alloc.byAssetClass.map((s) => ({ key: s.key, weight: Number(s.weight) })),
+    diversification: {
+      available: diversification.available,
+      positions: diversification.positions,
+      score: diversification.score,
+      top1: diversification.top1 ? { label: diversification.top1.label, weight: diversification.top1.weight } : null,
+      top5Weight: diversification.top5Weight,
+      topSector: diversification.topSector ? { label: diversification.topSector.label, weight: diversification.topSector.weight } : null,
+    },
+  });
+
   return {
     baseCurrency: base,
     fxComplete: unconvertible.size === 0,
@@ -390,8 +409,9 @@ async function computeHoldingsUncached(db: DB, userId: string, portfolioId?: str
       expiredOpen: serialized.filter((r) => r.expired).length,
     },
     manualAssets: manual.items,
-    allocation: allocation(serialized, cashByCurrency, cashBase, manualByClass, manualByRegion),
+    allocation: alloc,
     diversification,
+    health,
     holdings: serialized,
   };
 }

@@ -224,7 +224,25 @@ export interface HoldingsResponse {
     byRegion: AllocationSlice[];
   };
   diversification: Diversification;
+  health: Xray;
   holdings: HoldingRow[];
+}
+
+export type XraySeverity = "high" | "warn" | "info" | "good";
+export interface XrayFinding {
+  id: string;
+  severity: XraySeverity;
+  title: string;
+  detail: string;
+}
+/** Portfolio health read — concentration + cash drag + asset-class skew. */
+export interface Xray {
+  available: boolean;
+  score: number;
+  grade: "Healthy" | "Fair" | "Needs work" | "Fragile";
+  cashWeight: number;
+  topClass: { key: string; weight: number } | null;
+  findings: XrayFinding[];
 }
 export type RebalanceDimension = "asset_class" | "sector";
 export interface RebalanceRow {

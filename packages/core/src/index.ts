@@ -10,3 +10,4 @@ export * from "./order.js";
 export * from "./timeline.js";
 export * from "./deposit.js";
 export * from "./technicals.js";
+export * from "./xray.js";
