@@ -114,7 +114,9 @@ describe("GET /api/news", () => {
     analyst = new FakeAnalyst();
     news = new FakeNews();
     hub = new NewsHub({ news, names: new FakeNames(), indices: new FakeIndices(), analyst });
-    app = buildApp(db, { newsHub: hub });
+    // A no-network FX provider so adding a USD trade doesn't reach out to fetch FX-at-cost.
+    const fxProvider = { id: "fake", async getRate() { return null; }, async getRateOn() { return null; } };
+    app = buildApp(db, { newsHub: hub, fxProvider });
     await app.ready();
   });
 

@@ -12,6 +12,7 @@ import { ScopeSelect } from "@/components/shell/ScopeSelect";
 import { useFilter, useHoldings } from "@/lib/hooks";
 import { useMarketStatus, useRefreshPrices } from "@/lib/prices";
 import { assetColor } from "@/lib/assetColors";
+import { Heatmap, type HeatItem } from "@/components/charts/AllocationViz";
 import { ago, assetClassLabel, compactMoney, money, num, qty, signedMoney, signedPct } from "@/lib/format";
 import type { HoldingRow } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -96,6 +97,7 @@ export function Positions() {
   const status = useMarketStatus();
   const refresh = useRefreshPrices();
   const [search, setSearch] = useState("");
+  const [showMap, setShowMap] = useState(false);
   const [showClosed, setShowClosed] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("value");
   const [dir, setDir] = useState<"asc" | "desc">("desc");
@@ -162,6 +164,17 @@ export function Positions() {
   const s = data!.summary;
   const ccy = data!.baseCurrency;
 
+  // Today's movers: priced positions, sized by worth, coloured by how much they moved since yesterday.
+  const heatItems: HeatItem[] = data!.holdings
+    .filter((h) => Number(h.netQty) !== 0 && h.baseCurrentValue !== null)
+    .map((h) => {
+      const cv = num(h.currentValue);
+      const tc = num(h.todayChange);
+      const prev = cv !== null && tc !== null ? cv - tc : null;
+      return { key: h.security.id, label: h.security.symbol, value: Number(h.baseCurrentValue), changePct: prev && prev !== 0 && tc !== null ? tc / prev : null };
+    });
+  const hasMovers = heatItems.some((h) => h.changePct !== null);
+
   return (
     <div className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -187,6 +200,11 @@ export function Positions() {
             {showClosed ? "Hide" : "Show"} {closedCount} closed
           </Button>
         )}
+        {heatItems.length > 0 && (
+          <Button variant={showMap ? "secondary" : "outline"} size="sm" onClick={() => setShowMap((v) => !v)} aria-pressed={showMap}>
+            {showMap ? "Hide heatmap" : "Heatmap"}
+          </Button>
+        )}
         <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
           <span>Prices {ago(status.data?.lastUpdated)}</span>
           <Button
@@ -205,6 +223,23 @@ export function Positions() {
           </Button>
         </div>
       </div>
+
+      {showMap && heatItems.length > 0 && (
+        <section className="rounded-2xl border bg-card p-6">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">Today's movers</p>
+            <p className="flex items-center gap-3 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-gain" /> up</span>
+              <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-loss" /> down</span>
+              <span>· size = worth</span>
+            </p>
+          </div>
+          <div className="mt-4">
+            <Heatmap items={heatItems} height={320} />
+          </div>
+          {!hasMovers && <p className="mt-3 text-center text-xs text-muted-foreground">No price moves since yesterday yet — refresh prices to see them.</p>}
+        </section>
+      )}
 
       {rows.length === 0 ? (
         <Empty title="Nothing matches" body="Try a different search, or show closed positions." />

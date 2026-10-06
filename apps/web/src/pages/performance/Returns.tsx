@@ -7,6 +7,7 @@ import { StockChart } from "@/components/charts/StockChart";
 import { Segmented } from "@/components/kit/Segmented";
 import { Panel } from "@/components/kit/Panel";
 import { Empty } from "@/components/kit/Empty";
+import { DivergingBars, type DivergingRow } from "@/components/charts/AllocationViz";
 import { ScopeSelect } from "@/components/shell/ScopeSelect";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -67,6 +68,12 @@ export function Returns() {
   const up = total >= 0;
   const xirrReady = data.xirrAvailable && data.xirr !== null;
 
+  // Winners & losers: unrealised gain/loss per open position (base currency), biggest swings first.
+  const pnlRows: DivergingRow[] = (holdings?.holdings ?? [])
+    .filter((h) => Number(h.netQty) !== 0 && h.baseUnrealisedPnl !== null && Number(h.baseUnrealisedPnl) !== 0)
+    .map((h) => ({ key: h.security.id, label: h.security.symbol || h.security.name, value: Number(h.baseUnrealisedPnl) }));
+  const topPnl = [...pnlRows].sort((a, b) => Math.abs(b.value) - Math.abs(a.value)).slice(0, 12);
+
   return (
     <div className="space-y-5">
       <div className="flex justify-end">
@@ -119,6 +126,12 @@ export function Returns() {
           <Bars rows={data.bySegment.map((g) => ({ key: g.key, label: SEGMENTS[g.key] ?? g.key, value: Number(g.realised) }))} ccy={ccy} />
         </Panel>
       </div>
+
+      {topPnl.length > 0 && (
+        <Panel title="Winners & losers" action={<span className="text-xs text-muted-foreground">on paper · biggest swings</span>}>
+          <DivergingBars rows={topPnl} currency={ccy} format={compactMoney} />
+        </Panel>
+      )}
 
       <MoreDetail />
     </div>

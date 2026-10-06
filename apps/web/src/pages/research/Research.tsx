@@ -73,8 +73,14 @@ function ResearchSearch() {
                 <p className="truncate text-xs text-muted-foreground">{[h.security.name !== h.security.symbol ? h.security.name : null, assetClassLabel(h.security.assetClass)].filter(Boolean).join(" · ")}</p>
               </div>
               <div className="shrink-0 text-right">
-                <p className="font-semibold tabular-nums">{h.currentValue !== null ? money(h.currentValue, h.security.currency) : "—"}</p>
-                {h.unrealisedPct !== null && <p className={cn("text-xs tabular-nums", Number(h.unrealisedPct) >= 0 ? "text-gain" : "text-loss")}>{signedPct(h.unrealisedPct)}</p>}
+                <p className="font-semibold tabular-nums">{h.quote ? money(h.quote.price, h.security.currency) : "—"}</p>
+                {(() => {
+                  const cv = num(h.currentValue);
+                  const tc = num(h.todayChange);
+                  const prev = cv !== null && tc !== null ? cv - tc : null;
+                  const todayPct = prev && prev !== 0 && tc !== null ? tc / prev : null;
+                  return todayPct !== null ? <p className={cn("text-xs tabular-nums", todayPct >= 0 ? "text-gain" : "text-loss")}>{signedPct(todayPct)}</p> : null;
+                })()}
               </div>
             </button>
           ))}

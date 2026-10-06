@@ -14,15 +14,16 @@ export interface TreemapItem {
   pct: number; // 0..1
 }
 
-interface Rect {
-  item: TreemapItem;
+interface Rect<T> {
+  item: T;
   x: number;
   y: number;
   w: number;
   h: number;
 }
 
-function splitLayout(items: TreemapItem[], x: number, y: number, w: number, h: number, horizontal: boolean, out: Rect[]): void {
+/** Binary-split treemap layout, generic over anything with a positive `value`. */
+function splitLayout<T extends { value: number }>(items: T[], x: number, y: number, w: number, h: number, horizontal: boolean, out: Rect<T>[]): void {
   if (items.length === 0) return;
   if (items.length === 1) {
     out.push({ item: items[0]!, x, y, w, h });
@@ -51,7 +52,7 @@ export function Treemap({ items, height = 300 }: { items: TreemapItem[]; height?
   const W = 1000;
   const sorted = [...items].filter((i) => i.value > 0).sort((a, b) => b.value - a.value);
   if (sorted.length === 0) return null;
-  const rects: Rect[] = [];
+  const rects: Rect<TreemapItem>[] = [];
   splitLayout(sorted, 0, 0, W, height, true, rects);
   return (
     <svg viewBox={`0 0 ${W} ${height}`} width="100%" height={height} role="img" aria-label="Holdings treemap" style={{ display: "block" }}>
@@ -141,6 +142,102 @@ export interface WaterfallStep {
   label: string;
   value: number;
   kind: "base" | "add" | "total";
+}
+
+// ---- Heatmap (today's movers: size = value, colour = daily change) ----------------------------
+
+export interface HeatItem {
+  key: string;
+  label: string;
+  value: number; // size (base-currency worth)
+  changePct: number | null; // today's move, as a fraction (e.g. 0.012)
+}
+
+/** Diverging fill: green for a gain, red for a loss, muted when flat/unknown. Intensity caps at ±3%. */
+function heatFill(changePct: number | null): string {
+  if (changePct === null) return "rgba(156,151,140,0.18)";
+  const mag = Math.min(Math.abs(changePct) / 0.03, 1);
+  const alpha = (0.2 + 0.65 * mag).toFixed(2);
+  if (changePct > 0.0001) return `rgba(62,201,138,${alpha})`; // gain
+  if (changePct < -0.0001) return `rgba(242,102,94,${alpha})`; // loss
+  return "rgba(156,151,140,0.18)";
+}
+
+export function Heatmap({ items, height = 320 }: { items: HeatItem[]; height?: number }) {
+  const W = 1000;
+  const sorted = [...items].filter((i) => i.value > 0).sort((a, b) => b.value - a.value);
+  if (sorted.length === 0) return null;
+  const rects: Rect<HeatItem>[] = [];
+  splitLayout(sorted, 0, 0, W, height, true, rects);
+  const pct = (c: number | null) => (c === null ? "—" : `${c >= 0 ? "+" : "−"}${(Math.abs(c) * 100).toFixed(2)}%`);
+  return (
+    <svg viewBox={`0 0 ${W} ${height}`} width="100%" height={height} role="img" aria-label="Today's movers heatmap" style={{ display: "block" }}>
+      {rects.map((r) => {
+        const big = r.w > 90 && r.h > 44;
+        const mid = r.w > 56 && r.h > 26;
+        return (
+          <g key={r.item.key}>
+            <rect x={r.x + 1.5} y={r.y + 1.5} width={Math.max(0, r.w - 3)} height={Math.max(0, r.h - 3)} rx={8} fill={heatFill(r.item.changePct)} stroke="rgba(243,239,230,0.08)">
+              <title>{`${r.item.label} · ${pct(r.item.changePct)}`}</title>
+            </rect>
+            {mid && (
+              <text x={r.x + 14} y={r.y + 25} fill="#f3efe6" fontSize={big ? 19 : 14} fontWeight={600} style={{ pointerEvents: "none" }}>
+                {r.item.label.length > r.w / 10 ? `${r.item.label.slice(0, Math.max(3, Math.floor(r.w / 10)))}…` : r.item.label}
+              </text>
+            )}
+            {big && (
+              <text x={r.x + 14} y={r.y + 47} fill="#f3efe6" fontSize={14} opacity={0.85} style={{ pointerEvents: "none" }}>
+                {pct(r.item.changePct)}
+              </text>
+            )}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+// ---- Diverging bars (winners & losers) --------------------------------------------------------
+
+export interface DivergingRow {
+  key: string;
+  label: string;
+  value: number; // +gain / −loss
+}
+
+export function DivergingBars({ rows, currency, format, rowH = 30, max }: { rows: DivergingRow[]; currency: string; format: (v: number, c: string) => string; rowH?: number; max?: number }) {
+  const data = [...rows].filter((r) => Number.isFinite(r.value) && r.value !== 0).sort((a, b) => b.value - a.value);
+  if (data.length === 0) return <p className="py-6 text-center text-sm text-muted-foreground">No gains or losses to show yet.</p>;
+  const peak = max ?? Math.max(...data.map((r) => Math.abs(r.value)), 1);
+  const W = 1000;
+  const labelW = 200;
+  const valW = 150;
+  const cx = labelW + (W - labelW - valW) / 2; // center axis
+  const halfW = (W - labelW - valW) / 2 - 6;
+  const H = data.length * rowH + 8;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} role="img" aria-label="Winners and losers" style={{ display: "block" }}>
+      <line x1={cx} y1={4} x2={cx} y2={H - 4} stroke="rgba(243,239,230,0.15)" strokeWidth={1} />
+      {data.map((r, i) => {
+        const y = 4 + i * rowH;
+        const w = (Math.abs(r.value) / peak) * halfW;
+        const gain = r.value >= 0;
+        const x = gain ? cx : cx - w;
+        return (
+          <g key={r.key}>
+            <text x={labelW - 12} y={y + rowH / 2 + 4} fill="#f3efe6" fontSize={14} textAnchor="end">
+              {r.label.length > 22 ? `${r.label.slice(0, 21)}…` : r.label}
+            </text>
+            <rect x={x} y={y + 4} width={Math.max(2, w)} height={rowH - 10} rx={4} fill={gain ? "#3ec98a" : "#f2665e"} opacity={0.9} />
+            <text x={W - valW + 10} y={y + rowH / 2 + 4} fill={gain ? "#3ec98a" : "#f2665e"} fontSize={14} fontWeight={600}>
+              {gain ? "+" : "−"}
+              {format(Math.abs(r.value), currency)}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
 }
 
 export function Waterfall({ steps, currency, format, height = 260 }: { steps: WaterfallStep[]; currency: string; format: (v: number, c: string) => string; height?: number }) {
