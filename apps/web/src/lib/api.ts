@@ -385,6 +385,38 @@ export interface Technicals {
   bars: number;
 }
 
+/** Company fundamentals from Yahoo quoteSummary (fractions for margins/growth/yield). */
+export interface Fundamentals {
+  currency: string | null;
+  marketCap: number | null;
+  trailingPE: number | null;
+  forwardPE: number | null;
+  priceToBook: number | null;
+  pegRatio: number | null;
+  profitMargin: number | null;
+  operatingMargin: number | null;
+  revenueGrowth: number | null;
+  earningsGrowth: number | null;
+  returnOnEquity: number | null;
+  dividendYield: number | null;
+  eps: number | null;
+  bookValue: number | null;
+  fiftyTwoWeekLow: number | null;
+  fiftyTwoWeekHigh: number | null;
+  dayLow: number | null;
+  dayHigh: number | null;
+  targetMeanPrice: number | null;
+  recommendationKey: string | null;
+  numberOfAnalysts: number | null;
+  asOf: string;
+}
+export interface FundamentalsResponse {
+  available: boolean;
+  reason: "disabled" | "no_fundamentals" | "unavailable" | null;
+  ticker: string | null;
+  fundamentals: Fundamentals | null;
+}
+
 export interface SecurityDetail {
   security: { id: string; symbol: string; name: string; assetClass: string; sector: string | null; subSector: string | null; isin: string | null; exchange: string | null; currency: string };
   position: HoldingRow | null;

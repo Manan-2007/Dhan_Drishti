@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { useAuth } from "@/auth/AuthContext";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { api, type ActivityPage, type Portfolio, type Account, type HoldingsResponse, type Transaction, type ImportBatch, type NetWorthSeries, type RebalanceResponse, type RebalanceDimension, type ManualAssetsResult, type CapitalGainsReport, type SecurityDetail, type IndicesResponse, type NewsResponse, type NewsMarket } from "./api.js";
+import { api, type ActivityPage, type Portfolio, type Account, type HoldingsResponse, type Transaction, type ImportBatch, type NetWorthSeries, type RebalanceResponse, type RebalanceDimension, type ManualAssetsResult, type CapitalGainsReport, type SecurityDetail, type IndicesResponse, type NewsResponse, type NewsMarket, type FundamentalsResponse } from "./api.js";
 
 export function useCapitalGains(portfolioId: string | null) {
   const qs = portfolioId ? `?portfolioId=${portfolioId}` : "";
@@ -19,6 +19,20 @@ export function useSecurityDetail(id: string | undefined, portfolioId: string | 
     enabled: !!id,
     queryKey: ["security-detail", id, portfolioId],
     queryFn: () => api.get<SecurityDetail>(`/api/securities/${id}/detail${qs ? `?${qs}` : ""}`),
+  });
+}
+
+/** Company fundamentals — fetched separately so the detail page loads before Yahoo answers. */
+export function useFundamentals(id: string | undefined, portfolioId: string | null) {
+  const search = new URLSearchParams();
+  if (portfolioId) search.set("portfolioId", portfolioId);
+  const qs = search.toString();
+  return useQuery({
+    enabled: !!id,
+    queryKey: ["fundamentals", id, portfolioId],
+    queryFn: () => api.get<FundamentalsResponse>(`/api/securities/${id}/fundamentals${qs ? `?${qs}` : ""}`),
+    staleTime: 60 * 60 * 1000,
+    retry: false,
   });
 }
 

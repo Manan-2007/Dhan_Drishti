@@ -9,9 +9,9 @@ import { Empty } from "@/components/kit/Empty";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScopeSelect } from "@/components/shell/ScopeSelect";
-import { useFilter, useHoldings, useSecurityDetail } from "@/lib/hooks";
+import { useFilter, useFundamentals, useHoldings, useSecurityDetail } from "@/lib/hooks";
 import type { PriceRange } from "@/lib/api";
-import { assetClassLabel, dateShort, money, num, qty, signedMoney, signedPct } from "@/lib/format";
+import { assetClassLabel, compactMoney, dateShort, money, num, qty, signedMoney, signedPct } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /** Research: search one of your stocks, then see your position, its chart and the technicals. */
@@ -226,17 +226,69 @@ function StockResearch({ id }: { id: string }) {
         </Panel>
       )}
 
-      {/* Fundamentals — pending a data source */}
-      <Panel title="Fundamentals">
+      {/* Fundamentals — from Yahoo (public ticker only) */}
+      <FundamentalsPanel id={id} portfolioId={portfolioId} cur={cur} />
+    </div>
+  );
+}
+
+function FundamentalsPanel({ id, portfolioId, cur }: { id: string; portfolioId: string | null; cur: string }) {
+  const { data, isLoading } = useFundamentals(id, portfolioId);
+  const f = data?.available ? data.fundamentals : null;
+  const ratio = (v: number | null | undefined) => (v == null ? "—" : v.toFixed(2));
+  const perc = (v: number | null | undefined) => (v == null ? "—" : `${(v * 100).toFixed(1)}%`);
+  const rec = f?.recommendationKey ? f.recommendationKey.replace(/_/g, " ") : null;
+
+  return (
+    <Panel title="Fundamentals" action={data?.ticker ? <span className="text-xs text-muted-foreground">Yahoo · {data.ticker}</span> : undefined}>
+      {isLoading ? (
+        <div className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} className="h-10 rounded-lg" />
+          ))}
+        </div>
+      ) : f ? (
+        <>
+          <div className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
+            <TechRow label="Market cap" value={f.marketCap != null ? compactMoney(String(f.marketCap), cur) : "—"} />
+            <TechRow label="PE (TTM)" value={ratio(f.trailingPE)} />
+            <TechRow label="Forward PE" value={ratio(f.forwardPE)} />
+            <TechRow label="PEG" value={ratio(f.pegRatio)} />
+            <TechRow label="Price / book" value={ratio(f.priceToBook)} />
+            <TechRow label="EPS (TTM)" value={f.eps != null ? money(f.eps, cur) : "—"} />
+            <TechRow label="Dividend yield" value={perc(f.dividendYield)} />
+            <TechRow label="Profit margin" value={perc(f.profitMargin)} />
+            <TechRow label="Operating margin" value={perc(f.operatingMargin)} />
+            <TechRow label="Revenue growth (YoY)" value={perc(f.revenueGrowth)} tone={f.revenueGrowth != null ? (f.revenueGrowth >= 0 ? "gain" : "loss") : undefined} />
+            <TechRow label="Earnings growth (YoY)" value={perc(f.earningsGrowth)} tone={f.earningsGrowth != null ? (f.earningsGrowth >= 0 ? "gain" : "loss") : undefined} />
+            <TechRow label="Return on equity" value={perc(f.returnOnEquity)} />
+          </div>
+          {(f.targetMeanPrice != null || rec) && (
+            <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 border-t pt-4 text-sm">
+              {f.targetMeanPrice != null && (
+                <span className="text-muted-foreground">
+                  Analyst target <span className="font-semibold text-foreground tabular-nums">{money(f.targetMeanPrice, cur)}</span>
+                  {f.numberOfAnalysts ? ` · ${f.numberOfAnalysts} analyst${f.numberOfAnalysts === 1 ? "" : "s"}` : ""}
+                </span>
+              )}
+              {rec && <span className="rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize">{rec}</span>}
+            </div>
+          )}
+          <p className="mt-4 text-xs text-muted-foreground">From Yahoo Finance by public ticker only — nothing about your holding is sent. Figures can lag or be missing; nothing here is advice.</p>
+        </>
+      ) : (
         <div className="flex items-start gap-3 text-sm text-muted-foreground">
-          <Lock className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          <Lock className="mt-0.5 size-4 shrink-0" />
           <p>
-            Market cap, PE / PEG / PB, margins, revenue &amp; EPS growth and analyst forecasts need a fundamentals data source — coming next. Everything above is derived on this machine from
-            your own trades and public price history, so it's exact and private.
+            {data?.reason === "no_fundamentals"
+              ? "Fundamentals aren't published for this kind of holding (mutual funds, cash and crypto have none)."
+              : data?.reason === "disabled"
+                ? "Fundamentals are off on this server."
+                : "Couldn't fetch fundamentals right now — the provider may be rate-limiting. It'll try again later. Everything else on this page is derived locally and is exact."}
           </p>
         </div>
-      </Panel>
-    </div>
+      )}
+    </Panel>
   );
 }
 

@@ -23,6 +23,8 @@ import { registerRebalanceRoutes } from "./domain/rebalance.js";
 import { registerManualAssetRoutes } from "./domain/manual-assets.js";
 import { registerReportRoutes } from "./domain/reports.js";
 import { registerSecurityDetailRoutes } from "./domain/security-detail.js";
+import { registerFundamentalsRoutes } from "./domain/fundamentals.js";
+import { YahooFundamentalsProvider, type FundamentalsProvider } from "./market/providers/yahoo-fundamentals.js";
 import type { MarketDataProvider, FxProvider, BenchmarkProvider, SecurityHistoryProvider } from "./market/types.js";
 import { YahooProvider } from "./market/providers/yahoo.js";
 import { AmfiProvider } from "./market/providers/amfi.js";
@@ -87,6 +89,9 @@ export interface AppOptions {
    * when configured) with `backgroundFetch`, and to none otherwise.
    */
   newsHub?: NewsHub | null;
+  /** Company fundamentals for the Research tab (Yahoo quoteSummary). Defaults to Yahoo with
+   *  `backgroundFetch`, none otherwise; tests inject a fake. */
+  fundamentalsProvider?: FundamentalsProvider | null;
   /** If set to a built web `dist` dir, the server also serves the SPA (single-service self-host). */
   webDir?: string;
 }
@@ -227,6 +232,8 @@ export function buildApp(db: DB, options: AppOptions = {}): FastifyInstance {
   registerManualAssetRoutes(app, db);
   registerReportRoutes(app, db);
   registerSecurityDetailRoutes(app, db, historyProvider, historySources);
+  const fundamentalsProvider = options.fundamentalsProvider ?? (options.backgroundFetch ? new YahooFundamentalsProvider() : null);
+  registerFundamentalsRoutes(app, db, fundamentalsProvider);
   registerAccountManagementRoutes(app, db);
 
   // Single-service self-host: serve the built SPA and fall back to index.html for client routes.
