@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { motion, useReducedMotion } from "motion/react";
 import { Segmented } from "@/components/kit/Segmented";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Treemap, Sunburst, Waterfall, type TreemapItem, type SunburstGroup, type WaterfallStep } from "@/components/charts/AllocationViz";
 import { useFilter, useHoldings } from "@/lib/hooks";
 import { assetColor } from "@/lib/assetColors";
 import { assetClassLabel, compactMoney } from "@/lib/format";
@@ -24,6 +25,7 @@ export function Allocation() {
   const { portfolioId } = useFilter();
   const { data, isLoading } = useHoldings(portfolioId);
   const [dim, setDim] = useState<Dim>("asset");
+  const [view, setView] = useState<"bars" | "map">("bars");
   const reduceMotion = useReducedMotion();
 
   if (isLoading) return <Skeleton className="h-[420px] rounded-2xl" />;
@@ -40,39 +42,88 @@ export function Allocation() {
   const label = (key: string) => (dim === "asset" ? assetClassLabel(key) : key);
   const d = data.diversification;
 
+  // Treemap of the selected dimension's slices (size = value).
+  const treemapItems: TreemapItem[] = slices.map((s, i) => ({ key: s.key, label: label(s.key), value: Number(s.value), color: color(s.key, i), pct: Number(s.weight) }));
+
+  // Sunburst: asset class (inner) → sector (outer), from priced holdings.
+  const byClass = new Map<string, { value: number; sectors: Map<string, number> }>();
+  for (const h of data.holdings) {
+    const v = Number(h.baseCurrentValue ?? h.baseInvested ?? 0);
+    if (!(v > 0) || Number(h.netQty) === 0) continue;
+    const e = byClass.get(h.security.assetClass) ?? { value: 0, sectors: new Map<string, number>() };
+    const sec = h.security.sector ?? "Unclassified";
+    e.value += v;
+    e.sectors.set(sec, (e.sectors.get(sec) ?? 0) + v);
+    byClass.set(h.security.assetClass, e);
+  }
+  const sunburst: SunburstGroup[] = [...byClass.entries()]
+    .sort((a, b) => b[1].value - a[1].value)
+    .map(([cls, e]) => ({
+      label: assetClassLabel(cls),
+      color: assetColor(cls),
+      value: e.value,
+      children: [...e.sectors.entries()].sort((a, b) => b[1] - a[1]).map(([sec, v], i) => ({ label: sec, color: SECTOR_PALETTE[i % SECTOR_PALETTE.length] ?? "#6f6f7a", value: v })),
+    }));
+
+  // Net-worth composition waterfall: holdings + cash + other assets = net worth.
+  const sm = data.summary;
+  const waterfall: WaterfallStep[] = [
+    { label: "Holdings", value: Math.max(0, Number(sm.currentValue)), kind: "base" },
+    ...(Number(sm.cash) > 0 ? [{ label: "Cash", value: Number(sm.cash), kind: "add" as const }] : []),
+    ...(Number(sm.manualAssets) > 0 ? [{ label: "Other assets", value: Number(sm.manualAssets), kind: "add" as const }] : []),
+    { label: "Net worth", value: Math.max(0, Number(sm.netWorth)), kind: "total" as const },
+  ];
+
   return (
     <div className="grid gap-5 lg:grid-cols-12">
       <section className="rounded-2xl border bg-card p-6 lg:col-span-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground">By {a.basis === "current_value" ? "current value" : "amount invested (some prices missing)"}</p>
-          <Segmented ariaLabel="Group allocation by" options={DIMS} value={dim} onChange={setDim} />
+          <div className="flex flex-wrap items-center gap-2">
+            <Segmented ariaLabel="Group allocation by" options={DIMS} value={dim} onChange={setDim} />
+            <Segmented ariaLabel="View" size="sm" options={[{ value: "bars", label: "Bars" }, { value: "map", label: "Map" }]} value={view} onChange={setView} />
+          </div>
         </div>
-        <ul className="mt-6 space-y-3.5">
-          {slices.map((s, i) => {
-            const w = Number(s.weight);
-            return (
-              <li key={s.key} className="grid grid-cols-[minmax(120px,180px)_1fr_auto] items-center gap-4">
-                <span className="flex min-w-0 items-center gap-2 text-sm">
-                  <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: color(s.key, i) }} />
-                  <span className="truncate">{label(s.key)}</span>
+        {view === "map" ? (
+          <div className="mt-6">
+            <Treemap items={treemapItems} height={340} />
+            <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1.5">
+              {slices.map((s, i) => (
+                <span key={s.key} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span className="size-2.5 rounded-full" style={{ backgroundColor: color(s.key, i) }} />
+                  {label(s.key)} · {(Number(s.weight) * 100).toFixed(1)}%
                 </span>
-                <span className="h-2.5 overflow-hidden rounded-full bg-raised">
-                  <motion.span
-                    className="block h-full rounded-full"
-                    style={{ backgroundColor: color(s.key, i) }}
-                    initial={reduceMotion ? false : { width: 0 }}
-                    animate={{ width: `${Math.max(w * 100, 0.8)}%` }}
-                    transition={{ delay: i * 0.04, duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-                  />
-                </span>
-                <span className="w-36 text-right text-sm">
-                  <span className="font-semibold">{(w * 100).toFixed(1)}%</span>
-                  <span className="ml-2 text-muted-foreground">{compactMoney(s.value, data.baseCurrency)}</span>
-                </span>
-              </li>
-            );
-          })}
-        </ul>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <ul className="mt-6 space-y-3.5">
+            {slices.map((s, i) => {
+              const w = Number(s.weight);
+              return (
+                <li key={s.key} className="grid grid-cols-[minmax(120px,180px)_1fr_auto] items-center gap-4">
+                  <span className="flex min-w-0 items-center gap-2 text-sm">
+                    <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: color(s.key, i) }} />
+                    <span className="truncate">{label(s.key)}</span>
+                  </span>
+                  <span className="h-2.5 overflow-hidden rounded-full bg-raised">
+                    <motion.span
+                      className="block h-full rounded-full"
+                      style={{ backgroundColor: color(s.key, i) }}
+                      initial={reduceMotion ? false : { width: 0 }}
+                      animate={{ width: `${Math.max(w * 100, 0.8)}%` }}
+                      transition={{ delay: i * 0.04, duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+                    />
+                  </span>
+                  <span className="w-36 text-right text-sm">
+                    <span className="font-semibold">{(w * 100).toFixed(1)}%</span>
+                    <span className="ml-2 text-muted-foreground">{compactMoney(s.value, data.baseCurrency)}</span>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </section>
 
       <section className="space-y-5 lg:col-span-4">
@@ -107,6 +158,22 @@ export function Allocation() {
             </Link>
           </div>
         )}
+        {sunburst.length > 0 && (
+          <div className="rounded-2xl border bg-card p-6">
+            <p className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">Class → sector</p>
+            <div className="mt-3">
+              <Sunburst groups={sunburst} size={260} />
+            </div>
+            <p className="mt-2 text-center text-xs text-muted-foreground">Inner ring: asset class · outer ring: its sectors</p>
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-2xl border bg-card p-6 lg:col-span-12">
+        <p className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">How your net worth stacks up</p>
+        <div className="mt-4">
+          <Waterfall steps={waterfall} currency={data.baseCurrency} format={compactMoney} height={260} />
+        </div>
       </section>
     </div>
   );
