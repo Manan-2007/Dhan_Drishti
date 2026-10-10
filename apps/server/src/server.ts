@@ -17,6 +17,7 @@ import { startScheduler } from "./jobs/scheduler.js";
 import { YahooSplitSource } from "./market/providers/yahoo-splits.js";
 import { convertLegacyStatements } from "./import/snapshot.js";
 import { canonicalizeSecurities } from "./import/canonical.js";
+import { reclassifyEveryone } from "./domain/securities.js";
 
 /** Resolve the web build dir: WEB_DIR env, else the sibling apps/web/dist if present. */
 function resolveWebDir(): string {
@@ -31,6 +32,11 @@ async function main() {
   const converted = await convertLegacyStatements(db);
   // One-time: worded shares ("KOTAK BANK") resolved to their NSE listing; duplicates merged.
   const merged = await canonicalizeSecurities(db);
+  // Sectors, names and asset classes from the bundled references (NSE for India, Nasdaq for the US)
+  // — so holdings imported before a reference update are classified too. Local only, no network.
+  const reclassified = await reclassifyEveryone(db);
+  // eslint-disable-next-line no-console
+  if (reclassified) console.log(`Classified ${reclassified} securities from the bundled references`);
   // eslint-disable-next-line no-console
   if (merged) console.log(`Matched ${merged} securities to their NSE listing`);
   // eslint-disable-next-line no-console

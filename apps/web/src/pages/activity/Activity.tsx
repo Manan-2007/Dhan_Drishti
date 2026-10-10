@@ -15,6 +15,7 @@ import { assetClassLabel, compactMoney, dateShort, financialYear, money, qty } f
 import type { Transaction } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { readableContract } from "@/lib/instrument";
+import { sectorLabel } from "@dhan-drishti/core/sectors";
 import { useMoneyView } from "@/lib/money-view";
 import { StockLinks } from "@/components/StockLinks";
 
@@ -480,7 +481,7 @@ function Detail({ t }: { t: Transaction }) {
           {dateShort(t.tradeDate)}
           {timeOf(t.tradeDate) && <span className="text-muted-foreground"> · {timeOf(t.tradeDate)}</span>}
         </Field>
-        {t.security && <Field label="Kind">{assetClassLabel(t.security.assetClass) + (t.security.sector ? ` · ${t.security.sector}` : "")}</Field>}
+        {t.security && <Field label="Kind">{assetClassLabel(t.security.assetClass) + (t.security.sector ? ` · ${sectorLabel(t.security.sector)}` : "")}</Field>}
         {Number(t.quantity) > 0 && t.type !== "split" && <Field label="Units">{qty(t.quantity)}</Field>}
         {Number(t.price) > 0 && t.type !== "split" && <Field label="Price">{show(t.price)}</Field>}
         <Field label="Amount">

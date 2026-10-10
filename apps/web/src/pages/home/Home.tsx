@@ -17,6 +17,7 @@ import type { HoldingRow, HoldingsResponse } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Panel } from "@/components/kit/Panel";
 import { displayName } from "@/lib/instrument";
+import { sectorLabel } from "@dhan-drishti/core/sectors";
 
 type Range = "1m" | "3m" | "6m" | "1y" | "max";
 const RANGES: { value: Range; label: string }[] = [
@@ -275,7 +276,7 @@ export function Home() {
                     <Link to={`/portfolio/security/${h.security.id}`} className="-mx-2 flex items-center justify-between gap-3 rounded-xl px-2 py-2.5 transition-colors hover:bg-raised">
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-semibold">{displayName(h.security)}</span>
-                        <span className="block truncate text-xs text-muted-foreground">{assetClassLabel(h.security.assetClass)}{h.security.sector ? ` · ${h.security.sector}` : ""}</span>
+                        <span className="block truncate text-xs text-muted-foreground">{assetClassLabel(h.security.assetClass)}{h.security.sector ? ` · ${sectorLabel(h.security.sector)}` : ""}</span>
                       </span>
                       <span className={cn("shrink-0 text-sm font-semibold", change >= 0 ? "text-gain" : "text-loss")}>{signedMoney(change, data.baseCurrency)}</span>
                     </Link>

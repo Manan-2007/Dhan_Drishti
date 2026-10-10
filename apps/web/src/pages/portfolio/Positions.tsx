@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { Empty } from "@/components/kit/Empty";
 import { Stat } from "@/components/kit/Stat";
 import { readableContract } from "@/lib/instrument";
+import { sectorLabel } from "@dhan-drishti/core/sectors";
 import { useMoneyView } from "@/lib/money-view";
 
 type SortKey = "security" | "value" | "invested" | "pnl" | "pnlPct" | "today" | "weight";
@@ -354,7 +355,7 @@ function PositionCells({ h, totalValue }: { h: HoldingRow; totalValue: number })
         </span>
         <span className="block truncate text-xs text-muted-foreground">
           {contract ? contract.expiry : h.security.name !== h.security.symbol ? h.security.name : assetClassLabel(h.security.assetClass)}
-          {!contract && h.security.sector ? ` · ${h.security.sector}` : ""}
+          {!contract && h.security.sector ? ` · ${sectorLabel(h.security.sector)}` : ""}
         </span>
       </td>
       <td className="px-3 py-3 text-right whitespace-nowrap">{closed ? "—" : qty(h.netQty)}</td>

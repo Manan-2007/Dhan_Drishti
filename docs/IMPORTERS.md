@@ -121,8 +121,13 @@ Zerodha's KOTAKBANK are one security, priced and classified. Ambiguous names sta
 Securities created before this existed are matched and merged once at startup (every row moves;
 nothing is dropped). Then find-or-create resolves in order: **ISIN → symbol + exchange → symbol**. A newly-imported security
 is then auto-classified (sector / sub-sector / asset class) from a bundled NSE/AMFI reference and
-segment-aware rules (F&O → Derivatives). Nothing is guessed silently — unresolved metadata stays
-blank rather than fabricated.
+segment-aware rules (F&O → Derivatives). A **US** listing (Vested, IBKR — often just a ticker) is
+classified from a bundled **Nasdaq** reference instead (`scripts/build-us-listings.mjs`, regenerated
+now and then): the company's name, its sector mapped into the same vocabulary as Indian shares (so a
+US chip-maker and an Indian IT company sit in one slice), its industry as the sub-sector, and whether
+it's an ETF — ETFs grouped by what their name says they hold (index, sector/theme, international,
+income, debt, gold). Everything is reclassified at startup too, so a reference update reaches old
+imports. Nothing is guessed silently — unresolved metadata stays blank rather than fabricated.
 
 ## Safety
 Enforce extension + size limit; parse in isolation; **never evaluate spreadsheet formulas** (cells

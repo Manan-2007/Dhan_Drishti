@@ -7,6 +7,7 @@ import { Treemap, Sunburst, Waterfall, type TreemapItem, type SunburstGroup, typ
 import { useFilter, useHoldings } from "@/lib/hooks";
 import { assetColor } from "@/lib/assetColors";
 import { assetClassLabel, compactMoney } from "@/lib/format";
+import { sectorLabel } from "@dhan-drishti/core/sectors";
 import type { AllocationSlice } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Empty } from "@/components/kit/Empty";
@@ -41,7 +42,7 @@ export function Allocation() {
     region: a.byRegion ?? [],
   }[dim].filter((s) => Number(s.weight) > 0);
   const color = (key: string, i: number) => (dim === "asset" ? assetColor(key, i) : (SECTOR_PALETTE[i % SECTOR_PALETTE.length] ?? "#6f6f7a"));
-  const label = (key: string) => (dim === "asset" ? assetClassLabel(key) : key);
+  const label = (key: string) => (dim === "asset" ? assetClassLabel(key) : dim === "sector" ? sectorLabel(key) : key);
   const d = data.diversification;
 
   // Treemap of the selected dimension's slices (size = value).
@@ -64,7 +65,7 @@ export function Allocation() {
       label: assetClassLabel(cls),
       color: assetColor(cls),
       value: e.value,
-      children: [...e.sectors.entries()].sort((a, b) => b[1] - a[1]).map(([sec, v], i) => ({ label: sec, color: SECTOR_PALETTE[i % SECTOR_PALETTE.length] ?? "#6f6f7a", value: v })),
+      children: [...e.sectors.entries()].sort((a, b) => b[1] - a[1]).map(([sec, v], i) => ({ label: sectorLabel(sec), color: SECTOR_PALETTE[i % SECTOR_PALETTE.length] ?? "#6f6f7a", value: v })),
     }));
 
   // Net-worth composition waterfall: holdings + cash + other assets = net worth.
@@ -143,7 +144,7 @@ export function Allocation() {
               <Row label="Acts like" value={`${d.effectiveHoldings.toFixed(1)} equal holdings`} />
               {d.top1 && <Row label="Largest holding" value={`${d.top1.label} · ${(d.top1.weight * 100).toFixed(1)}%`} />}
               <Row label="Top 5 together" value={`${(d.top5Weight * 100).toFixed(1)}%`} />
-              {d.topSector && <Row label="Largest sector" value={`${d.topSector.label} · ${(d.topSector.weight * 100).toFixed(1)}%`} />}
+              {d.topSector && <Row label="Largest sector" value={`${sectorLabel(d.topSector.label)} · ${(d.topSector.weight * 100).toFixed(1)}%`} />}
             </dl>
           </div>
         )}

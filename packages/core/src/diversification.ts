@@ -1,3 +1,4 @@
+import { sectorLabel } from "./sectors.js";
 import { Decimal, d, ZERO } from "./money.js";
 
 /**
@@ -108,9 +109,9 @@ export function computeDiversification(positions: DivPosition[]): Diversificatio
   }
   if (topSector && topSector.label !== "Unclassified") {
     if (topSector.weight >= 0.55)
-      flags.push({ severity: "high", message: `${topSector.label} makes up ${pctText(topSector.weight)} of the portfolio — heavy sector concentration.` });
+      flags.push({ severity: "high", message: `${sectorLabel(topSector.label)} makes up ${pctText(topSector.weight)} of the portfolio — heavy sector concentration.` });
     else if (topSector.weight >= 0.4)
-      flags.push({ severity: "warn", message: `${topSector.label} makes up ${pctText(topSector.weight)} — watch sector concentration.` });
+      flags.push({ severity: "warn", message: `${sectorLabel(topSector.label)} makes up ${pctText(topSector.weight)} — watch sector concentration.` });
   }
   if (priced.length >= 5 && top5Weight >= 0.7)
     flags.push({ severity: "warn", message: `Your five largest holdings are ${pctText(top5Weight)} of the portfolio.` });

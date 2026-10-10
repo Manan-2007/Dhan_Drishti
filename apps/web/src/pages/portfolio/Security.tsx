@@ -9,6 +9,7 @@ import { Empty } from "@/components/kit/Empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useFilter, useSecurityDetail } from "@/lib/hooks";
 import { useMoneyView } from "@/lib/money-view";
+import { sectorLabel } from "@dhan-drishti/core/sectors";
 import { CurrencySwitch } from "@/components/shell/ScopeSelect";
 import { StockLinks } from "@/components/StockLinks";
 import { assetClassLabel, dateShort, money, num, qty, signedMoney, signedPct } from "@/lib/format";
@@ -95,7 +96,7 @@ export function Security() {
         <div>
           <h1 className="font-display text-5xl leading-none tracking-tight">{title}</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            {[contract?.expiry ?? (s.name !== s.symbol ? s.name : null), assetClassLabel(s.assetClass), s.sector, s.exchange, cur !== "INR" ? cur : null].filter(Boolean).join(" · ")}
+            {[contract?.expiry ?? (s.name !== s.symbol ? s.name : null), assetClassLabel(s.assetClass), s.sector ? sectorLabel(s.sector) : null, s.subSector, s.exchange, cur !== "INR" ? cur : null].filter(Boolean).join(" · ")}
           </p>
         </div>
         <div className="flex flex-col items-end gap-2">

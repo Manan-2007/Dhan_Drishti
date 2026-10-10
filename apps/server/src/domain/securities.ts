@@ -9,6 +9,7 @@ import { NotFoundError } from "../lib/errors.js";
 import { authed } from "../lib/routes.js";
 import { parseCsv, pick } from "../import/csv.js";
 import { classifyInstrument, type Classification } from "../import/classify-builtin.js";
+import { classifyUsListing } from "../import/us-listings.js";
 
 /**
  * Apply the built-in classifier to every security the user holds — filling sector / sub-sector
@@ -39,14 +40,23 @@ export async function reclassifyHeld(db: DB, userId: string): Promise<{ updated:
     // A security traded only in the F&O segment is a derivative contract, whatever its name echoes.
     const segs = segBySec.get(s.id);
     const derivative = !!segs && segs.has("fno") && !segs.has("equity") && !segs.has("mf");
+    // A US listing (Vested, IBKR): the Nasdaq reference gives its name, sector, industry and whether
+    // it's an ETF — the NSE reference and Indian name keywords don't apply to it.
+    const us = !derivative && s.currency !== "INR" && (s.assetClass === "equity" || s.assetClass === "etf") ? classifyUsListing(s.symbol) : null;
     const cls: Classification | null = derivative
       ? { assetClass: "other", sector: "Derivatives", subSector: /FUT\b/i.test(`${s.symbol} ${s.name}`) ? "Futures" : "Options", source: "derivative" }
-      : classifyInstrument(s.symbol, s.name);
+      : us
+        ? { assetClass: us.assetClass, sector: us.sector, subSector: us.subSector, source: "reference" }
+        : s.currency !== "INR"
+          ? null
+          : classifyInstrument(s.symbol, s.name);
     if (!cls) continue;
     // Reference / derivative results are authoritative and correct an earlier guess; keyword
     // results only fill blanks so they never clobber a better value already present.
     const authoritative = cls.source === "reference" || cls.source === "derivative";
     const patch: Record<string, string> = {};
+    // Brokers often give a US share only its ticker; use the listed company name instead.
+    if (us && (!s.name || s.name.trim().toUpperCase() === s.symbol.trim().toUpperCase())) patch.name = us.name;
     if (cls.sector && (authoritative || !s.sector) && s.sector !== cls.sector) patch.sector = cls.sector;
     if (cls.subSector && (authoritative || !s.subSector) && s.subSector !== cls.subSector) patch.subSector = cls.subSector;
     if (cls.assetClass) {
@@ -58,6 +68,14 @@ export async function reclassifyHeld(db: DB, userId: string): Promise<{ updated:
     updated += 1;
   }
   return { updated };
+}
+
+/** Reclassify every user's holdings (at startup, after the bundled references change). */
+export async function reclassifyEveryone(db: DB): Promise<number> {
+  const users = await db.selectDistinct({ userId: transactions.userId }).from(transactions).all();
+  let n = 0;
+  for (const u of users) n += (await reclassifyHeld(db, u.userId)).updated;
+  return n;
 }
 
 const metadataSchema = z.object({

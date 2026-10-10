@@ -7,6 +7,8 @@
  * read over the *whole* net worth — cash drag and asset-class skew — then blends a 0..100 score.
  */
 
+import { sectorLabel } from "./sectors.js";
+
 export type XraySeverity = "high" | "warn" | "info" | "good";
 
 export interface XrayFinding {
@@ -71,8 +73,8 @@ export function portfolioXray(input: XrayInput): XrayResult {
 
   // Sector concentration.
   if (div.topSector && div.topSector.label !== "Unclassified") {
-    if (div.topSector.weight >= 0.55) findings.push({ id: "sector", severity: "high", title: "Heavy sector concentration", detail: `${div.topSector.label} is ${pct(div.topSector.weight)} of your invested value.` });
-    else if (div.topSector.weight >= 0.4) findings.push({ id: "sector", severity: "warn", title: "Leaning on one sector", detail: `${div.topSector.label} is ${pct(div.topSector.weight)} of your invested value.` });
+    if (div.topSector.weight >= 0.55) findings.push({ id: "sector", severity: "high", title: "Heavy sector concentration", detail: `${sectorLabel(div.topSector.label)} is ${pct(div.topSector.weight)} of your invested value.` });
+    else if (div.topSector.weight >= 0.4) findings.push({ id: "sector", severity: "warn", title: "Leaning on one sector", detail: `${sectorLabel(div.topSector.label)} is ${pct(div.topSector.weight)} of your invested value.` });
   }
 
   // Breadth: five-largest share, and too-few holdings.

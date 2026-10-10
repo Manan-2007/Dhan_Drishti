@@ -15,6 +15,7 @@ import { StockLinks, stockHref } from "@/components/StockLinks";
 import type { FundamentalsResponse, PriceRange, StockNewsResponse, Technicals, TickerHit } from "@/lib/api";
 import { ago, assetClassLabel, compactMoney, dateShort, money, num, qty, signedMoney, signedPct } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { sectorLabel } from "@dhan-drishti/core/sectors";
 
 /** Research: search one of your stocks, then see your position, its chart and the technicals. */
 export function Research() {
@@ -87,7 +88,7 @@ function ResearchSearch() {
             >
               <div className="min-w-0">
                 <p className="truncate font-semibold group-hover:text-primary">{h.security.symbol}</p>
-                <p className="truncate text-xs text-muted-foreground">{[h.security.name !== h.security.symbol ? h.security.name : null, assetClassLabel(h.security.assetClass)].filter(Boolean).join(" · ")}</p>
+                <p className="truncate text-xs text-muted-foreground">{[h.security.name !== h.security.symbol ? h.security.name : null, h.security.sector ? sectorLabel(h.security.sector) : assetClassLabel(h.security.assetClass)].filter(Boolean).join(" · ")}</p>
               </div>
               <div className="shrink-0 text-right">
                 <p className="font-semibold tabular-nums">
@@ -221,7 +222,7 @@ function StockResearch({ id }: { id: string }) {
         <div>
           <h1 className="font-display text-5xl leading-none tracking-tight">{s.symbol}</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            {[s.name !== s.symbol ? s.name : null, assetClassLabel(s.assetClass), s.sector, s.exchange, cur !== "INR" ? cur : null].filter(Boolean).join(" · ")}
+            {[s.name !== s.symbol ? s.name : null, assetClassLabel(s.assetClass), s.sector ? sectorLabel(s.sector) : null, s.subSector, s.exchange, cur !== "INR" ? cur : null].filter(Boolean).join(" · ")}
           </p>
         </div>
         <div className="flex flex-col items-end gap-2">
