@@ -152,6 +152,7 @@ function Gate() {
                 <Route path="news" element={<Lazy><News /></Lazy>} />
                 <Route path="research" element={<Lazy><Research /></Lazy>} />
                 <Route path="research/:id" element={<Lazy><Research /></Lazy>} />
+                <Route path="research/t/:ticker" element={<Lazy><Research /></Lazy>} />
                 <Route path="settings" element={<Lazy><Settings /></Lazy>} />
 
                 {/* Old addresses */}

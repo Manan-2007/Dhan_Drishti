@@ -2,7 +2,8 @@ import { and, eq, inArray } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import type { DB } from "../db/index.js";
 import { securities, transactions } from "../db/schema.js";
-import { NotFoundError } from "../lib/errors.js";
+import { BadRequestError, NotFoundError } from "../lib/errors.js";
+import { TICKER_RE } from "../market/providers/yahoo-search.js";
 import { scopeFromRequest } from "./scope.js";
 import { authed } from "../lib/routes.js";
 import { computePortfolioHoldings } from "./holdings.js";
@@ -124,6 +125,17 @@ export function registerNewsRoutes(app: FastifyInstance, db: DB, hub: NewsHub | 
     const base = { securityId: sec.id, symbol: sec.symbol, assetClass: sec.assetClass };
     if (!hub) return { live: false, ai: { enabled: false, label: null }, refreshing: false, ...base, ticker, name: sec.name, loaded: false, items: [], read: null, readAt: null, reading: false };
     const c = hub.company({ ticker, fallbackName: sec.name || sec.symbol });
+    return { live: true, ai: { enabled: !!hub.analystLabel, label: hub.analystLabel }, ...base, ...c };
+  });
+
+  // News on any listed stock, held or not (from search / research). Only the ticker and name go out.
+  app.get<{ Params: { ticker: string }; Querystring: { name?: string } }>("/api/news/ticker/:ticker", opts, async (req) => {
+    const ticker = decodeURIComponent(req.params.ticker).trim().toUpperCase();
+    if (!TICKER_RE.test(ticker)) throw new BadRequestError("bad_ticker", "That isn't an Indian (NSE/BSE) or US ticker.");
+    const name = (req.query.name ?? "").trim().slice(0, 120) || ticker.replace(/\.(NS|BO)$/, "");
+    const base = { securityId: null, symbol: ticker.replace(/\.(NS|BO)$/, ""), assetClass: "equity" };
+    if (!hub) return { live: false, ai: { enabled: false, label: null }, refreshing: false, ...base, ticker, name, loaded: false, items: [], read: null, readAt: null, reading: false };
+    const c = hub.company({ ticker, fallbackName: name });
     return { live: true, ai: { enabled: !!hub.analystLabel, label: hub.analystLabel }, ...base, ...c };
   });
 }

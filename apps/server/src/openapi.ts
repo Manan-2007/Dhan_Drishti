@@ -148,6 +148,12 @@ export const openApiSpec = {
     "/api/market/indices": { get: op("Market data", "Live Nifty 50, Bank Nifty and Sensex values (cached a few seconds)") },
     "/api/news": { get: op("News", "Headlines about the largest held shares and the market, with an AI read when Azure OpenAI is configured (only names and public headlines are sent)", { parameters: [portfolioIdParam] }) },
     "/api/news/security/{id}": { get: op("News", "Headlines and the AI read for one stock you have traded (only its public ticker and name are sent)", { parameters: [idPath] }) },
+    "/api/news/ticker/{ticker}": { get: op("News", "Headlines and the AI read for any listed stock by its public ticker (only the ticker and name are sent)", { parameters: [{ name: "ticker", in: "path", required: true, schema: { type: "string" } }, { name: "name", in: "query", schema: { type: "string" } }] }) },
+    "/api/search": { get: op("Research", "Find any listed share or ETF (India NSE/BSE, US) by name or symbol; maps to your own record when you have traded it", { parameters: [{ name: "q", in: "query", required: true, schema: { type: "string" } }] }) },
+    "/api/research/ticker/{ticker}": { get: op("Research", "Price, history and technicals for any listed stock, held or not", { parameters: [{ name: "ticker", in: "path", required: true, schema: { type: "string" } }] }) },
+    "/api/research/ticker/{ticker}/fundamentals": { get: op("Research", "Company fundamentals for any listed stock by ticker", { parameters: [{ name: "ticker", in: "path", required: true, schema: { type: "string" } }] }) },
+    "/api/attention": { get: op("Accounts", "Everything missing or uncertain in the data, with the account, stocks and the file (and dates) that fixes each", { parameters: [portfolioIdParam] }) },
+    "/api/splits/check": { post: op("Accounts", "Fill in stock splits the broker files miss, from public data, confirmed against your own trade prices") },
 
     "/api/exchange-rates": {
       get: op("Exchange rates", "Latest rate per currency pair"),

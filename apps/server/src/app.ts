@@ -38,6 +38,8 @@ import { fillMissingSplits, type SplitSources } from "./market/splits.js";
 import type { SplitSource } from "./market/types.js";
 import { authed } from "./lib/routes.js";
 import { registerAttentionRoutes } from "./domain/attention.js";
+import { registerDiscoverRoutes } from "./domain/discover.js";
+import { YahooTickerSource, type TickerSource } from "./market/providers/yahoo-search.js";
 import { registerFxRoutes } from "./domain/fx.js";
 import { registerNewsRoutes } from "./domain/news.js";
 import { NewsHub } from "./news/hub.js";
@@ -97,6 +99,8 @@ export interface AppOptions {
   /** Company fundamentals for the Research tab (Yahoo quoteSummary). Defaults to Yahoo with
    *  `backgroundFetch`, none otherwise; tests inject a fake. */
   fundamentalsProvider?: FundamentalsProvider | null;
+  /** Search and research for any listed stock (held or not). Yahoo with `backgroundFetch`, else none. */
+  tickerSource?: TickerSource | null;
   /** Public stock splits, to fill in ones the broker files miss. Yahoo with `backgroundFetch`, else none. */
   splitSource?: SplitSource | null;
   /** If set to a built web `dist` dir, the server also serves the SPA (single-service self-host). */
@@ -249,6 +253,7 @@ export function buildApp(db: DB, options: AppOptions = {}): FastifyInstance {
   registerSecurityDetailRoutes(app, db, historyProvider, historySources);
   const fundamentalsProvider = options.fundamentalsProvider ?? (options.backgroundFetch ? new YahooFundamentalsProvider() : null);
   registerFundamentalsRoutes(app, db, fundamentalsProvider);
+  registerDiscoverRoutes(app, db, options.tickerSource !== undefined ? options.tickerSource : options.backgroundFetch ? new YahooTickerSource() : null, fundamentalsProvider);
   registerAccountManagementRoutes(app, db);
 
   // Single-service self-host: serve the built SPA and fall back to index.html for client routes.

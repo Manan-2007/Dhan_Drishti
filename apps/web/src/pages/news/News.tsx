@@ -7,7 +7,7 @@ import { Segmented } from "@/components/kit/Segmented";
 import { Skeleton } from "@/components/ui/skeleton";
 import { IndexTicker } from "@/components/market/IndexTicker";
 import { ScopeSelect } from "@/components/shell/ScopeSelect";
-import { useFilter, useNews, useStockNews } from "@/lib/hooks";
+import { useFilter, useNews, useStockNews, useTickerNews } from "@/lib/hooks";
 import { StockLinks, stockHref } from "@/components/StockLinks";
 import type { FeedItem, Headline, NewsCompany, NewsMarket, NewsStance, NewsTone } from "@/lib/api";
 import { ago } from "@/lib/format";
@@ -349,12 +349,20 @@ function LiveFeed({ feed }: { feed: FeedItem[] }) {
 export function News() {
   const [params] = useSearchParams();
   const stock = params.get("stock");
-  return stock ? <StockNews id={stock} /> : <NewsOverview />;
+  const ticker = params.get("ticker");
+  if (stock) return <StockNews id={stock} />;
+  if (ticker) return <StockNews ticker={ticker.toUpperCase()} name={params.get("name") ?? undefined} />;
+  return <NewsOverview />;
 }
 
-/** Everything known about one stock's news: the AI read, then every headline, newest first. */
-function StockNews({ id }: { id: string }) {
-  const { data, isLoading, isError, dataUpdatedAt, isFetching } = useStockNews(id);
+/**
+ * Everything known about one stock's news: the AI read, then every headline, newest first. By your
+ * record (`id`), or for any listed stock by its public ticker.
+ */
+function StockNews({ id, ticker, name }: { id?: string; ticker?: string; name?: string }) {
+  const mine = useStockNews(id ?? null);
+  const other = useTickerNews(id ? null : (ticker ?? null), name);
+  const { data, isLoading, isError, dataUpdatedAt, isFetching } = id ? mine : other;
   const read = data?.read;
   return (
     <div className="space-y-6">
@@ -376,12 +384,18 @@ function StockNews({ id }: { id: string }) {
           </p>
         )}
       </div>
-      <StockLinks id={id} here="news" />
+      {id ? (
+        <StockLinks id={id} here="news" />
+      ) : ticker ? (
+        <Link to={`/research/t/${encodeURIComponent(ticker)}`} className="inline-flex items-center gap-1.5 rounded-full border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground">
+          Research {ticker.replace(/\.(NS|BO)$/, "")} →
+        </Link>
+      ) : null}
 
       {isLoading ? (
         <Skeleton className="h-48 rounded-2xl" />
       ) : isError || !data ? (
-        <p className="rounded-2xl border bg-card p-6 text-sm text-muted-foreground">This stock isn't in your records, so there's no news to follow for it.</p>
+        <p className="rounded-2xl border bg-card p-6 text-sm text-muted-foreground">{id ? "This stock isn't in your records, so there's no news to follow for it." : "Couldn't find news for that stock right now."}</p>
       ) : !data.live ? (
         <p className="rounded-2xl border bg-card p-6 text-sm text-muted-foreground">News is off on this server.</p>
       ) : (

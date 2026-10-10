@@ -588,6 +588,32 @@ export interface NewsCompany {
   readAt: string | null;
   reading: boolean;
 }
+// ---- Any listed stock (search / research) ----
+export interface TickerHit {
+  ticker: string;
+  name: string;
+  exchange: string;
+  market: "in" | "us";
+  type: "Equity" | "ETF";
+  /** Set when you've traded it. */
+  securityId: string | null;
+}
+export interface TickerSearchResponse {
+  live: boolean;
+  results: TickerHit[];
+}
+export interface TickerResearch {
+  ticker: string;
+  market: "in" | "us";
+  name: string;
+  currency: string;
+  exchange: string;
+  quote: { price: number; prevClose: number | null; asOf: string | null } | null;
+  securityId: string | null;
+  history: { date: string; close: number }[];
+  technicals: Technicals;
+}
+
 // ---- Needs attention ----
 export type AttentionSeverity = "high" | "warn" | "info" | "done";
 export interface AttentionItem {
@@ -612,7 +638,8 @@ export interface StockNewsResponse {
   live: boolean;
   ai: { enabled: boolean; label: string | null };
   refreshing: boolean;
-  securityId: string;
+  /** null for a stock you haven't traded (looked up by ticker). */
+  securityId: string | null;
   symbol: string;
   assetClass: string;
   ticker: string;

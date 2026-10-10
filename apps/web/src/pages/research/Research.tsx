@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Lock, Search } from "lucide-react";
 import { StockChart, type StockMarker } from "@/components/charts/StockChart";
 import { Segmented } from "@/components/kit/Segmented";
@@ -10,15 +10,16 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CurrencySwitch, NoMatch, ScopeSelect } from "@/components/shell/ScopeSelect";
 import { useMoneyView } from "@/lib/money-view";
-import { useFilter, useFundamentals, useHoldings, useSecurityDetail, useStockNews } from "@/lib/hooks";
+import { useFilter, useFundamentals, useHoldings, useSecurityDetail, useStockNews, useTickerFundamentals, useTickerNews, useTickerResearch, useTickerSearch } from "@/lib/hooks";
 import { StockLinks, stockHref } from "@/components/StockLinks";
-import type { PriceRange } from "@/lib/api";
+import type { FundamentalsResponse, PriceRange, StockNewsResponse, Technicals, TickerHit } from "@/lib/api";
 import { ago, assetClassLabel, compactMoney, dateShort, money, num, qty, signedMoney, signedPct } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /** Research: search one of your stocks, then see your position, its chart and the technicals. */
 export function Research() {
-  const { id } = useParams();
+  const { id, ticker } = useParams();
+  if (ticker) return <TickerResearchView ticker={ticker.toUpperCase()} />;
   return id ? <StockResearch id={id} /> : <ResearchSearch />;
 }
 
@@ -30,6 +31,13 @@ function ResearchSearch() {
   const view = useMoneyView();
   const [q, setQ] = useState("");
   const nav = useNavigate();
+  // Any listed stock too, once there's something to search for (public data; only the text is sent).
+  const [dq, setDq] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDq(q.trim()), 250);
+    return () => clearTimeout(t);
+  }, [q]);
+  const publicHits = useTickerSearch(dq);
 
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -44,14 +52,14 @@ function ResearchSearch() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-4xl leading-none tracking-tight sm:text-5xl">Research</h1>
-          <p className="mt-2 text-sm text-muted-foreground">Look up one of your stocks — your position, its chart and the technicals.</p>
+          <p className="mt-2 text-sm text-muted-foreground">Look up any stock — yours with your position, or any other listed in India or the US.</p>
         </div>
         <ScopeSelect currency />
       </div>
 
       <div className="relative max-w-md">
         <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search a stock you hold…" className="h-11 rounded-xl pl-10" autoFocus />
+        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search any stock — e.g. Infosys, NVDA…" className="h-11 rounded-xl pl-10" autoFocus />
       </div>
 
       {isLoading ? (
@@ -63,8 +71,10 @@ function ResearchSearch() {
       ) : rows.length === 0 ? (
         !q && active ? (
           <NoMatch />
+        ) : q ? (
+          <p className="text-sm text-muted-foreground">None of your stocks match “{q.trim()}”.</p>
         ) : (
-          <Empty title={q ? "No match" : "Nothing to research yet"} body={q ? "No held stock matches that." : "Once you hold some shares, look them up here."} />
+          <Empty title="Nothing to research yet" body="Once you hold some shares, they show up here — or search any stock above." />
         )
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -98,7 +108,50 @@ function ResearchSearch() {
           ))}
         </div>
       )}
+
+      {dq.length >= 2 && <PublicResults hits={publicHits.data?.results ?? []} loading={publicHits.isFetching && !publicHits.data} held={new Set(rows.map((h) => h.security.id))} live={publicHits.data?.live ?? true} />}
     </div>
+  );
+}
+
+/** Stocks found by the public search, beyond the ones you hold. */
+function PublicResults({ hits, loading, held, live }: { hits: TickerHit[]; loading: boolean; held: Set<string>; live: boolean }) {
+  const shown = hits.filter((h) => !h.securityId || !held.has(h.securityId));
+  return (
+    <section className="space-y-3">
+      <h2 className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">Other stocks</h2>
+      {loading ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-16 rounded-2xl" />
+          ))}
+        </div>
+      ) : !live ? (
+        <p className="text-sm text-muted-foreground">Searching other stocks needs market data, which is off or unreachable right now.</p>
+      ) : shown.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No other listed stock matches that.</p>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {shown.map((h) => (
+            <Link
+              key={h.ticker}
+              to={h.securityId ? `/research/${h.securityId}` : `/research/t/${encodeURIComponent(h.ticker)}`}
+              className="group flex items-center justify-between gap-3 rounded-2xl border bg-card px-4 py-3.5 transition-colors hover:border-primary/50 hover:bg-raised"
+            >
+              <div className="min-w-0">
+                <p className="truncate font-semibold group-hover:text-primary">{h.ticker.replace(/\.(NS|BO)$/, "")}</p>
+                <p className="truncate text-xs text-muted-foreground">{h.name}</p>
+              </div>
+              <span className="shrink-0 rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">
+                {h.market === "in" ? "🇮🇳" : "🇺🇸"} {h.exchange}
+                {h.type === "ETF" ? " · ETF" : ""}
+                {h.securityId ? " · traded before" : ""}
+              </span>
+            </Link>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -117,14 +170,6 @@ function StockResearch({ id }: { id: string }) {
   const { scope } = useFilter();
   const { data, isLoading, isError } = useSecurityDetail(id, scope);
   const view = useMoneyView();
-  const [range, setRange] = useState<Range>("1y");
-
-  const series = useMemo(() => {
-    const all = data?.history ?? [];
-    const days = RANGES.find((r) => r.value === range)!.days;
-    const since = days === null ? "" : new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
-    return all.filter((b) => b.date >= since).map((b) => ({ time: b.date, value: b.close }));
-  }, [data, range]);
 
   const markers = useMemo(() => {
     const seen = new Set<string>();
@@ -213,22 +258,46 @@ function StockResearch({ id }: { id: string }) {
         )}
       </Panel>
 
-      {/* Price chart */}
+      <MarketPanels history={data.history} t={t} cur={cur} markers={markers} note={v?.converted ? `prices here and below stay in ${cur}, as they traded` : null} />
+
+      {s.assetClass === "equity" && <LatestNews id={id} />}
+
+      {/* Fundamentals — from Yahoo (public ticker only) */}
+      <FundamentalsPanel id={id} scope={scope} cur={cur} />
+    </div>
+  );
+}
+
+/** The market's own view of a stock: price chart, ranges and technicals — the same for any stock. */
+function MarketPanels({ history, t, cur, markers, note }: { history: { date: string; close: number }[]; t: Technicals; cur: string; markers?: StockMarker[]; note?: string | null }) {
+  const [range, setRange] = useState<Range>("1y");
+  const series = useMemo(() => {
+    const days = RANGES.find((r) => r.value === range)!.days;
+    const since = days === null ? "" : new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+    return history.filter((b) => b.date >= since).map((b) => ({ time: b.date, value: b.close }));
+  }, [history, range]);
+  return (
+    <>
       <Panel title="Price" action={<Segmented ariaLabel="Chart range" size="xs" options={RANGES.map(({ value, label }) => ({ value, label }))} value={range} onChange={setRange} />}>
         {series.length >= 2 ? (
           <>
             <StockChart points={series} markers={markers} currency={cur} height={320} />
-            <p className="mt-3 text-xs text-muted-foreground">
-              <span className="text-gain">▲</span> your buys · <span className="text-loss">▼</span> your sells
-              {v?.converted && ` · prices here and below stay in ${cur}, as they traded`}
-            </p>
+            {(markers?.length || note) && (
+              <p className="mt-3 text-xs text-muted-foreground">
+                {markers?.length ? (
+                  <>
+                    <span className="text-gain">▲</span> your buys · <span className="text-loss">▼</span> your sells
+                  </>
+                ) : null}
+                {note && `${markers?.length ? " · " : ""}${note}`}
+              </p>
+            )}
           </>
         ) : (
           <p className="py-10 text-center text-sm text-muted-foreground">No public daily price history to chart for this one.</p>
         )}
       </Panel>
 
-      {/* 52-week range */}
       {t.ranges.year && (
         <Panel title="Price ranges">
           <RangeBar range={t.ranges.year} last={t.last} position={t.rangePosition52w} currency={cur} label="52-week" />
@@ -241,7 +310,6 @@ function StockResearch({ id }: { id: string }) {
         </Panel>
       )}
 
-      {/* Technicals */}
       {t.bars > 1 ? (
         <Panel title="Technicals" action={<span className="text-xs text-muted-foreground">from {t.bars} days of real prices</span>}>
           <div className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
@@ -261,25 +329,96 @@ function StockResearch({ id }: { id: string }) {
           <p className="text-sm text-muted-foreground">Not enough price history yet to work out indicators.</p>
         </Panel>
       )}
+    </>
+  );
+}
 
-      {s.assetClass === "equity" && <LatestNews id={id} />}
+// ---- Any listed stock (not in your records) ---------------------------------------------------
 
-      {/* Fundamentals — from Yahoo (public ticker only) */}
-      <FundamentalsPanel id={id} scope={scope} cur={cur} />
+/** Research for a stock you don't hold: the market's view from public data, with news and fundamentals. */
+function TickerResearchView({ ticker }: { ticker: string }) {
+  const { data, isLoading, isError } = useTickerResearch(ticker);
+  if (isLoading) {
+    return (
+      <div className="space-y-5">
+        <Skeleton className="h-16 w-72 rounded-xl" />
+        <Skeleton className="h-96 rounded-2xl" />
+      </div>
+    );
+  }
+  if (isError || !data) {
+    return <Empty title="Couldn't find that stock" body={`No public prices for ${ticker} right now.`} action={<Link to="/research" className="text-sm underline">Back to research</Link>} />;
+  }
+  // You've traded it: your own view has your position as well.
+  if (data.securityId) return <Navigate to={`/research/${data.securityId}`} replace />;
+
+  const cur = data.currency;
+  const q = data.quote;
+  const change = q && q.prevClose ? q.price - q.prevClose : null;
+  const symbol = ticker.replace(/\.(NS|BO)$/, "");
+  const yearPct = data.technicals.changePct.year;
+  return (
+    <div className="space-y-5">
+      <Link to="/research" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+        <ArrowLeft className="size-4" /> Research
+      </Link>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="font-display text-5xl leading-none tracking-tight">{symbol}</h1>
+          <p className="mt-2 text-sm text-muted-foreground">{[data.name, data.exchange, cur !== "INR" ? cur : null].filter(Boolean).join(" · ")}</p>
+        </div>
+        {q && (
+          <div className="text-right">
+            <p className="text-3xl font-semibold tabular-nums">{money(q.price, cur)}</p>
+            <p className="text-xs text-muted-foreground">
+              {change !== null && q.prevClose ? (
+                <span className={cn("mr-1.5 font-semibold", change >= 0 ? "text-gain" : "text-loss")}>
+                  {signedMoney(change, cur, false)} ({signedPct(change / q.prevClose)}) today ·
+                </span>
+              ) : null}
+              {q.asOf ? `as of ${dateShort(q.asOf)}` : ""}
+            </p>
+          </div>
+        )}
+      </div>
+
+      <Panel title="You & this stock">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">You don't hold this. Everything here is public market data — nothing about your portfolio was sent to look it up.</p>
+          <Stat label="The stock · 1Y" value={yearPct === null ? "—" : `${yearPct > 0 ? "+" : yearPct < 0 ? "−" : ""}${Math.abs(yearPct).toFixed(2)}%`} tone={(yearPct ?? 0) >= 0 ? "gain" : "loss"} sub="its own move" />
+        </div>
+      </Panel>
+
+      <MarketPanels history={data.history} t={data.technicals} cur={cur} />
+      <TickerNews ticker={ticker} name={data.name} />
+      <TickerFundamentals ticker={ticker} cur={cur} />
     </div>
   );
+}
+
+function TickerFundamentals({ ticker, cur }: { ticker: string; cur: string }) {
+  return <FundamentalsView query={useTickerFundamentals(ticker)} cur={cur} />;
+}
+
+function TickerNews({ ticker, name }: { ticker: string; name: string }) {
+  const { data } = useTickerNews(ticker, name);
+  return <NewsPanel data={data} href={`/news?ticker=${encodeURIComponent(ticker)}&name=${encodeURIComponent(name)}`} />;
 }
 
 /** The newest few headlines about this stock, with the AI's one-line read; the rest on News. */
 function LatestNews({ id }: { id: string }) {
   const { data } = useStockNews(id);
+  return <NewsPanel data={data} href={stockHref.news(id)} />;
+}
+
+function NewsPanel({ data, href }: { data: StockNewsResponse | undefined; href: string }) {
   if (!data?.live) return null;
   const items = data.items.slice(0, 4);
   return (
     <Panel
       title="Latest news"
       action={
-        <Link to={stockHref.news(id)} className="text-xs font-medium text-primary hover:underline">
+        <Link to={href} className="text-xs font-medium text-primary hover:underline">
           All news on {data.symbol} →
         </Link>
       }
@@ -309,7 +448,11 @@ function LatestNews({ id }: { id: string }) {
 }
 
 function FundamentalsPanel({ id, scope, cur }: { id: string; scope: string; cur: string }) {
-  const { data, isLoading } = useFundamentals(id, scope);
+  return <FundamentalsView query={useFundamentals(id, scope)} cur={cur} />;
+}
+
+function FundamentalsView({ query, cur }: { query: { data: FundamentalsResponse | undefined; isLoading: boolean }; cur: string }) {
+  const { data, isLoading } = query;
   const f = data?.available ? data.fundamentals : null;
   const ratio = (v: number | null | undefined) => (v == null ? "—" : v.toFixed(2));
   const perc = (v: number | null | undefined) => (v == null ? "—" : `${(v * 100).toFixed(1)}%`);
@@ -350,7 +493,7 @@ function FundamentalsPanel({ id, scope, cur }: { id: string; scope: string; cur:
               {rec && <span className="rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize">{rec}</span>}
             </div>
           )}
-          <p className="mt-4 text-xs text-muted-foreground">From Yahoo Finance by public ticker only — nothing about your holding is sent. Figures can lag or be missing; nothing here is advice.</p>
+          <p className="mt-4 text-xs text-muted-foreground">From Yahoo Finance by public ticker only — nothing about your portfolio is sent. Figures can lag or be missing; nothing here is advice.</p>
         </>
       ) : (
         <div className="flex items-start gap-3 text-sm text-muted-foreground">

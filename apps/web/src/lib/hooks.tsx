@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { useAuth } from "@/auth/AuthContext";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { api, type ActivityPage, type Portfolio, type Account, type HoldingsResponse, type Transaction, type ImportBatch, type NetWorthSeries, type RebalanceResponse, type RebalanceDimension, type ManualAssetsResult, type CapitalGainsReport, type SecurityDetail, type IndicesResponse, type NewsResponse, type StockNewsResponse, type AttentionResponse, type NewsMarket, type FundamentalsResponse } from "./api.js";
+import { api, type ActivityPage, type Portfolio, type Account, type HoldingsResponse, type Transaction, type ImportBatch, type NetWorthSeries, type RebalanceResponse, type RebalanceDimension, type ManualAssetsResult, type CapitalGainsReport, type SecurityDetail, type IndicesResponse, type NewsResponse, type StockNewsResponse, type AttentionResponse, type TickerSearchResponse, type TickerResearch, type NewsMarket, type FundamentalsResponse } from "./api.js";
 
 /**
  * Every data hook takes `scope`: the query string for the people / brokers / market chosen in the
@@ -63,6 +63,38 @@ export function useNews(scope: string, market?: NewsMarket) {
     refetchInterval: (query) => (query.state.data?.refreshing ? 3000 : 15000),
     refetchIntervalInBackground: false,
     placeholderData: (prev) => prev,
+  });
+}
+
+/** Any listed share or ETF by name or symbol (public data; only the typed text is sent). */
+export function useTickerSearch(q: string) {
+  const term = q.trim();
+  return useQuery({
+    queryKey: ["ticker-search", term.toLowerCase()],
+    queryFn: () => api.get<TickerSearchResponse>(`/api/search?q=${encodeURIComponent(term)}`),
+    enabled: term.length >= 2,
+    staleTime: 5 * 60_000,
+    placeholderData: (prev) => prev,
+  });
+}
+
+/** Research for a stock you don't hold: price, history and technicals from public data. */
+export function useTickerResearch(ticker: string) {
+  return useQuery({ queryKey: ["ticker-research", ticker], queryFn: () => api.get<TickerResearch>(`/api/research/ticker/${encodeURIComponent(ticker)}`), retry: false });
+}
+
+export function useTickerFundamentals(ticker: string) {
+  return useQuery({ queryKey: ["ticker-fundamentals", ticker], queryFn: () => api.get<FundamentalsResponse>(`/api/research/ticker/${encodeURIComponent(ticker)}/fundamentals`) });
+}
+
+/** News on any listed stock by ticker; polls quickly while it's being fetched or read. */
+export function useTickerNews(ticker: string | null, name?: string) {
+  return useQuery({
+    queryKey: ["news", "ticker", ticker],
+    queryFn: () => api.get<StockNewsResponse>(`/api/news/ticker/${encodeURIComponent(ticker!)}${name ? `?name=${encodeURIComponent(name)}` : ""}`),
+    enabled: !!ticker,
+    refetchInterval: (query) => (query.state.data && (query.state.data.refreshing || !query.state.data.loaded) ? 3000 : 60_000),
+    refetchIntervalInBackground: false,
   });
 }
 
