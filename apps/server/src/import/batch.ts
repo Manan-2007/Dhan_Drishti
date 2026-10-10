@@ -10,7 +10,7 @@ import { bumpHoldings } from "../domain/holdings-cache.js";
 import { sniffFile, type FileSniff } from "./detect.js";
 import { commitRowsInto, countRows, resolveRows, type ImportParams } from "./service.js";
 import { parseHoldingPrices, seedPricesFromHoldings, type SeedPricesResult } from "./seed-prices.js";
-import { parsePnlReport, reconcileWithPnlReport, type PnlReport, type ReconcileResult } from "./pnl-report.js";
+import { parsePnlFile, reconcileWithPnlReport, type PnlReport, type ReconcileResult } from "./pnl-report.js";
 import { looksLikeXlsx, workbookToCsv } from "./xlsx.js";
 import type { NormalizedRow } from "./types.js";
 import { getAdapter } from "./registry.js";
@@ -205,7 +205,7 @@ export async function commitMany(db: DB, userId: string, items: CommitItem[]) {
         if (!item.target) throw new BadRequestError("account_required", `${item.filename}: choose whose account this is`);
         let report: PnlReport;
         try {
-          report = parsePnlReport(textOf(item), item.filename);
+          report = parsePnlFile(item);
         } catch {
           throw new BadRequestError("file_unreadable", `${item.filename}: couldn't be read`);
         }
@@ -298,7 +298,16 @@ export async function commitMany(db: DB, userId: string, items: CommitItem[]) {
       const target = await resolveTarget(item.target!);
       const account = await trx.select({ broker: accounts.broker }).from(accounts).where(eq(accounts.id, target.accountId)).get();
       const reconcile = await reconcileWithPnlReport(trx, userId, target, report, { broker: account?.broker ?? "broker", filename: item.filename });
-      out[i] = { ...out[i]!, imported: reconcile.filled.length, accountId: target.accountId, reconcile };
+      // Income the trade files never carry (Zerodha tax P&L: dividends & interest) lands in the
+      // ledger, deduped like any other import.
+      let income = 0;
+      let incomeDupes = 0;
+      if (report.dividends?.length) {
+        const r = await commitRowsInto(trx, userId, { portfolioId: target.portfolioId, accountId: target.accountId, broker: "zerodha-taxpnl", filename: item.filename, content: item.content, encoding: item.encoding, replace: false }, report.dividends);
+        income = r.imported;
+        incomeDupes = r.c.duplicates;
+      }
+      out[i] = { ...out[i]!, imported: reconcile.filled.length + income, duplicates: incomeDupes, accountId: target.accountId, reconcile };
     }
     // Expired contracts the files never close settle at expiry, from cached prices; the route then
     // fetches any it's missing.

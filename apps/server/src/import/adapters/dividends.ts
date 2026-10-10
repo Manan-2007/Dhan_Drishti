@@ -42,17 +42,19 @@ export const dividendsAdapter: BrokerAdapter = {
 
   normalize(csv: ParsedCsv): NormalizedRow[] {
     const currency = currencyOf(csv.headers);
-    return csv.rows.map((raw, i): NormalizedRow => {
+    // A zero payout (Vested lists "$0.00" lines for 0 shares) is nothing to record, not an error.
+    return csv.rows.flatMap((raw, i): NormalizedRow[] => {
       const name = pick(raw, SCRIP);
       const amount = normNum(pick(raw, AMOUNT));
+      if (amount === 0) return [];
       const dateRaw = pick(raw, DATE);
       const tradeDate = canonicalDate(dateRaw, IST);
 
-      if (!name) return { ok: false, error: "Missing scrip name", raw, rowIndex: i };
-      if (amount == null || amount <= 0) return { ok: false, error: `Invalid dividend amount '${pick(raw, AMOUNT) ?? ""}'`, raw, rowIndex: i };
-      if (!tradeDate) return { ok: false, error: `Invalid date '${dateRaw ?? ""}'`, raw, rowIndex: i };
+      if (!name) return [{ ok: false, error: "Missing scrip name", raw, rowIndex: i }];
+      if (amount == null || amount < 0) return [{ ok: false, error: `Invalid dividend amount '${pick(raw, AMOUNT) ?? ""}'`, raw, rowIndex: i }];
+      if (!tradeDate) return [{ ok: false, error: `Invalid date '${dateRaw ?? ""}'`, raw, rowIndex: i }];
 
-      return {
+      return [{
         ok: true,
         rowIndex: i,
         rawHash: rowHash("dividends", csv.rawLines[i] ?? `${name}|${tradeDate}|${amount}`),
@@ -68,7 +70,7 @@ export const dividendsAdapter: BrokerAdapter = {
           currency,
           segment: "equity",
         },
-      };
+      }];
     });
   },
 };

@@ -235,7 +235,7 @@ describe("P&L report cross-check", () => {
       { contract: "OPT NIFTY 29 May 2025 20800 PE", type: "buy", quantity: "50", price: "30.00", tradeDate: "2025-05-29T00:00:00.000Z" },
     ]);
     expect(r.unmatched).toBe(1); // 21000 PE: the report's 40 doesn't square with 30 held — left alone
-    expect(r.check).toEqual({ broker: "14700.00", ours: "14600.00", difference: "-100.00", from: "2025-04-01", to: "2026-03-31", soldWithoutPurchase: 0 });
+    expect(r.check).toEqual({ broker: "14700.00", ours: "14600.00", difference: "-100.00", from: "2025-04-01", to: "2026-03-31", soldWithoutPurchase: 0, currency: "INR" });
 
     const holdings = (await get("/api/holdings", cookie)).json().holdings as { security: { symbol: string }; netQty: string }[];
     const qty = (sym: string) => holdings.find((h) => h.security.symbol === sym)?.netQty ?? "0";

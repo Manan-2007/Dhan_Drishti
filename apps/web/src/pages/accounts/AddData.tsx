@@ -742,8 +742,10 @@ function Tile({ label, children, tone }: { label: string; children: ReactNode; t
 function BrokerCheck({ broker, filename, r }: { broker: string; filename: string; r: PnlReconcile }) {
   const [open, setOpen] = useState(false);
   const c = r.check;
+  const cur = c?.currency ?? "INR";
   const diff = c ? Math.abs(Number(c.difference)) : 0;
-  const agrees = !!c && diff <= Math.max(500, Math.abs(Number(c.broker)) * 0.0025);
+  // Rounding slack: ₹500 on an Indian report, $1 on a US one, or 0.25% of the broker's figure.
+  const agrees = !!c && diff <= Math.max(cur === "INR" ? 500 : 1, Math.abs(Number(c.broker)) * 0.0025);
   const period = c ? `${dateShort(c.from)} – ${dateShort(c.to)}` : null;
   return (
     <div className="rounded-2xl border bg-card p-4">
@@ -753,7 +755,7 @@ function BrokerCheck({ broker, filename, r }: { broker: string; filename: string
         </span>
         <div className="min-w-0 flex-1 text-sm">
           <p className="font-semibold">
-            {!c ? `${broker}'s report` : agrees ? `Matches ${broker}'s own profit report` : `${broker}'s report and ours differ by ${compactMoney(diff)}`}
+            {!c ? `${broker}'s report` : agrees ? `Matches ${broker}'s own profit report` : `${broker}'s report and ours differ by ${compactMoney(diff, cur)}`}
           </p>
           <p className="mt-0.5 truncate text-muted-foreground">
             {filename}
@@ -761,9 +763,9 @@ function BrokerCheck({ broker, filename, r }: { broker: string; filename: string
           </p>
           {c && (
             <p className="mt-2">
-              {broker}: <b className={Number(c.broker) >= 0 ? "text-gain" : "text-loss"}>{signedMoney(c.broker, "INR", false)}</b>
+              {broker}: <b className={Number(c.broker) >= 0 ? "text-gain" : "text-loss"}>{signedMoney(c.broker, cur, false)}</b>
               <span className="text-muted-foreground"> · </span>
-              Dhan Drishti: <b className={Number(c.ours) >= 0 ? "text-gain" : "text-loss"}>{signedMoney(c.ours, "INR", false)}</b>
+              Dhan Drishti: <b className={Number(c.ours) >= 0 ? "text-gain" : "text-loss"}>{signedMoney(c.ours, cur, false)}</b>
             </p>
           )}
           {c && !agrees && (

@@ -507,6 +507,8 @@ export interface PnlReconcile {
     to: string;
     /** Shares sold with no purchase in the files — bought before they start. */
     soldWithoutPurchase: number;
+    /** Currency both figures are in (a Vested report is in USD). */
+    currency: string;
   } | null;
 }
 export interface CommitManyResult {

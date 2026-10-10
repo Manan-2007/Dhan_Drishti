@@ -3,6 +3,7 @@ import * as XLSX from "xlsx";
 import { parseCsv } from "./csv.js";
 import { looksLikeXlsx } from "./xlsx.js";
 import { detectBest, brokerFamiliesOf } from "./registry.js";
+import { identifyBrokerReport, reportIdentity } from "./broker-reports.js";
 import type { ParsedCsv } from "./types.js";
 
 /**
@@ -37,13 +38,15 @@ export interface FileSniff {
 
 const FAMILY_WORDS: [RegExp, string][] = [
   [/zerodha|kite|console|coin/i, "zerodha"],
+  // Zerodha names its Console exports "<report>-<client ID>": tradebook-PKY448-EQ, pnl-PKY448, taxpnl-PKY448-….
+  [/(?:^|[-_ ])(?:tax)?pnl-[A-Z]{2,3}\d{3,5}(?=[-_ .]|$)|^(?:tradebook|holdings|ledger)-[A-Z]{2,3}\d{3,5}/i, "zerodha"],
   [/\bdhan\b|dhan[_-]/i, "dhan"],
-  [/vested/i, "vested"],
+  [/vested|drivewealth/i, "vested"],
   [/ibkr|interactive ?brokers/i, "ibkr"],
   [/binance/i, "binance"],
 ];
 
-const REF_KEYS = ["ucc", "client id", "client code", "clientid", "drivewealth account number", "account number", "account no", "account id", "demat account"];
+const REF_KEYS = ["ucc", "client id", "client code", "clientid", "drivewealth account number", "drivewealth acc no", "account number", "account no", "account id", "demat account"];
 const HOLDER_KEYS = ["name", "client name", "account holder", "account holder name", "investor name"];
 
 /** Up to the first 20 rows of each table, as trimmed cells — where brokers print account details. */
@@ -53,17 +56,34 @@ function preambleRows(text: string): string[][] {
   return (parsed.data as string[][]).map((r) => r.map((c) => String(c ?? "").trim()).filter((c) => c !== ""));
 }
 
-/** Read "Key, Value" rows for the client code and holder name. Only these two fields are kept. */
+/**
+ * Read the client code and holder name, laid out either as "Key, Value" rows or as a header row
+ * with the values in the row below it. Only these two fields are kept.
+ */
 function sniffKeyValues(rows: string[][]): { accountRef: string | null; holderName: string | null } {
   let accountRef: string | null = null;
   let holderName: string | null = null;
-  for (const r of rows) {
-    if (r.length < 2 || r.length > 3) continue;
-    const key = r[0]!.toLowerCase().replace(/[:.]$/, "").trim();
-    const value = r[1]!.trim();
-    if (!accountRef && REF_KEYS.includes(key) && /^[A-Z0-9-]{4,24}$/i.test(value)) accountRef = value.toUpperCase();
-    if (!holderName && HOLDER_KEYS.includes(key) && /^[\p{L} .'-]{2,60}$/u.test(value)) holderName = value;
-  }
+  const keyOf = (c: string) => c.toLowerCase().replace(/[:.]$/, "").trim();
+  const okRef = (v: string) => /^[A-Z0-9-]{4,24}$/i.test(v);
+  const okName = (v: string) => /^[\p{L} .'-]{2,60}$/u.test(v);
+  rows.forEach((r, i) => {
+    if (r.length >= 2 && r.length <= 3) {
+      const key = keyOf(r[0]!);
+      const value = r[1]!.trim();
+      if (!accountRef && REF_KEYS.includes(key) && okRef(value)) accountRef = value.toUpperCase();
+      if (!holderName && HOLDER_KEYS.includes(key) && okName(value)) holderName = value;
+    }
+    // Header row, values underneath (Vested: "Period, Name, PAN, DriveWealth Acc No").
+    const below = rows[i + 1];
+    if (below && r.length >= 2 && below.length === r.length) {
+      r.forEach((h, j) => {
+        const key = keyOf(h);
+        const value = (below[j] ?? "").trim();
+        if (!accountRef && REF_KEYS.includes(key) && okRef(value)) accountRef = value.toUpperCase();
+        if (!holderName && HOLDER_KEYS.includes(key) && okName(value)) holderName = value;
+      });
+    }
+  });
   return { accountRef, holderName };
 }
 
@@ -75,6 +95,19 @@ function refFromFilename(filename: string): string | null {
 
 function familyFromText(text: string): string | null {
   for (const [re, fam] of FAMILY_WORDS) if (re.test(text)) return fam;
+  return null;
+}
+
+/** Broker names that only appear in a file's own text when it really is theirs (no "coin"/"kite"). */
+const TEXT_FAMILY_WORDS: [RegExp, string][] = [
+  [/\bzerodha\b/i, "zerodha"],
+  [/drivewealth|\bvested\b/i, "vested"],
+  [/\bdhan\b/i, "dhan"],
+  [/interactive brokers/i, "ibkr"],
+  [/\bbinance\b/i, "binance"],
+];
+function familyFromContents(text: string): string | null {
+  for (const [re, fam] of TEXT_FAMILY_WORDS) if (re.test(text)) return fam;
   return null;
 }
 
@@ -136,6 +169,21 @@ export function sniffFile(params: { filename: string; content: string; encoding?
     return { kind: "transactions", adapter: "cas", confidence: 0.9, reason: "Mutual fund Consolidated Account Statement (PDF)", brokerFamily: null, ...blank };
   }
 
+  // Multi-sheet broker profit reports (Zerodha tax P&L / P&L, Vested P&L statement): sectioned
+  // tables no single-table reader understands. They cross-check the ledger.
+  if (params.encoding === "base64" && looksLikeXlsx(buf, params.filename)) {
+    const wb = XLSX.read(buf, { type: "buffer" });
+    const format = identifyBrokerReport(wb);
+    if (format) {
+      const id = reportIdentity(wb, format);
+      const reason =
+        format === "zerodha-taxpnl"
+          ? "Zerodha tax P&L — used to double-check your numbers, and its dividends & interest are added"
+          : "Your broker's profit & loss report, used to double-check your numbers and fill in any closing trades the statement missed";
+      return { kind: "pnl_report", adapter: null, confidence: 0.9, reason, brokerFamily: id.brokerFamily, accountRef: id.accountRef, holderName: id.holderName, sheet: null };
+    }
+  }
+
   const { tables, preamble } = tablesOf(buf, params.filename, params.encoding);
   const { accountRef: refInFile, holderName } = sniffKeyValues(preamble);
 
@@ -149,7 +197,7 @@ export function sniffFile(params: { filename: string; content: string; encoding?
     }
   }
 
-  const nameFamily = familyFromText(params.filename);
+  const nameFamily = familyFromText(params.filename) ?? familyFromContents(preamble.slice(0, 40).map((r) => r.join(" ")).join(" "));
   const familyFor = (adapter: string | null): string | null => {
     const fams = adapter ? brokerFamiliesOf(adapter) : [];
     const specific = fams.find((f) => f !== "*" && f !== "crypto");

@@ -1,11 +1,15 @@
 import { randomUUID } from "node:crypto";
+import * as XLSX from "xlsx";
 import { and, eq } from "drizzle-orm";
-import { computeHoldings, d, Decimal, ZERO, realisedEvents, type CanonicalTx } from "@dhan-drishti/core";
+import { computeHoldings, d, Decimal, ZERO, fifoCapitalGains, realisedEvents, type CanonicalTx } from "@dhan-drishti/core";
 import type { Database } from "../db/index.js";
 import { securities, transactions } from "../db/schema.js";
 import { parseDerivativeSymbol } from "../market/derivative-symbol.js";
 import { parseCsv, pick, rowHash } from "./csv.js";
 import { EXPIRY_SOURCE } from "./expiry.js";
+import { identifyBrokerReport, parseBrokerReport } from "./broker-reports.js";
+import { looksLikeXlsx, workbookToCsv } from "./xlsx.js";
+import type { NormalizedRow } from "./types.js";
 
 /**
  * A broker's realised-P&L report (Dhan's "Realised PnL Report": one row per instrument closed in
@@ -32,9 +36,13 @@ export interface PnlReport {
   rows: PnlReportRow[];
   /** The broker's own bottom line, after charges. */
   netPnl: Decimal | null;
+  /** Currency the report's figures are in (Vested reports in USD). */
+  currency?: string;
+  /** Income the report carries that trade files don't (Zerodha tax P&L dividends & interest). */
+  dividends?: NormalizedRow[];
 }
 
-const NAME = ["scrip name", "security name", "instrument", "contract", "name"];
+const NAME = ["scrip name", "security name", "instrument", "contract", "name", "symbol"];
 const QTY = ["quantity", "qty"];
 const BUY_VALUE = ["buy value"];
 const SELL_VALUE = ["sell value"];
@@ -45,12 +53,14 @@ const num = (raw: string | undefined): Decimal | null => {
 };
 
 const PERIOD = /(\d{2})-(\d{2})-(\d{4})\D+?(\d{2})-(\d{2})-(\d{4})/;
+const ISO_PERIOD = /(\d{4}-\d{2}-\d{2})\D+?(\d{4}-\d{2}-\d{2})/;
 
 export function parsePnlReport(text: string, filename = ""): PnlReport {
   const clean = text.replace(/^﻿/, "");
   const head = clean.split(/\r?\n/, 3).join(" ");
   const p = PERIOD.exec(/from/i.test(head) ? head : filename) ?? PERIOD.exec(filename);
   const iso = (dd: string, mm: string, yyyy: string) => `${yyyy}-${mm}-${dd}`;
+  const isoP = p ? null : ISO_PERIOD.exec(/from/i.test(head) ? head : filename);
 
   const csv = parseCsv(clean);
   const rows: PnlReportRow[] = [];
@@ -65,13 +75,32 @@ export function parsePnlReport(text: string, filename = ""): PnlReport {
     rows.push({ name, quantity, buyValue, sellValue, line: csv.rawLines[i] ?? name });
   });
 
-  const net = /^\s*"?Net P&L"?\s*,\s*"?(-?[\d.,]+)/im.exec(clean);
+  const net = /^\s*"?Net P&L"?\s*,\s*"?(-?[\d.,]+)/im.exec(clean) ?? /^\s*"?Reali[sz]ed P&L"?\s*,\s*"?(-?[\d.,]+)/im.exec(clean);
   return {
-    from: p ? iso(p[1]!, p[2]!, p[3]!) : null,
-    to: p ? iso(p[4]!, p[5]!, p[6]!) : null,
+    from: p ? iso(p[1]!, p[2]!, p[3]!) : (isoP?.[1] ?? null),
+    to: p ? iso(p[4]!, p[5]!, p[6]!) : (isoP?.[2] ?? null),
     rows,
     netPnl: net ? num(net[1]) : null,
+    currency: "INR",
   };
+}
+
+/**
+ * Read a P&L report from an upload: the multi-sheet broker workbooks (Zerodha tax P&L and P&L
+ * statement, Vested's Profit-Loss Statement) sheet by sheet, anything else as one table.
+ */
+export function parsePnlFile(file: { filename: string; content: string; encoding?: "base64" }): PnlReport {
+  if (file.encoding === "base64") {
+    const buf = Buffer.from(file.content, "base64");
+    if (looksLikeXlsx(buf, file.filename)) {
+      const wb = XLSX.read(buf, { type: "buffer" });
+      const format = identifyBrokerReport(wb);
+      if (format) return parseBrokerReport(wb, format);
+      return parsePnlReport(workbookToCsv(buf), file.filename);
+    }
+    return parsePnlReport(buf.toString("utf8"), file.filename);
+  }
+  return parsePnlReport(file.content, file.filename);
 }
 
 export interface FilledTrade {
@@ -95,6 +124,8 @@ export interface PnlCheck {
    * statement is added.
    */
   soldWithoutPurchase: number;
+  /** Currency both figures are in. */
+  currency: string;
 }
 
 export interface ReconcileResult {
@@ -239,9 +270,19 @@ function checkAgainst(report: PnlReport, bySecurity: Map<string, { symbol: strin
   const listed = new Set([...bySecurity].filter(([, s]) => report.rows.some((r) => sameInstrument(s, r.name))).map(([id]) => id));
   if (listed.size === 0) return null;
   const txs = [...bySecurity].filter(([id]) => listed.has(id)).flatMap(([, s]) => s.txs) as unknown as CanonicalTx[];
-  const ours = realisedEvents(txs)
-    .filter((e) => day(e.date) >= report.from! && day(e.date) <= report.to!)
+  const inPeriod = (date: string) => day(date) >= report.from! && day(date) <= report.to!;
+  // Brokers book realised gains lot by lot, first in first out (Zerodha's tax P&L, Vested's lots),
+  // so shares are compared FIFO. Lots bought before the files start have no known cost and are
+  // left out (counted in soldWithoutPurchase instead). F&O, which FIFO doesn't cover, by average.
+  const shares = txs.filter((t) => t.segment !== "fno");
+  const fno = txs.filter((t) => t.segment === "fno");
+  const fifo = fifoCapitalGains(shares, { longTermDays: () => 365 })
+    .filter((r) => r.buyDateKnown && inPeriod(r.sellDate))
+    .reduce((sum, r) => sum.plus(r.gain), ZERO);
+  const avg = realisedEvents(fno)
+    .filter((e) => inPeriod(e.date))
     .reduce((sum, e) => sum.plus(e.realised), ZERO);
+  const ours = fifo.plus(avg);
   const soldWithoutPurchase = computeHoldings(txs.filter((t) => t.segment === "equity" || t.segment === "mf"), {}).filter((h) => h.hasOversell).length;
   return {
     broker: report.netPnl.toFixed(2),
@@ -250,5 +291,6 @@ function checkAgainst(report: PnlReport, bySecurity: Map<string, { symbol: strin
     from: report.from,
     to: report.to,
     soldWithoutPurchase,
+    currency: report.currency ?? "INR",
   };
 }
