@@ -12,18 +12,10 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, Di
 import { api, ApiError, type Account, type Portfolio } from "@/lib/api";
 import { useAllAccounts, useHoldings, useImports, usePortfolios } from "@/lib/hooks";
 import { ago, compactMoney } from "@/lib/format";
+import { BROKER_CHOICES, brokerLabel, isPersonal } from "@/lib/brokers";
 import { cn } from "@/lib/utils";
 
-const BROKERS: { id: string; label: string }[] = [
-  { id: "zerodha", label: "Zerodha" },
-  { id: "dhan", label: "Dhan" },
-  { id: "vested", label: "Vested" },
-  { id: "ibkr", label: "Interactive Brokers" },
-  { id: "binance", label: "Binance" },
-  { id: "generic", label: "Other broker" },
-  { id: "manual", label: "Entered by hand" },
-];
-const brokerLabel = (id: string) => BROKERS.find((b) => b.id === id)?.label ?? id;
+const BROKERS: { id: string; label: string }[] = [...BROKER_CHOICES.map(({ id, label }) => ({ id, label })), { id: "manual", label: "Entered by hand" }];
 
 function useRefresh() {
   const qc = useQueryClient();
@@ -57,6 +49,26 @@ export function People() {
   const lastImport = new Map<string, string>();
   for (const b of imports ?? []) if (b.accountId && (!lastImport.has(b.accountId) || b.createdAt > lastImport.get(b.accountId)!)) lastImport.set(b.accountId, b.createdAt);
 
+  // Personal use: one person — so this page is about your brokers, not family members.
+  if (isPersonal(people)) {
+    const me = people[0]!;
+    const mine = (accounts ?? []).filter((a) => a.portfolioId === me.id);
+    return (
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">Your broker accounts. Each broker's files land in its own account, and every page can show them together or one at a time.</p>
+        <PersonCard person={me} index={0} accounts={mine} lastImport={lastImport} />
+        <AddBrokers portfolioId={me.id} have={new Set(mine.map((a) => a.broker))} />
+        <p className="text-sm text-muted-foreground">
+          Tracking family money too?{" "}
+          <button type="button" className="cursor-pointer text-foreground underline-offset-4 hover:underline" onClick={() => setAdding(true)}>
+            Add a person
+          </button>
+        </p>
+        <NameDialog open={adding} onOpenChange={setAdding} title="Add a person" placeholder="e.g. Dad" busy={addPerson.isPending} onSave={(n) => addPerson.mutate(n)} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
@@ -72,6 +84,41 @@ export function People() {
 
       <NameDialog open={adding} onOpenChange={setAdding} title="Add a person" placeholder="e.g. Dad" busy={addPerson.isPending} onSave={(n) => addPerson.mutate(n)} />
     </div>
+  );
+}
+
+/** One tap adds an account at a broker you don't have yet. */
+function AddBrokers({ portfolioId, have }: { portfolioId: string; have: Set<string> }) {
+  const refresh = useRefresh();
+  const add = useMutation({
+    mutationFn: (broker: string) => api.post("/api/accounts", { portfolioId, name: brokerLabel(broker), broker }),
+    onSuccess: (_d, broker) => {
+      refresh();
+      toast.success(`${brokerLabel(broker)} added`);
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : "Couldn't add"),
+  });
+  const missing = BROKER_CHOICES.filter((b) => !have.has(b.id));
+  if (missing.length === 0) return null;
+  return (
+    <section className="rounded-2xl border bg-card p-5">
+      <p className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">Add a broker</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {missing.map((b) => (
+          <button
+            key={b.id}
+            type="button"
+            disabled={add.isPending}
+            onClick={() => add.mutate(b.id)}
+            className="flex cursor-pointer items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm text-muted-foreground transition-colors hover:border-primary/60 hover:text-foreground disabled:opacity-50"
+          >
+            <Plus className="size-3.5" />
+            {b.label}
+            {b.hint && <span className="text-xs opacity-70">· {b.hint}</span>}
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 

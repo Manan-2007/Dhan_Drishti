@@ -8,7 +8,8 @@ import { NotFoundError } from "../lib/errors.js";
 import { authed } from "../lib/routes.js";
 import { getPortfolioOwned } from "./portfolios.js";
 
-export const BROKERS = ["zerodha", "dhan", "vested", "ibkr", "binance", "crypto", "generic", "manual"] as const;
+import { BROKERS } from "./brokers.js";
+export { BROKERS };
 
 const createSchema = z.object({
   portfolioId: z.string().min(1),

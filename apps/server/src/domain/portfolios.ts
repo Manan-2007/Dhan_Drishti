@@ -3,7 +3,8 @@ import { and, eq, desc } from "drizzle-orm";
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
 import type { DB } from "../db/index.js";
-import { portfolios, type Portfolio } from "../db/schema.js";
+import { accounts, portfolios, type Portfolio } from "../db/schema.js";
+import { BROKERS } from "./brokers.js";
 import { ConflictError, NotFoundError } from "../lib/errors.js";
 import { authed } from "../lib/routes.js";
 
@@ -24,6 +25,13 @@ const createSchema = z.object({
   baseCurrency: z.string().trim().length(3).toUpperCase().default("INR"),
 });
 const updateSchema = createSchema.partial();
+/** Create a person together with their broker accounts — one transaction, so setup never half-lands. */
+const createWithAccounts = createSchema.extend({
+  accounts: z
+    .array(z.object({ name: z.string().trim().min(1).max(120), broker: z.enum(BROKERS), currency: z.string().trim().length(3).toUpperCase().default("INR") }))
+    .max(20)
+    .optional(),
+});
 
 export async function listPortfolios(db: DB, userId: string): Promise<Portfolio[]> {
   return db
@@ -52,7 +60,7 @@ export function registerPortfolioRoutes(app: FastifyInstance, db: DB): void {
   });
 
   app.post("/api/portfolios", opts, async (req, reply) => {
-    const body = createSchema.parse(req.body);
+    const { accounts: accountList, ...body } = createWithAccounts.parse(req.body);
     const userId = req.user!.id;
     const dup = await db
       .select({ id: portfolios.id })
@@ -62,7 +70,12 @@ export function registerPortfolioRoutes(app: FastifyInstance, db: DB): void {
     if (dup) throw new ConflictError("portfolio_name_taken", "A portfolio with that name already exists");
 
     const row = { id: randomUUID(), userId, ...body, description: body.description ?? null };
-    await db.insert(portfolios).values(row).run();
+    await db.transaction(async (trx) => {
+      await trx.insert(portfolios).values(row).run();
+      for (const a of accountList ?? []) {
+        await trx.insert(accounts).values({ id: randomUUID(), userId, portfolioId: row.id, name: a.name, broker: a.broker, accountRef: null, currency: a.currency }).run();
+      }
+    });
     reply.code(201).send({ portfolio: await getPortfolioOwned(db, userId, row.id) });
   });
 

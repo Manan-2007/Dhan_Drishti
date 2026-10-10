@@ -1,16 +1,37 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type Portfolio } from "../lib/api.js";
-import { Button, Card, Input, Select } from "./ui.js";
+import { BROKER_CHOICES } from "../lib/brokers.js";
+import { Button, Card, Input } from "./ui.js";
 
-const BROKERS: { id: string; label: string }[] = [
-  { id: "zerodha", label: "Zerodha" },
-  { id: "dhan", label: "Dhan" },
-  { id: "vested", label: "Vested (US)" },
-  { id: "ibkr", label: "Interactive Brokers" },
-  { id: "binance", label: "Binance (crypto)" },
-  { id: "other", label: "Other" },
-];
+const BROKERS = BROKER_CHOICES;
+/** Accounts for the brokers picked: US brokers hold dollars. */
+const accountsFor = (brokers: string[], prefix = "") =>
+  brokers.map((b) => ({ name: `${prefix}${BROKERS.find((x) => x.id === b)?.label ?? b}`, broker: b, currency: b === "vested" || b === "ibkr" ? "USD" : "INR" }));
+
+/** Broker chips — tap to pick as many as apply. */
+function BrokerPicker({ value, onToggle }: { value: string[]; onToggle: (id: string) => void }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {BROKERS.map((b) => {
+        const on = value.includes(b.id);
+        return (
+          <button
+            key={b.id}
+            type="button"
+            aria-pressed={on}
+            onClick={() => onToggle(b.id)}
+            className={`rounded-full border px-3.5 py-1.5 text-sm transition-colors ${on ? "border-primary bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-accent"}`}
+          >
+            {on ? "✓ " : ""}
+            {b.label}
+            {b.hint && <span className="ml-1 text-xs opacity-70">· {b.hint}</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 interface Member {
   name: string;
@@ -21,8 +42,8 @@ interface Member {
 export function Onboarding() {
   const qc = useQueryClient();
   const [mode, setMode] = useState<"choose" | "personal" | "family">("choose");
-  const [personalName, setPersonalName] = useState("My Portfolio");
-  const [personalBroker, setPersonalBroker] = useState("");
+  const [personalName, setPersonalName] = useState("");
+  const [personalBrokers, setPersonalBrokers] = useState<string[]>([]);
   const [members, setMembers] = useState<Member[]>([{ name: "", brokers: [] }]);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,12 +51,10 @@ export function Onboarding() {
 
   const createPersonal = useMutation({
     mutationFn: async () => {
-      const { portfolio } = await api.post<{ portfolio: Portfolio }>("/api/portfolios", { name: personalName.trim() || "My Portfolio", kind: "custom" });
-      // Tie the portfolio to a broker (as an account) so imports offer only that broker's files.
-      if (personalBroker) {
-        const label = BROKERS.find((b) => b.id === personalBroker)?.label ?? personalBroker;
-        await api.post("/api/accounts", { portfolioId: portfolio.id, name: label, broker: personalBroker });
-      }
+      // You, plus one account per broker you use — created together in one step, so it never
+      // half-lands. Files then find their account on their own, and every page can show all your
+      // brokers together or one at a time.
+      await api.post<{ portfolio: Portfolio }>("/api/portfolios", { name: personalName.trim() || "Me", kind: "custom", accounts: accountsFor(personalBrokers) });
     },
     onSuccess: done,
     onError: (e) => setError(e instanceof ApiError ? e.message : "Could not create"),
@@ -46,10 +65,7 @@ export function Onboarding() {
       const valid = members.filter((m) => m.name.trim());
       if (valid.length === 0) throw new ApiError(400, "no_members", "Add at least one member");
       for (const m of valid) {
-        const { portfolio } = await api.post<{ portfolio: { id: string } }>("/api/portfolios", { name: m.name.trim(), kind: "family" });
-        for (const b of m.brokers) {
-          await api.post("/api/accounts", { portfolioId: portfolio.id, name: `${m.name.trim()} · ${BROKERS.find((x) => x.id === b)?.label ?? b}`, broker: b === "other" ? "manual" : b });
-        }
+        await api.post("/api/portfolios", { name: m.name.trim(), kind: "family", accounts: accountsFor(m.brokers, `${m.name.trim()} · `) });
       }
     },
     onSuccess: done,
@@ -68,7 +84,7 @@ export function Onboarding() {
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
           <button onClick={() => setMode("personal")} className="rounded-xl border bg-card p-6 text-left transition-colors hover:border-foreground/25">
             <div className="text-lg font-medium">Personal use</div>
-            <p className="mt-1 text-sm text-muted-foreground">One portfolio for your own holdings across brokers.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Your own money, across every broker you use.</p>
           </button>
           <button onClick={() => setMode("family")} className="rounded-xl border bg-card p-6 text-left transition-colors hover:border-foreground/25">
             <div className="text-lg font-medium">Managing family</div>
@@ -83,19 +99,18 @@ export function Onboarding() {
     return (
       <Card className="mx-auto max-w-lg p-8">
         <button onClick={() => setMode("choose")} className="mb-4 text-sm text-muted-foreground hover:text-foreground">← Back</button>
-        <h2 className="font-serif text-xl">Name your portfolio</h2>
+        <h2 className="font-serif text-xl">What should we call you?</h2>
         <div className="mt-4 space-y-1.5">
-          <Input value={personalName} onChange={(e) => setPersonalName(e.target.value)} placeholder="My Portfolio" />
+          <Input value={personalName} onChange={(e) => setPersonalName(e.target.value)} placeholder="Your name, e.g. Manan" autoFocus />
         </div>
-        <div className="mt-4 space-y-1.5">
-          <label className="text-sm text-muted-foreground">Broker</label>
-          <Select value={personalBroker} onChange={(e) => setPersonalBroker(e.target.value)}>
-            <option value="">Multiple / other</option>
-            {BROKERS.filter((b) => b.id !== "other").map((b) => (
-              <option key={b.id} value={b.id}>{b.label}</option>
-            ))}
-          </Select>
-          <p className="text-xs text-muted-foreground">Imports will offer only this broker's files. Pick “Multiple / other” to keep all options.</p>
+        <div className="mt-6 space-y-2">
+          <label className="text-sm font-medium">Which brokers do you use?</label>
+          <BrokerPicker value={personalBrokers} onToggle={(b) => setPersonalBrokers((v) => (v.includes(b) ? v.filter((x) => x !== b) : [...v, b]))} />
+          <p className="text-xs text-muted-foreground">
+            {personalBrokers.length === 0
+              ? "Pick every broker you have an account with. You can add more later, or just drop their files in."
+              : `${personalBrokers.length} broker account${personalBrokers.length === 1 ? "" : "s"} — see them together, or filter to one, anywhere in the app.`}
+          </p>
         </div>
         {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
         <Button className="mt-4 w-full" disabled={createPersonal.isPending} onClick={() => createPersonal.mutate()}>
@@ -120,17 +135,8 @@ export function Onboarding() {
                 <button onClick={() => setMembers((ms) => ms.filter((_, j) => j !== i))} className="shrink-0 rounded-md px-2 py-1 text-sm text-muted-foreground hover:text-destructive" aria-label="Remove">✕</button>
               )}
             </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {BROKERS.map((b) => (
-                <button
-                  key={b.id}
-                  onClick={() => toggleBroker(i, b.id)}
-                  className={`rounded-full border px-3 py-1 text-xs ${m.brokers.includes(b.id) ? "border-primary bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-accent"}`}
-                >
-                  {m.brokers.includes(b.id) ? "✓ " : ""}
-                  {b.label}
-                </button>
-              ))}
+            <div className="mt-3">
+              <BrokerPicker value={m.brokers} onToggle={(b) => toggleBroker(i, b)} />
             </div>
           </div>
         ))}
