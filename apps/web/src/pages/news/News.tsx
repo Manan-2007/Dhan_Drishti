@@ -338,8 +338,8 @@ export function News() {
   const { data, isLoading, isError, dataUpdatedAt, isFetching } = useNews(portfolioId, marketSel);
   const ai = !!data?.ai.enabled;
   const region = data?.region ?? "in";
-  // Only offer the switch when you actually hold stocks in both markets.
-  const showToggle = !!data?.live && (data.markets?.in ?? 0) > 0 && (data.markets?.us ?? 0) > 0;
+  // Always offer the switch: even with no US stocks, the US market's own news is worth a look.
+  const showToggle = !!data?.live;
   const marketLabel = region === "us" ? "US market today" : "Indian market today";
 
   const companies = [...(data?.companies ?? [])].sort((a, b) => {
@@ -464,7 +464,9 @@ export function News() {
               )}
             </h2>
             {companies.length === 0 ? (
-              <p className="rounded-2xl border bg-card p-6 text-sm text-muted-foreground">No shares held right now. Once you have some, their news shows up here.</p>
+              <p className="rounded-2xl border bg-card p-6 text-sm text-muted-foreground">
+                {region === "us" ? "No US stocks yet" : "No Indian shares yet"} — the market news above still covers {region === "us" ? "Wall Street" : "Dalal Street"}. Once you hold some, their news shows up here.
+              </p>
             ) : (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {companies.map((c) => (
