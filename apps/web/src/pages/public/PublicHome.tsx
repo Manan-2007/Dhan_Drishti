@@ -621,7 +621,7 @@ function Footer() {
     <footer className="relative z-10 border-t border-border/60 bg-background">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-8 text-xs text-muted-foreground sm:px-6">
         <Logo />
-        <p className="max-w-md">A self-hosted portfolio tracker. Figures are for your information — nothing here is investment advice. Broker names belong to their owners; the marks above are ours.</p>
+        <p className="max-w-md">A self-hosted portfolio tracker. Figures are for your information — nothing here is investment advice. Broker names and logos belong to their owners and appear only to show which files are supported.</p>
       </div>
     </footer>
   );
