@@ -147,6 +147,7 @@ export const openApiSpec = {
     "/api/market-data/status": { get: op("Market data", "Last price refresh time", { parameters: [portfolioIdParam] }) },
     "/api/market/indices": { get: op("Market data", "Live Nifty 50, Bank Nifty and Sensex values (cached a few seconds)") },
     "/api/news": { get: op("News", "Headlines about the largest held shares and the market, with an AI read when Azure OpenAI is configured (only names and public headlines are sent)", { parameters: [portfolioIdParam] }) },
+    "/api/news/security/{id}": { get: op("News", "Headlines and the AI read for one stock you have traded (only its public ticker and name are sent)", { parameters: [idPath] }) },
 
     "/api/exchange-rates": {
       get: op("Exchange rates", "Latest rate per currency pair"),

@@ -65,6 +65,8 @@ class Limiter {
 const fingerprint = (hs: Headline[]) => hs.slice(0, READ_BASIS).map((h) => h.id).sort().join(",");
 const newestFirst = (a: Headline, b: Headline) => (a.publishedAt < b.publishedAt ? 1 : a.publishedAt > b.publishedAt ? -1 : 0);
 
+const iso = (t: number | undefined) => (t ? new Date(t).toISOString() : null);
+
 export class NewsHub {
   private names = new Map<string, string>();
   private feeds = new Map<string, Stamped<Headline[]>>();
@@ -199,7 +201,6 @@ export class NewsHub {
     const marketRead = this.marketReads.get(region) ?? null;
     if (this.stale(market, this.o.marketTtlMs)) this.refreshMarket(region);
     for (const c of companies) if (this.stale(this.feeds.get(c.ticker), this.o.newsTtlMs)) this.refreshCompany(c);
-    const iso = (t: number | undefined) => (t ? new Date(t).toISOString() : null);
     return {
       refreshing: this.busy.size > 0,
       market: {
@@ -207,15 +208,25 @@ export class NewsHub {
         read: marketRead?.value ?? null,
         readAt: iso(marketRead?.at),
       },
-      companies: companies.map((c) => ({
-        ticker: c.ticker,
-        name: this.names.get(c.ticker) ?? c.fallbackName,
-        loaded: this.feeds.has(c.ticker),
-        items: this.feeds.get(c.ticker)?.value ?? [],
-        read: this.reads.get(c.ticker)?.value ?? null,
-        readAt: iso(this.reads.get(c.ticker)?.at),
-        reading: this.busy.has(`read:${c.ticker}`),
-      })),
+      companies: companies.map((c) => this.entry(c)),
+    };
+  }
+
+  /** What is known right now about one company (any you hold, not just the largest); refreshes it if stale. */
+  company(c: CompanyKey) {
+    if (this.stale(this.feeds.get(c.ticker), this.o.newsTtlMs)) this.refreshCompany(c);
+    return { refreshing: this.busy.has(`news:${c.ticker}`) || this.busy.has(`read:${c.ticker}`), ...this.entry(c) };
+  }
+
+  private entry(c: CompanyKey) {
+    return {
+      ticker: c.ticker,
+      name: this.names.get(c.ticker) ?? c.fallbackName,
+      loaded: this.feeds.has(c.ticker),
+      items: this.feeds.get(c.ticker)?.value ?? [],
+      read: this.reads.get(c.ticker)?.value ?? null,
+      readAt: iso(this.reads.get(c.ticker)?.at),
+      reading: this.busy.has(`read:${c.ticker}`),
     };
   }
 }

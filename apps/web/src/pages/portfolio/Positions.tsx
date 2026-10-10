@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
-import { ChevronDown, ChevronsUpDown, ArrowDown, ArrowUp, RefreshCw, Search, Upload } from "lucide-react";
+import { ChevronDown, ChevronsUpDown, ArrowDown, ArrowUp, ChartCandlestick, Newspaper, RefreshCw, Search, Upload } from "lucide-react";
+import { stockHref } from "@/components/StockLinks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -293,7 +294,7 @@ export function Positions() {
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
                           transition={{ duration: 0.18 }}
-                          className="cursor-pointer border-t border-border/60 transition-colors hover:bg-raised/60"
+                          className="group cursor-pointer border-t border-border/60 transition-colors hover:bg-raised/60"
                           onClick={() => navigate(`/portfolio/security/${h.security.id}`)}
                         >
                           <PositionCells h={h} totalValue={totalValue} />
@@ -329,7 +330,7 @@ function PositionCells({ h, totalValue }: { h: HoldingRow; totalValue: number })
   const contract = readableContract(h.security.symbol);
   return (
     <>
-      <td className="max-w-[280px] px-3 py-3">
+      <td className="max-w-[240px] px-3 py-3">
         <span className="flex items-center gap-2">
           <span className="truncate font-semibold" title={h.security.symbol}>{contract?.title ?? h.security.symbol}</span>
           {short && !h.expired && <Badge variant="warning">short</Badge>}
@@ -339,6 +340,17 @@ function PositionCells({ h, totalValue }: { h: HoldingRow; totalValue: number })
             </Badge>
           )}
           {closed && <Badge variant="muted">closed</Badge>}
+          {/* Jump straight to this stock's research or news; the row itself opens the holding. */}
+          <span className="ml-auto flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
+            <RowLink to={stockHref.research(h.security.id)} label={`Research ${h.security.symbol}`}>
+              <ChartCandlestick />
+            </RowLink>
+            {h.security.assetClass === "equity" && (
+              <RowLink to={stockHref.news(h.security.id)} label={`News on ${h.security.symbol}`}>
+                <Newspaper />
+              </RowLink>
+            )}
+          </span>
         </span>
         <span className="block truncate text-xs text-muted-foreground">
           {contract ? contract.expiry : h.security.name !== h.security.symbol ? h.security.name : assetClassLabel(h.security.assetClass)}
@@ -375,5 +387,23 @@ function PositionCells({ h, totalValue }: { h: HoldingRow; totalValue: number })
       </td>
       <td className="px-3 py-3 text-right whitespace-nowrap text-muted-foreground">{weight === null ? "—" : `${(weight * 100).toFixed(1)}%`}</td>
     </>
+  );
+}
+
+function RowLink({ to, label, children }: { to: string; label: string; children: React.ReactNode }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Link
+          to={to}
+          aria-label={label}
+          onClick={(e) => e.stopPropagation()}
+          className="inline-flex size-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-card hover:text-primary [&_svg]:size-4"
+        >
+          {children}
+        </Link>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }

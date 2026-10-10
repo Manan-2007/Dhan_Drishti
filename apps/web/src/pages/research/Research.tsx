@@ -10,9 +10,10 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CurrencySwitch, NoMatch, ScopeSelect } from "@/components/shell/ScopeSelect";
 import { useMoneyView } from "@/lib/money-view";
-import { useFilter, useFundamentals, useHoldings, useSecurityDetail } from "@/lib/hooks";
+import { useFilter, useFundamentals, useHoldings, useSecurityDetail, useStockNews } from "@/lib/hooks";
+import { StockLinks, stockHref } from "@/components/StockLinks";
 import type { PriceRange } from "@/lib/api";
-import { assetClassLabel, compactMoney, dateShort, money, num, qty, signedMoney, signedPct } from "@/lib/format";
+import { ago, assetClassLabel, compactMoney, dateShort, money, num, qty, signedMoney, signedPct } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /** Research: search one of your stocks, then see your position, its chart and the technicals. */
@@ -191,6 +192,8 @@ function StockResearch({ id }: { id: string }) {
         </div>
       </div>
 
+      <StockLinks id={id} here="research" assetClass={s.assetClass} />
+
       {/* You & this stock */}
       <Panel title="You & this stock">
         {held ? (
@@ -259,9 +262,49 @@ function StockResearch({ id }: { id: string }) {
         </Panel>
       )}
 
+      {s.assetClass === "equity" && <LatestNews id={id} />}
+
       {/* Fundamentals — from Yahoo (public ticker only) */}
       <FundamentalsPanel id={id} scope={scope} cur={cur} />
     </div>
+  );
+}
+
+/** The newest few headlines about this stock, with the AI's one-line read; the rest on News. */
+function LatestNews({ id }: { id: string }) {
+  const { data } = useStockNews(id);
+  if (!data?.live) return null;
+  const items = data.items.slice(0, 4);
+  return (
+    <Panel
+      title="Latest news"
+      action={
+        <Link to={stockHref.news(id)} className="text-xs font-medium text-primary hover:underline">
+          All news on {data.symbol} →
+        </Link>
+      }
+    >
+      {data.read && <p className="mb-3 max-w-3xl text-sm leading-relaxed">{data.read.summary}</p>}
+      {!data.loaded ? (
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-11/12" />
+          <Skeleton className="h-4 w-2/3" />
+        </div>
+      ) : items.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No news about {data.name} this week.</p>
+      ) : (
+        <ul className="divide-y">
+          {items.map((h) => (
+            <li key={h.id}>
+              <a href={h.link} target="_blank" rel="noreferrer noopener" className="group block py-2">
+                <span className="block text-sm leading-snug group-hover:text-primary">{h.title}</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">{[h.source, `published ${ago(h.publishedAt)}`].filter(Boolean).join(" · ")}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
   );
 }
 

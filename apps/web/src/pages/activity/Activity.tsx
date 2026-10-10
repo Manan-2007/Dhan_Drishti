@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { ArrowRight, ChevronDown, Layers, Loader2, Plus, Search, Upload } from "lucide-react";
+import { ChevronDown, Layers, Loader2, Plus, Search, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,6 +16,7 @@ import type { Transaction } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { readableContract } from "@/lib/instrument";
 import { useMoneyView } from "@/lib/money-view";
+import { StockLinks } from "@/components/StockLinks";
 
 type Group = "all" | "trades" | "income" | "cash" | "other";
 const GROUPS: { value: Group; label: string; types?: string[] }[] = [
@@ -149,6 +150,9 @@ export function Activity() {
   const { data: portfolios } = usePortfolios();
   const { data: accounts } = useAllAccounts();
   const navigate = useNavigate();
+  // ?stock=<id> narrows the timeline to one stock (linked from its holding, research and news).
+  const [params, setParams] = useSearchParams();
+  const stock = params.get("stock");
   const [group, setGroup] = useState<Group>("all");
   const [period, setPeriod] = useState<Period>("all");
   const [accountId, setAccountId] = useState("");
@@ -163,7 +167,7 @@ export function Activity() {
 
   const range = useMemo(() => periodRange(period), [period]);
   const types = GROUPS.find((g) => g.value === group)?.types;
-  const query = useActivity({ scope, accountId: accountId || undefined, types, q: q || undefined, ...range });
+  const query = useActivity({ scope, accountId: accountId || undefined, securityId: stock ?? undefined, types, q: q || undefined, ...range });
   const rows = useMemo(() => query.data?.pages.flatMap((p) => p.transactions) ?? [], [query.data]);
   const summary = query.data?.pages[0]?.summary;
 
@@ -195,7 +199,8 @@ export function Activity() {
     { value: "lastfy", label: "Last year" },
     { value: "12m", label: "12 months" },
   ];
-  const filtered = group !== "all" || period !== "all" || !!accountId || !!q;
+  const filtered = group !== "all" || period !== "all" || !!accountId || !!q || !!stock;
+  const stockSymbol = stock ? (rows.find((t) => t.security?.id === stock)?.security?.symbol ?? "this stock") : null;
   const ccy = summary?.baseCurrency ?? "INR";
 
   return (
@@ -226,6 +231,19 @@ export function Activity() {
                 </option>
               ))}
           </select>
+        )}
+        {stock && (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              params.delete("stock");
+              setParams(params);
+            }}
+            aria-label={`Show every stock, not just ${stockSymbol}`}
+          >
+            Only {stockSymbol} <X />
+          </Button>
         )}
         <ScopeSelect currency />
         <Button className="ml-auto" variant="outline" onClick={() => setAdding(true)} disabled={!portfolios?.length}>
@@ -435,7 +453,7 @@ function FoldedDetail({ rows }: { rows: Transaction[] }) {
           );
         })}
       </ul>
-      {rows[0]!.security && <SecurityLink id={rows[0]!.security.id} symbol={readableContract(rows[0]!.security.symbol)?.title ?? rows[0]!.security.symbol} />}
+      {rows[0]!.security && <StockLinks id={rows[0]!.security.id} here="trades" assetClass={rows[0]!.security.assetClass} />}
     </div>
   );
 }
@@ -481,15 +499,8 @@ function Detail({ t }: { t: Transaction }) {
         <Field label="From">{sourceLabel(t.sourceBroker)}</Field>
       </dl>
       {t.notes && <p className="max-w-3xl text-sm text-muted-foreground">{t.notes}</p>}
-      {t.security && <SecurityLink id={t.security.id} symbol={readableContract(t.security.symbol)?.title ?? t.security.symbol} />}
+      {t.security && <StockLinks id={t.security.id} here="trades" assetClass={t.security.assetClass} />}
     </div>
   );
 }
 
-function SecurityLink({ id, symbol }: { id: string; symbol: string }) {
-  return (
-    <Link to={`/portfolio/security/${id}`} className="inline-flex items-center gap-1 text-sm font-medium text-foreground underline-offset-4 hover:underline">
-      Everything about {symbol} <ArrowRight className="size-3.5" />
-    </Link>
-  );
-}

@@ -1,7 +1,8 @@
-import { inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import type { DB } from "../db/index.js";
-import { securities } from "../db/schema.js";
+import { securities, transactions } from "../db/schema.js";
+import { NotFoundError } from "../lib/errors.js";
 import { scopeFromRequest } from "./scope.js";
 import { authed } from "../lib/routes.js";
 import { computePortfolioHoldings } from "./holdings.js";
@@ -109,5 +110,20 @@ export function registerNewsRoutes(app: FastifyInstance, db: DB, hub: NewsHub | 
       companies: out,
       feed: [...feed.values()].sort((a, b) => (a.publishedAt < b.publishedAt ? 1 : -1)).slice(0, FEED_SIZE),
     };
+  });
+
+  // One stock's news — any you've traded, however small (the main page follows the largest 30).
+  // Only its public ticker and name go out, as on the main page.
+  app.get<{ Params: { id: string } }>("/api/news/security/:id", opts, async (req) => {
+    const userId = req.user!.id;
+    const id = req.params.id;
+    const mine = await db.select({ id: transactions.id }).from(transactions).where(and(eq(transactions.userId, userId), eq(transactions.securityId, id))).limit(1).get();
+    const sec = mine ? await db.select().from(securities).where(eq(securities.id, id)).get() : undefined;
+    if (!sec) throw new NotFoundError("Security");
+    const ticker = tickerOf(sec.symbol.trim().toUpperCase(), sec.exchange, sec.currency);
+    const base = { securityId: sec.id, symbol: sec.symbol, assetClass: sec.assetClass };
+    if (!hub) return { live: false, ai: { enabled: false, label: null }, refreshing: false, ...base, ticker, name: sec.name, loaded: false, items: [], read: null, readAt: null, reading: false };
+    const c = hub.company({ ticker, fallbackName: sec.name || sec.symbol });
+    return { live: true, ai: { enabled: !!hub.analystLabel, label: hub.analystLabel }, ...base, ...c };
   });
 }

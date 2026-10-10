@@ -588,6 +588,22 @@ export interface NewsCompany {
   readAt: string | null;
   reading: boolean;
 }
+/** One stock's news (any you've traded) — see /api/news/security/:id. */
+export interface StockNewsResponse {
+  live: boolean;
+  ai: { enabled: boolean; label: string | null };
+  refreshing: boolean;
+  securityId: string;
+  symbol: string;
+  assetClass: string;
+  ticker: string;
+  name: string;
+  loaded: boolean;
+  items: Headline[];
+  read: CompanyRead | null;
+  readAt: string | null;
+  reading: boolean;
+}
 export interface FeedItem extends Headline {
   tone: NewsTone | null;
   companies: { securityId: string; symbol: string; name: string }[];

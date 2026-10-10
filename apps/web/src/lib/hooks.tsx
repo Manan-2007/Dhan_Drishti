@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { useAuth } from "@/auth/AuthContext";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { api, type ActivityPage, type Portfolio, type Account, type HoldingsResponse, type Transaction, type ImportBatch, type NetWorthSeries, type RebalanceResponse, type RebalanceDimension, type ManualAssetsResult, type CapitalGainsReport, type SecurityDetail, type IndicesResponse, type NewsResponse, type NewsMarket, type FundamentalsResponse } from "./api.js";
+import { api, type ActivityPage, type Portfolio, type Account, type HoldingsResponse, type Transaction, type ImportBatch, type NetWorthSeries, type RebalanceResponse, type RebalanceDimension, type ManualAssetsResult, type CapitalGainsReport, type SecurityDetail, type IndicesResponse, type NewsResponse, type StockNewsResponse, type NewsMarket, type FundamentalsResponse } from "./api.js";
 
 /**
  * Every data hook takes `scope`: the query string for the people / brokers / market chosen in the
@@ -66,6 +66,17 @@ export function useNews(scope: string, market?: NewsMarket) {
   });
 }
 
+/** One stock's headlines and AI read; polls quickly while they're being fetched or read. */
+export function useStockNews(id: string | null) {
+  return useQuery({
+    queryKey: ["news", "stock", id],
+    queryFn: () => api.get<StockNewsResponse>(`/api/news/security/${encodeURIComponent(id!)}`),
+    enabled: !!id,
+    refetchInterval: (query) => (query.state.data && (query.state.data.refreshing || !query.state.data.loaded) ? 3000 : 60_000),
+    refetchIntervalInBackground: false,
+  });
+}
+
 export function useManualAssets(scope: string) {
   return useQuery({
     queryKey: ["manual-assets", scope],
@@ -122,6 +133,8 @@ export function useHoldings(scope: string) {
 export interface ActivityFilter {
   scope: string;
   accountId?: string;
+  /** Just one stock's entries. */
+  securityId?: string;
   types?: string[];
   q?: string;
   from?: string;
@@ -138,6 +151,7 @@ export function useActivity(filter: ActivityFilter, pageSize = 150) {
       search.set("limit", String(pageSize));
       search.set("offset", String(pageParam));
       if (filter.accountId) search.set("accountId", filter.accountId);
+      if (filter.securityId) search.set("securityId", filter.securityId);
       if (filter.types?.length) search.set("types", filter.types.join(","));
       if (filter.q) search.set("q", filter.q);
       if (filter.from) search.set("from", filter.from);

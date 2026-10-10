@@ -15,6 +15,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useBenchmark, useBenchmarks, useFilter, useHoldings, usePerformance, useTwr } from "@/lib/hooks";
 import { compactMoney, money, num, signedMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { stockHref } from "@/components/StockLinks";
 
 const SEGMENTS: Record<string, string> = { equity: "Shares & ETFs", mf: "Mutual funds", fno: "Futures & options", commodity: "Commodities", other: "Other" };
 
@@ -128,8 +129,8 @@ export function Returns() {
       </div>
 
       {topPnl.length > 0 && (
-        <Panel title="Winners & losers" action={<span className="text-xs text-muted-foreground">on paper · biggest swings</span>}>
-          <DivergingBars rows={topPnl} currency={ccy} format={compactMoney} />
+        <Panel title="Winners & losers" action={<span className="text-xs text-muted-foreground">on paper · biggest swings · click one to research it</span>}>
+          <DivergingBars rows={topPnl} currency={ccy} format={compactMoney} onSelect={(id) => navigate(stockHref.research(id))} selectLabel={(r) => `Research ${r.label}`} />
         </Panel>
       )}
 

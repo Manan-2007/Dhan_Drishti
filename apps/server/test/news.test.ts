@@ -186,6 +186,27 @@ describe("GET /api/news", () => {
     expect(usRes.companies.map((c: { symbol: string }) => c.symbol)).toEqual(["AAPL"]);
   });
 
+  it("serves one stock's news, for any you've traded, and nobody else's", async () => {
+    const cookie = await login();
+    const pid = (await post(cookie, "/api/portfolios", { name: "P" })).json().portfolio.id;
+    const lt = (await post(cookie, "/api/securities", { symbol: "LT", name: "LT", exchange: "BSE" })).json().security.id;
+    await post(cookie, "/api/transactions", { portfolioId: pid, securityId: lt, type: "buy", tradeDate: "2024-01-01", quantity: "47", price: "3111" });
+
+    const first = (await app.inject({ method: "GET", url: `/api/news/security/${lt}`, headers: { cookie } })).json();
+    expect(first).toMatchObject({ live: true, securityId: lt, symbol: "LT", ticker: "LT.BO" });
+    await hub.settle();
+    const r = (await app.inject({ method: "GET", url: `/api/news/security/${lt}`, headers: { cookie } })).json();
+    expect(r.name).toBe("Larsen & Toubro");
+    expect(r.items.map((x: { id: string }) => x.id)).toEqual(["both", "lt1", "lt2"]);
+    expect(r.read).toMatchObject({ stance: "tailwind" });
+    // Only public text went out.
+    expect([...news.queries, ...analyst.seen].join("\n")).not.toContain("3111");
+
+    // A security this login never traded is not theirs to ask about.
+    const other = (await post(cookie, "/api/securities", { symbol: "RELIANCE", name: "RELIANCE", exchange: "NSE" })).json().security.id;
+    expect((await app.inject({ method: "GET", url: `/api/news/security/${other}`, headers: { cookie } })).statusCode).toBe(404);
+  });
+
   it("is off without a news source", async () => {
     const { db } = await createDb(":memory:");
     const plain = buildApp(db);

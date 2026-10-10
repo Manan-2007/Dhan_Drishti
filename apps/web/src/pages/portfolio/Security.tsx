@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useFilter, useSecurityDetail } from "@/lib/hooks";
 import { useMoneyView } from "@/lib/money-view";
 import { CurrencySwitch } from "@/components/shell/ScopeSelect";
+import { StockLinks } from "@/components/StockLinks";
 import { assetClassLabel, dateShort, money, num, qty, signedMoney, signedPct } from "@/lib/format";
 import { readableContract } from "@/lib/instrument";
 import { cn } from "@/lib/utils";
@@ -115,6 +116,8 @@ export function Security() {
           )}
         </div>
       </div>
+
+      <StockLinks id={s.id} here="holding" assetClass={s.assetClass} />
 
       <Panel title="Price" action={<Segmented ariaLabel="Chart range" size="xs" options={RANGES.map(({ value, label }) => ({ value, label }))} value={range} onChange={setRange} />}>
         {series.length >= 2 ? (

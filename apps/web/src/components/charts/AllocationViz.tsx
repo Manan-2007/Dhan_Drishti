@@ -282,7 +282,24 @@ export interface DivergingRow {
   value: number; // +gain / −loss
 }
 
-export function DivergingBars({ rows, currency, format, rowH = 30, max }: { rows: DivergingRow[]; currency: string; format: (v: number, c: string) => string; rowH?: number; max?: number }) {
+export function DivergingBars({
+  rows,
+  currency,
+  format,
+  rowH = 30,
+  max,
+  onSelect,
+  selectLabel = (r) => r.label,
+}: {
+  rows: DivergingRow[];
+  currency: string;
+  format: (v: number, c: string) => string;
+  rowH?: number;
+  max?: number;
+  /** Makes each row a link (click or Enter). */
+  onSelect?: (key: string) => void;
+  selectLabel?: (r: DivergingRow) => string;
+}) {
   const data = [...rows].filter((r) => Number.isFinite(r.value) && r.value !== 0).sort((a, b) => b.value - a.value);
   if (data.length === 0) return <p className="py-6 text-center text-sm text-muted-foreground">No gains or losses to show yet.</p>;
   const peak = max ?? Math.max(...data.map((r) => Math.abs(r.value)), 1);
@@ -301,7 +318,21 @@ export function DivergingBars({ rows, currency, format, rowH = 30, max }: { rows
         const gain = r.value >= 0;
         const x = gain ? cx : cx - w;
         return (
-          <g key={r.key}>
+          <g
+            key={r.key}
+            {...(onSelect && {
+              role: "link",
+              tabIndex: 0,
+              "aria-label": selectLabel(r),
+              onClick: () => onSelect(r.key),
+              onKeyDown: (e: React.KeyboardEvent) => {
+                if (e.key === "Enter") onSelect(r.key);
+              },
+              // The row's backdrop lights up on hover / keyboard focus.
+              className: "cursor-pointer outline-none [&:focus-visible>rect:first-child]:fill-white/5 [&:hover>rect:first-child]:fill-white/5",
+            })}
+          >
+            {onSelect && <rect x={0} y={y} width={W} height={rowH} fill="transparent" />}
             <text x={labelW - 12} y={y + rowH / 2 + 4} fill="#f3efe6" fontSize={14} textAnchor="end">
               {r.label.length > 22 ? `${r.label.slice(0, 21)}…` : r.label}
             </text>

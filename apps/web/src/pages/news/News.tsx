@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { ChevronDown, ExternalLink, KeyRound, Loader2, ShieldAlert, Sparkles, Telescope } from "lucide-react";
+import { ArrowLeft, ChevronDown, ExternalLink, KeyRound, Loader2, ShieldAlert, Sparkles, Telescope } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/kit/Segmented";
 import { Skeleton } from "@/components/ui/skeleton";
 import { IndexTicker } from "@/components/market/IndexTicker";
 import { ScopeSelect } from "@/components/shell/ScopeSelect";
-import { useFilter, useNews } from "@/lib/hooks";
+import { useFilter, useNews, useStockNews } from "@/lib/hooks";
+import { StockLinks, stockHref } from "@/components/StockLinks";
 import type { FeedItem, Headline, NewsCompany, NewsMarket, NewsStance, NewsTone } from "@/lib/api";
 import { ago } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -219,6 +221,17 @@ function CompanyTile({ c, ai }: { c: NewsCompany; ai: boolean }) {
                   <Sparkles className="size-3" /> AI read · {read.confidence} confidence · {ago(c.readAt)}
                 </p>
               )}
+              <p className="flex flex-wrap gap-x-4 gap-y-1 border-t pt-2 text-xs font-medium">
+                <Link to={stockHref.news(c.securityId)} className="text-primary hover:underline">
+                  All news on {c.symbol} →
+                </Link>
+                <Link to={stockHref.research(c.securityId)} className="text-muted-foreground hover:text-foreground hover:underline">
+                  Research
+                </Link>
+                <Link to={stockHref.holding(c.securityId)} className="text-muted-foreground hover:text-foreground hover:underline">
+                  Your holding
+                </Link>
+              </p>
             </motion.div>
           )}
         </AnimatePresence>
@@ -334,6 +347,113 @@ function LiveFeed({ feed }: { feed: FeedItem[] }) {
  * only a company's name and its headlines. Which companies you hold and how much stay here.
  */
 export function News() {
+  const [params] = useSearchParams();
+  const stock = params.get("stock");
+  return stock ? <StockNews id={stock} /> : <NewsOverview />;
+}
+
+/** Everything known about one stock's news: the AI read, then every headline, newest first. */
+function StockNews({ id }: { id: string }) {
+  const { data, isLoading, isError, dataUpdatedAt, isFetching } = useStockNews(id);
+  const read = data?.read;
+  return (
+    <div className="space-y-6">
+      <Link to="/news" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+        <ArrowLeft className="size-4" /> All news
+      </Link>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="font-display text-4xl leading-none tracking-tight sm:text-5xl">{data ? `News on ${data.symbol}` : "News"}</h1>
+          <p className="mt-2 text-sm text-muted-foreground">{data ? `${data.name} — what's being said, newest first. Refreshes on its own.` : "\u00a0"}</p>
+        </div>
+        {data?.live && (
+          <p className="flex items-center gap-2 rounded-full border bg-card px-3.5 py-1.5 text-xs text-muted-foreground">
+            <span className="relative flex size-2">
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-gain opacity-60" />
+              <span className="relative inline-flex size-2 rounded-full bg-gain" />
+            </span>
+            <UpdatedLabel at={dataUpdatedAt} busy={data.refreshing || isFetching} />
+          </p>
+        )}
+      </div>
+      <StockLinks id={id} here="news" />
+
+      {isLoading ? (
+        <Skeleton className="h-48 rounded-2xl" />
+      ) : isError || !data ? (
+        <p className="rounded-2xl border bg-card p-6 text-sm text-muted-foreground">This stock isn't in your records, so there's no news to follow for it.</p>
+      ) : !data.live ? (
+        <p className="rounded-2xl border bg-card p-6 text-sm text-muted-foreground">News is off on this server.</p>
+      ) : (
+        <>
+          {read ? (
+            <section className="space-y-3 rounded-2xl border bg-card p-6">
+              <div className="flex flex-wrap items-center gap-2">
+                <Tag className={STANCE[read.stance].className}>{STANCE[read.stance].label}</Tag>
+                <span className="text-xs text-muted-foreground">
+                  AI read · {read.confidence} confidence{data.readAt ? ` · ${ago(data.readAt)}` : ""}
+                </span>
+              </div>
+              <p className="max-w-3xl text-[15px] leading-relaxed">{read.summary}</p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {read.risks.length > 0 && (
+                  <div>
+                    <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-loss uppercase">
+                      <ShieldAlert className="size-3.5" /> Watch out for
+                    </p>
+                    <ul className="mt-1.5 space-y-1 text-sm">
+                      {read.risks.map((r) => (
+                        <li key={r} className="flex gap-2">
+                          <span className="mt-[8px] size-1 shrink-0 rounded-full bg-loss" aria-hidden />
+                          {r}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {read.outlook && (
+                  <div>
+                    <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-primary uppercase">
+                      <Telescope className="size-3.5" /> Next few weeks
+                    </p>
+                    <p className="mt-1.5 text-sm text-muted-foreground">{read.outlook}</p>
+                  </div>
+                )}
+              </div>
+            </section>
+          ) : (
+            data.ai.enabled &&
+            data.items.length > 0 && (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin text-primary" /> Reading the headlines…
+              </p>
+            )
+          )}
+          <section className="rounded-2xl border bg-card p-6">
+            <p className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">Latest headlines</p>
+            {!data.loaded ? (
+              <div className="mt-4 space-y-3">
+                <Skeleton className="h-5 w-11/12" />
+                <Skeleton className="h-5 w-3/4" />
+                <Skeleton className="h-5 w-5/6" />
+              </div>
+            ) : data.items.length === 0 ? (
+              <p className="mt-3 text-sm text-muted-foreground">No news about {data.name} this week.</p>
+            ) : (
+              <div className="mt-2 divide-y">
+                {data.items.map((h) => (
+                  <HeadlineLink key={h.id} h={h} tone={read?.tones[h.id]} />
+                ))}
+              </div>
+            )}
+          </section>
+        </>
+      )}
+    </div>
+  );
+}
+
+function NewsOverview() {
   const { scope, market: filterMarket } = useFilter();
   // The page's own India/US pick; it starts from (and resets with) the market in the shared filter.
   const [pick, setPick] = useState<{ from: typeof filterMarket; market: NewsMarket } | null>(null);
