@@ -5,7 +5,7 @@ import { queryClient } from "./lib/query.js";
 import { AuthProvider, useAuth } from "./auth/AuthContext.js";
 import { FilterProvider } from "./lib/hooks.js";
 import { ErrorBoundary } from "./components/ErrorBoundary.js";
-import { Landing } from "./pages/Landing.js";
+import { PublicSite } from "./pages/Landing.js";
 import { AppShell } from "@/components/shell/AppShell";
 import { Section } from "@/components/shell/Section";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -51,7 +51,12 @@ function Gate() {
       </div>
     );
   }
-  if (!user) return <Landing />;
+  if (!user)
+    return (
+      <BrowserRouter>
+        <PublicSite />
+      </BrowserRouter>
+    );
   return (
     <FilterProvider>
         <BrowserRouter>

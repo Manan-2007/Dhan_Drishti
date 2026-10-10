@@ -50,6 +50,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Drop every other cached query, then set the current user to null synchronously so the
       // gate re-renders to the landing page immediately (no dependence on a refetch).
       qc.removeQueries({ predicate: (q) => q.queryKey[0] !== "me" });
+      // Signing out on purpose lands on the front page, not a sign-in prompt for the page you were on.
+      window.history.replaceState(null, "", "/");
       qc.setQueryData(["me"], null);
     },
   };
