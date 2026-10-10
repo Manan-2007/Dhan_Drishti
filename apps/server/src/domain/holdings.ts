@@ -73,7 +73,11 @@ interface SerializedHolding {
   /** An F&O contract past its expiry that's still open: nothing in the files closes it and no public price can settle it (MCX). */
   expired: boolean;
   quote: { price: string; asOf: string; estimated: boolean } | null;
-  // Values converted into the user's base currency (null when no FX rate is available).
+  // Values in the user's base currency (null when no FX rate is available). What it's worth now is
+  // at today's rate; money that went in or came out (cost, sales, dividends) is at the rate on its
+  // own day where the ledger has it — so a foreign gain includes the currency's move.
+  /** Today's rate, base per 1 unit of the holding's currency ("1" for base-currency holdings). */
+  fxRate: string | null;
   baseInvested: string | null;
   baseCurrentValue: string | null;
   baseRealisedPnl: string | null;
@@ -121,6 +125,7 @@ function serialize(h: Holding, sec: Security, quote: CoreQuote | undefined): Ser
     quote: quote
       ? { price: quote.price, asOf: quote.asOf, estimated: ESTIMATE_PROVIDERS.has((quote as CoreQuote & { provider?: string }).provider ?? "") }
       : null,
+    fxRate: null,
     baseInvested: null,
     baseCurrentValue: null,
     baseRealisedPnl: null,
@@ -133,15 +138,22 @@ function serialize(h: Holding, sec: Security, quote: CoreQuote | undefined): Ser
   };
 }
 
-/** Fill in base-currency fields on a holding using a conversion rate (null = no rate). */
-function convertToBase(h: SerializedHolding, rate: Decimal | null): void {
+/**
+ * Fill in base-currency fields on a holding (rate = today's rate; null = no rate). Cost, booked
+ * profit and dividends use the rates on their own days when every event carried one (`core`), else
+ * today's rate — never a guess beyond that.
+ */
+function convertToBase(h: SerializedHolding, core: Holding, rate: Decimal | null): void {
   if (rate === null) return;
   const conv = (v: string | null) => (v === null ? null : d(v).times(rate).toFixed());
-  h.baseInvested = conv(h.invested);
+  h.fxRate = rate.toFixed();
   h.baseCurrentValue = conv(h.currentValue);
-  h.baseRealisedPnl = conv(h.realisedPnl);
-  h.baseDividends = conv(h.dividends);
-  h.baseUnrealisedPnl = conv(h.unrealisedPnl);
+  const costAtCost = core.investedBaseAtCost;
+  h.baseInvested = costAtCost ? costAtCost.toFixed() : conv(h.invested);
+  h.baseUnrealisedPnl =
+    costAtCost && h.baseCurrentValue !== null ? d(h.baseCurrentValue).minus(costAtCost).toFixed() : conv(h.unrealisedPnl);
+  h.baseRealisedPnl = core.realisedPnlBase ? core.realisedPnlBase.toFixed() : conv(h.realisedPnl);
+  h.baseDividends = core.dividendsBase ? core.dividendsBase.toFixed() : conv(h.dividends);
 }
 
 type Dim = { key: string; value: string; weight: string }[];
@@ -239,6 +251,7 @@ async function computeHoldingsUncached(db: DB, userId: string, scope?: ScopeArg)
   const secById = new Map(secRows.map((s) => [s.id, s]));
 
   const holdings = computeHoldings(txs, { quotes: quoteMap });
+  const coreById = new Map(holdings.map((h) => [h.securityId, h]));
   const serialized = holdings
     .map((h) => {
       const sec = secById.get(h.securityId);
@@ -259,7 +272,7 @@ async function computeHoldingsUncached(db: DB, userId: string, scope?: ScopeArg)
   const unconvertible = new Set<string>();
   for (const r of serialized) {
     const rate = r.security.currency === base ? d("1") : rates.get(r.security.currency) ?? null;
-    convertToBase(r, rate);
+    convertToBase(r, coreById.get(r.security.id)!, rate);
     // abs(): a short's value is negative but still needs an FX rate to aggregate.
     if (rate === null && Math.abs(Number(r.currentValue ?? r.invested)) > 0) unconvertible.add(r.security.currency);
   }

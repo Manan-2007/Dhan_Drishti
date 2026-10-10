@@ -8,7 +8,8 @@ import { Stat } from "@/components/kit/Stat";
 import { Empty } from "@/components/kit/Empty";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { NoMatch, ScopeSelect } from "@/components/shell/ScopeSelect";
+import { CurrencySwitch, NoMatch, ScopeSelect } from "@/components/shell/ScopeSelect";
+import { useMoneyView } from "@/lib/money-view";
 import { useFilter, useFundamentals, useHoldings, useSecurityDetail } from "@/lib/hooks";
 import type { PriceRange } from "@/lib/api";
 import { assetClassLabel, compactMoney, dateShort, money, num, qty, signedMoney, signedPct } from "@/lib/format";
@@ -23,8 +24,9 @@ export function Research() {
 // ---- Search landing ---------------------------------------------------------------------------
 
 function ResearchSearch() {
-  const { portfolioId, scope, active } = useFilter();
+  const { scope, active } = useFilter();
   const { data, isLoading } = useHoldings(scope);
+  const view = useMoneyView();
   const [q, setQ] = useState("");
   const nav = useNavigate();
 
@@ -43,7 +45,7 @@ function ResearchSearch() {
           <h1 className="font-display text-4xl leading-none tracking-tight sm:text-5xl">Research</h1>
           <p className="mt-2 text-sm text-muted-foreground">Look up one of your stocks — your position, its chart and the technicals.</p>
         </div>
-        <ScopeSelect />
+        <ScopeSelect currency />
       </div>
 
       <div className="relative max-w-md">
@@ -77,7 +79,12 @@ function ResearchSearch() {
                 <p className="truncate text-xs text-muted-foreground">{[h.security.name !== h.security.symbol ? h.security.name : null, assetClassLabel(h.security.assetClass)].filter(Boolean).join(" · ")}</p>
               </div>
               <div className="shrink-0 text-right">
-                <p className="font-semibold tabular-nums">{h.quote ? money(h.quote.price, h.security.currency) : "—"}</p>
+                <p className="font-semibold tabular-nums">
+                  {(() => {
+                    const px = view.price(h.quote?.price, h.security.currency, h.fxRate);
+                    return px.v === null ? "—" : money(px.v, px.cur);
+                  })()}
+                </p>
                 {(() => {
                   const cv = num(h.currentValue);
                   const tc = num(h.todayChange);
@@ -106,8 +113,9 @@ const RANGES: { value: Range; label: string; days: number | null }[] = [
 ];
 
 function StockResearch({ id }: { id: string }) {
-  const { portfolioId, scope } = useFilter();
+  const { scope } = useFilter();
   const { data, isLoading, isError } = useSecurityDetail(id, scope);
+  const view = useMoneyView();
   const [range, setRange] = useState<Range>("1y");
 
   const series = useMemo(() => {
@@ -148,7 +156,11 @@ function StockResearch({ id }: { id: string }) {
   const t = data.technicals;
   const quote = p?.quote;
   const held = p && Number(p.netQty) !== 0;
-  const yourReturn = num(p?.unrealisedPct);
+  // Your money in the switch's currency; the market's own data (chart, ranges, technicals) stays in
+  // the stock's — old prices converted at today's rate would tell a story that never happened.
+  const v = p ? view.holding(p) : null;
+  const px = view.price(quote?.price, cur, p?.fxRate);
+  const yourReturn = v ? v.pnlPct : null;
   const stockYear = t.changePct.year;
   // technicals.changePct is already a percent (signedPct expects a ratio, so format it directly).
   const fmtPct = (v: number | null) => (v === null ? "—" : `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(2)}%`);
@@ -166,21 +178,31 @@ function StockResearch({ id }: { id: string }) {
             {[s.name !== s.symbol ? s.name : null, assetClassLabel(s.assetClass), s.sector, s.exchange, cur !== "INR" ? cur : null].filter(Boolean).join(" · ")}
           </p>
         </div>
-        {quote && (
-          <div className="text-right">
-            <p className="text-3xl font-semibold tabular-nums">{money(quote.price, cur)}</p>
-            <p className="text-xs text-muted-foreground">as of {dateShort(quote.asOf)}</p>
-          </div>
-        )}
+        <div className="flex flex-col items-end gap-2">
+          <CurrencySwitch />
+          {quote && (
+            <div className="text-right">
+              <p className="text-3xl font-semibold tabular-nums">{money(px.v, px.cur)}</p>
+              <p className="text-xs text-muted-foreground">
+                {px.cur !== cur && `${money(quote.price, cur)} · `}as of {dateShort(quote.asOf)}
+              </p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* You & this stock */}
       <Panel title="You & this stock">
         {held ? (
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Stat label="You hold" value={qty(p!.netQty)} sub={p!.avgCost ? `at ${money(p!.avgCost, cur)} avg` : undefined} />
-            <Stat label="Worth now" value={p!.currentValue !== null ? money(p!.currentValue, cur) : "—"} />
-            <Stat label="Your return" value={yourReturn !== null ? signedPct(yourReturn) : "—"} tone={(yourReturn ?? 0) >= 0 ? "gain" : "loss"} sub="on paper" />
+            <Stat label="You hold" value={qty(p!.netQty)} sub={v!.avgCost !== null ? `at ${money(v!.avgCost, v!.cur)} avg` : undefined} />
+            <Stat label="Worth now" value={v!.value !== null ? money(v!.value, v!.cur) : "—"} />
+            <Stat
+              label="Your return"
+              value={yourReturn !== null ? signedPct(yourReturn) : "—"}
+              tone={(yourReturn ?? 0) >= 0 ? "gain" : "loss"}
+              sub={v!.pnl !== null ? `${signedMoney(v!.pnl, v!.cur)} on paper${v!.converted ? ", with the dollar's move" : ""}` : "on paper"}
+            />
             <Stat label="The stock · 1Y" value={fmtPct(stockYear)} tone={(stockYear ?? 0) >= 0 ? "gain" : "loss"} sub="its own move" />
           </div>
         ) : (
@@ -195,6 +217,7 @@ function StockResearch({ id }: { id: string }) {
             <StockChart points={series} markers={markers} currency={cur} height={320} />
             <p className="mt-3 text-xs text-muted-foreground">
               <span className="text-gain">▲</span> your buys · <span className="text-loss">▼</span> your sells
+              {v?.converted && ` · prices here and below stay in ${cur}, as they traded`}
             </p>
           </>
         ) : (

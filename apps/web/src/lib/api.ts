@@ -103,6 +103,8 @@ export interface HoldingRow {
   expired?: boolean;
   soldWithoutPurchase?: string;
   quote: { price: string; asOf: string; estimated: boolean } | null;
+  /** Today's rate: base currency per 1 unit of the holding's own ("1" for base-currency holdings). */
+  fxRate: string | null;
   baseInvested: string | null;
   baseCurrentValue: string | null;
   baseRealisedPnl: string | null;

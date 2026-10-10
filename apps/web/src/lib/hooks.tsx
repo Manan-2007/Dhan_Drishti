@@ -340,12 +340,16 @@ interface FilterCtx extends Filter {
   setBrokers: (ids: string[]) => void;
   setMarket: (m: MarketFilter) => void;
   clear: () => void;
+  /** Show US (any foreign-currency) figures in the base currency instead of their own. Not part of the filter. */
+  usInBase: boolean;
+  setUsInBase: (on: boolean) => void;
 }
 const Ctx = createContext<FilterCtx | null>(null);
 
 const EMPTY: Filter = { people: [], brokers: [], market: null };
 const filterKey = (userId: string | undefined) => `dd-filter:${userId ?? "anon"}`;
 const legacyKey = (userId: string | undefined) => `dd-portfolio:${userId ?? "anon"}`;
+const usInBaseKey = (userId: string | undefined) => `dd-us-in-base:${userId ?? "anon"}`;
 
 export function scopeOf(f: Filter): string {
   const p = new URLSearchParams();
@@ -385,6 +389,24 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const readUsInBase = () => {
+    try {
+      return localStorage.getItem(usInBaseKey(user?.id)) === "1";
+    } catch {
+      return false;
+    }
+  };
+  const [inBase, setInBase] = useState<{ key: string; on: boolean }>(() => ({ key, on: readUsInBase() }));
+  const usInBase = inBase.key === key ? inBase.on : readUsInBase();
+  const setUsInBase = (on: boolean) => {
+    setInBase({ key, on });
+    try {
+      localStorage.setItem(usInBaseKey(user?.id), on ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  };
+
   // A remembered person or broker that isn't this login's any more (deleted, or left over) would make
   // every screen ask for data it can't see — and look empty. Drop it.
   const { data: portfolios } = usePortfolios();
@@ -407,6 +429,8 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     setBrokers: (brokers) => save({ ...f, brokers }),
     setMarket: (market) => save({ ...f, market }),
     clear: () => save(EMPTY),
+    usInBase,
+    setUsInBase,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

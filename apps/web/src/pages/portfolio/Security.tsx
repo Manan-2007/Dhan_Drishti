@@ -8,6 +8,8 @@ import { Stat } from "@/components/kit/Stat";
 import { Empty } from "@/components/kit/Empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useFilter, useSecurityDetail } from "@/lib/hooks";
+import { useMoneyView } from "@/lib/money-view";
+import { CurrencySwitch } from "@/components/shell/ScopeSelect";
 import { assetClassLabel, dateShort, money, num, qty, signedMoney, signedPct } from "@/lib/format";
 import { readableContract } from "@/lib/instrument";
 import { cn } from "@/lib/utils";
@@ -27,6 +29,7 @@ const VERB: Record<string, string> = { buy: "Bought", sell: "Sold", dividend: "D
 export function Security() {
   const { id } = useParams();
   const { portfolioId, scope } = useFilter();
+  const view = useMoneyView();
   const { data, isLoading, isError } = useSecurityDetail(id, scope);
   const [range, setRange] = useState<Range>("1y");
 
@@ -70,10 +73,16 @@ export function Security() {
   const title = contract?.title ?? s.symbol;
   const quote = p?.quote;
   const held = p && Number(p.netQty) !== 0;
-  const netPnl = num(p?.netPnl) ?? 0;
+  // In the switch's currency: worth at today's rate, money in and out at the rate on its day.
+  const v = p ? view.holding(p) : null;
+  const vcur = v?.cur ?? cur;
+  const px = view.price(quote?.price, cur, p?.fxRate);
+  const netPnl = v && p!.netPnl !== null ? (v.pnl ?? 0) + (v.realised ?? 0) + (v.dividends ?? 0) : null;
+  // Share of the whole portfolio's gain — always in the base currency, as that total is.
+  const baseNet = p && p.baseUnrealisedPnl !== null ? Number(p.baseUnrealisedPnl) + Number(p.baseRealisedPnl ?? 0) + Number(p.baseDividends ?? 0) : null;
   const portfolioNet = num(data.portfolioNetPnl) ?? 0;
-  const share = portfolioNet ? netPnl / portfolioNet : null;
-  const perUnitToday = p && num(p.todayChange) !== null && Number(p.netQty) ? Number(p.todayChange) / Number(p.netQty) : null;
+  const share = portfolioNet && baseNet !== null ? baseNet / portfolioNet : null;
+  const perUnitToday = v && v.today !== null && Number(p!.netQty) ? v.today / Number(p!.netQty) : null;
 
   return (
     <div className="space-y-5">
@@ -88,20 +97,23 @@ export function Security() {
             {[contract?.expiry ?? (s.name !== s.symbol ? s.name : null), assetClassLabel(s.assetClass), s.sector, s.exchange, cur !== "INR" ? cur : null].filter(Boolean).join(" · ")}
           </p>
         </div>
-        {quote && (
-          <div className="text-right">
-            <p className="text-3xl font-semibold tabular-nums">
-              {quote.estimated && <span className="mr-1 text-lg text-muted-foreground" title="Estimated from the live underlying">≈</span>}
-              {money(quote.price, cur)}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {perUnitToday !== null && (
-                <span className={cn("mr-1.5 font-semibold", perUnitToday >= 0 ? "text-gain" : "text-loss")}>{signedMoney(perUnitToday, cur, false)} today ·</span>
-              )}
-              as of {dateShort(quote.asOf)}
-            </p>
-          </div>
-        )}
+        <div className="flex flex-col items-end gap-2">
+          <CurrencySwitch />
+          {quote && (
+            <div className="text-right">
+              <p className="text-3xl font-semibold tabular-nums">
+                {quote.estimated && <span className="mr-1 text-lg text-muted-foreground" title="Estimated from the live underlying">≈</span>}
+                {money(px.v, px.cur)}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {perUnitToday !== null && (
+                  <span className={cn("mr-1.5 font-semibold", perUnitToday >= 0 ? "text-gain" : "text-loss")}>{signedMoney(perUnitToday, vcur, false)} today ·</span>
+                )}
+                {px.cur !== cur && `${money(quote.price, cur)} · `}as of {dateShort(quote.asOf)}
+              </p>
+            </div>
+          )}
+        </div>
       </div>
 
       <Panel title="Price" action={<Segmented ariaLabel="Chart range" size="xs" options={RANGES.map(({ value, label }) => ({ value, label }))} value={range} onChange={setRange} />}>
@@ -110,6 +122,7 @@ export function Security() {
             <StockChart points={series} markers={markers} currency={cur} height={320} />
             <p className="mt-3 text-xs text-muted-foreground">
               <span className="text-gain">▲</span> your buys · <span className="text-loss">▼</span> your sells
+              {v?.converted && ` · the chart stays in ${cur}, as it traded`}
             </p>
           </>
         ) : (
@@ -119,54 +132,57 @@ export function Security() {
         )}
       </Panel>
 
-      {p && (
+      {p && v && (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {held ? (
             <>
-              <Stat label={Number(p.netQty) < 0 ? "Units (short)" : "Units"} value={qty(p.netQty)} sub={p.avgCost ? `at ${money(p.avgCost, cur)} average` : undefined} />
-              <Stat label="Put in" value={money(Number(p.netQty) < 0 ? p.shortProceeds : p.invested, cur)} />
-              <Stat label="Worth now" value={p.currentValue !== null ? money(p.currentValue, cur) : "—"} />
+              <Stat label={Number(p.netQty) < 0 ? "Units (short)" : "Units"} value={qty(p.netQty)} sub={v.avgCost !== null ? `at ${money(v.avgCost, vcur)} average` : undefined} />
+              <Stat label="Put in" value={money(v.invested, vcur)} sub={v.converted ? "at each buy day's rate" : undefined} />
+              <Stat label="Worth now" value={v.value !== null ? money(v.value, vcur) : "—"} sub={v.converted ? "at today's rate" : undefined} />
               <Stat
                 label="On paper"
-                value={p.unrealisedPnl !== null ? signedMoney(p.unrealisedPnl, cur, false) : "—"}
-                tone={Number(p.unrealisedPnl) >= 0 ? "gain" : "loss"}
-                sub={p.unrealisedPct !== null ? signedPct(p.unrealisedPct) : undefined}
+                value={v.pnl !== null ? signedMoney(v.pnl, vcur, false) : "—"}
+                tone={(v.pnl ?? 0) >= 0 ? "gain" : "loss"}
+                sub={v.pnlPct !== null ? signedPct(v.pnlPct) : undefined}
               />
             </>
           ) : (
             <Stat label="Units" value="0" sub="Nothing held now" />
           )}
-          <Stat label="Booked" value={signedMoney(p.realisedPnl, cur, false)} tone={Number(p.realisedPnl) > 0 ? "gain" : Number(p.realisedPnl) < 0 ? "loss" : undefined} sub="profit on what you sold" />
-          <Stat label="Dividends" value={money(p.dividends, cur)} />
+          <Stat label="Booked" value={signedMoney(v.realised, vcur, false)} tone={(v.realised ?? 0) > 0 ? "gain" : (v.realised ?? 0) < 0 ? "loss" : undefined} sub="profit on what you sold" />
+          <Stat label="Dividends" value={money(v.dividends, vcur)} />
           <Stat
             label="Total"
-            value={p.netPnl !== null ? signedMoney(p.netPnl, cur, false) : "—"}
-            tone={netPnl >= 0 ? "gain" : "loss"}
-            sub={share !== null && netPnl !== 0 ? `${(Math.abs(share) * 100).toFixed(1)}% of your total ${portfolioNet >= 0 ? "gain" : "loss"}` : undefined}
+            value={netPnl !== null ? signedMoney(netPnl, vcur, false) : "—"}
+            tone={(netPnl ?? 0) >= 0 ? "gain" : "loss"}
+            sub={share !== null && baseNet ? `${(Math.abs(share) * 100).toFixed(1)}% of your total ${portfolioNet >= 0 ? "gain" : "loss"}` : undefined}
           />
         </div>
       )}
 
       <Panel title={`Your entries (${data.transactions.length})`}>
         <ul className="divide-y">
-          {data.transactions.map((t) => (
-            <li key={t.id} className="flex items-center gap-3 py-2.5 text-sm">
-              <span className="w-24 shrink-0 text-muted-foreground">{dateShort(t.tradeDate)}</span>
-              <span
-                className={cn(
-                  "shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold",
-                  t.type === "buy" ? "bg-gain/15 text-gain" : t.type === "sell" ? "bg-loss/15 text-loss" : t.type === "dividend" ? "bg-primary/15 text-primary" : "bg-raised text-muted-foreground",
-                )}
-              >
-                {t.sourceBroker === "snapshot" && t.type === "buy" ? "Opening balance" : (VERB[t.type] ?? t.type)}
-              </span>
-              <span className="flex-1 text-muted-foreground">
-                {t.type === "split" ? `×${Number(t.price)} units` : Number(t.quantity) ? `${qty(t.quantity)} @ ${money(t.price, t.currency)}` : ""}
-                {t.sourceBroker === "expiry" && " · settled at expiry, estimated"}
-              </span>
-              <span className="font-semibold tabular-nums">{money(t.grossAmount, t.currency)}</span>
-            </li>
-          ))}
+          {data.transactions.map((t) => {
+            const m = view.tx(t);
+            return (
+              <li key={t.id} className="flex items-center gap-3 py-2.5 text-sm">
+                <span className="w-24 shrink-0 text-muted-foreground">{dateShort(t.tradeDate)}</span>
+                <span
+                  className={cn(
+                    "shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold",
+                    t.type === "buy" ? "bg-gain/15 text-gain" : t.type === "sell" ? "bg-loss/15 text-loss" : t.type === "dividend" ? "bg-primary/15 text-primary" : "bg-raised text-muted-foreground",
+                  )}
+                >
+                  {t.sourceBroker === "snapshot" && t.type === "buy" ? "Opening balance" : (VERB[t.type] ?? t.type)}
+                </span>
+                <span className="flex-1 text-muted-foreground">
+                  {t.type === "split" ? `×${Number(t.price)} units` : Number(t.quantity) ? `${qty(t.quantity)} @ ${money(Number(t.price) * m.k, m.cur)}` : ""}
+                  {t.sourceBroker === "expiry" && " · settled at expiry, estimated"}
+                </span>
+                <span className="font-semibold tabular-nums">{money(Number(t.grossAmount) * m.k, m.cur)}</span>
+              </li>
+            );
+          })}
         </ul>
       </Panel>
     </div>

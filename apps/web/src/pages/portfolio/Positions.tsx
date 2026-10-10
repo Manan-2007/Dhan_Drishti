@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { Empty } from "@/components/kit/Empty";
 import { Stat } from "@/components/kit/Stat";
 import { readableContract } from "@/lib/instrument";
+import { useMoneyView } from "@/lib/money-view";
 
 type SortKey = "security" | "value" | "invested" | "pnl" | "pnlPct" | "today" | "weight";
 
@@ -92,8 +93,9 @@ function HeadCell({ col, sortKey, dir, onSort }: { col: (typeof COLS)[number]; s
 export function Positions() {
   const navigate = useNavigate();
   const reduceMotion = useReducedMotion();
-  const { portfolioId, scope } = useFilter();
+  const { scope } = useFilter();
   const { data, isLoading } = useHoldings(scope);
+  const view = useMoneyView();
   const status = useMarketStatus();
   const refresh = useRefreshPrices();
   const [search, setSearch] = useState("");
@@ -201,7 +203,7 @@ export function Positions() {
           <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search holdings" className="h-10 rounded-full pl-10" aria-label="Search holdings" />
         </div>
-        <ScopeSelect />
+        <ScopeSelect currency />
         {closedCount > 0 && (
           <Button variant={showClosed ? "secondary" : "outline"} size="sm" onClick={() => setShowClosed((v) => !v)} aria-pressed={showClosed}>
             {showClosed ? "Hide" : "Show"} {closedCount} closed
@@ -304,7 +306,13 @@ export function Positions() {
           </table>
         </div>
       )}
-      <p className="text-xs text-muted-foreground">Values in {ccy}. ≈ marks an estimated price (options and futures, from the live underlying). Click any row for its full history.</p>
+      <p className="text-xs text-muted-foreground">
+        {all.some((h) => h.security.currency !== ccy)
+          ? view.on
+            ? `Everything in ${ccy}: US holdings are worth today's rate, and their cost is at the rate on each buy day — so their profit includes the dollar's move. `
+            : `Each row in its own currency; group totals in ${ccy}. `
+          : `Values in ${ccy}. `}
+        ≈ marks an estimated price (options and futures, from the live underlying). Click any row for its full history.</p>
     </div>
   );
 }
@@ -316,7 +324,8 @@ function PositionCells({ h, totalValue }: { h: HoldingRow; totalValue: number })
   const value = num(h.baseCurrentValue);
   const weight = value !== null && totalValue > 0 ? value / totalValue : null;
   const pnl = num(h.baseUnrealisedPnl);
-  const cur = h.security.currency;
+  const v = useMoneyView().holding(h);
+  const cur = v.cur;
   const contract = readableContract(h.security.symbol);
   return (
     <>
@@ -337,32 +346,32 @@ function PositionCells({ h, totalValue }: { h: HoldingRow; totalValue: number })
         </span>
       </td>
       <td className="px-3 py-3 text-right whitespace-nowrap">{closed ? "—" : qty(h.netQty)}</td>
-      <td className="px-3 py-3 text-right whitespace-nowrap">{closed ? "—" : money(h.avgCost, cur)}</td>
-      <td className="px-3 py-3 text-right whitespace-nowrap">{closed ? "—" : money(short ? h.shortProceeds : h.invested, cur)}</td>
+      <td className="px-3 py-3 text-right whitespace-nowrap">{closed ? "—" : money(v.avgCost, cur)}</td>
+      <td className="px-3 py-3 text-right whitespace-nowrap">{closed ? "—" : money(v.invested, cur)}</td>
       <td className="px-3 py-3 text-right whitespace-nowrap font-semibold">
         {h.quote?.estimated && (
           <span className="mr-1 font-normal text-muted-foreground" title="Estimated from the live underlying — not an exchange price">
             ≈
           </span>
         )}
-        {closed ? "—" : money(h.currentValue, cur)}
+        {closed ? "—" : money(v.value, cur)}
       </td>
       <td className={cn("px-3 py-3 text-right whitespace-nowrap", pnl === null ? "text-muted-foreground" : pnl >= 0 ? "text-gain" : "text-loss")}>
         {closed ? (
-          <span className={cn(Number(h.realisedPnl) >= 0 ? "text-gain" : "text-loss")} title="Realised on this closed position">
-            {signedMoney(h.realisedPnl, cur, false)} <span className="text-xs text-muted-foreground">realised</span>
+          <span className={cn((v.realised ?? 0) >= 0 ? "text-gain" : "text-loss")} title="Realised on this closed position">
+            {signedMoney(v.realised, cur, false)} <span className="text-xs text-muted-foreground">realised</span>
           </span>
         ) : pnl === null ? (
           "—"
         ) : (
           <>
-            {signedMoney(h.unrealisedPnl, cur, false)}
-            {h.unrealisedPct !== null && <span className="ml-1 text-xs opacity-80">{signedPct(h.unrealisedPct, 1)}</span>}
+            {signedMoney(v.pnl, cur, false)}
+            {v.pnlPct !== null && <span className="ml-1 text-xs opacity-80">{signedPct(v.pnlPct, 1)}</span>}
           </>
         )}
       </td>
       <td className={cn("px-3 py-3 text-right whitespace-nowrap", today === null ? "text-muted-foreground" : today >= 0 ? "text-gain" : "text-loss")}>
-        {today === null ? "—" : signedMoney(h.todayChange, cur)}
+        {today === null ? "—" : signedMoney(v.today, cur)}
       </td>
       <td className="px-3 py-3 text-right whitespace-nowrap text-muted-foreground">{weight === null ? "—" : `${(weight * 100).toFixed(1)}%`}</td>
     </>

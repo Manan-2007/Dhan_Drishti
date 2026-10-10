@@ -68,9 +68,10 @@ export async function computeDividends(db: DB, userId: string, scope?: ScopeArg)
 
   const base = await baseCurrencyOf(db, userId);
   const rates = await rateMap(db, [...new Set(rows.map((r) => r.currency))], base);
-  const toBase = (amount: Decimal, currency: string): Decimal | null => {
+  // Money received is worth what it was on the day: that day's rate, else today's.
+  const toBase = (amount: Decimal, currency: string, fxOnDay: string | null): Decimal | null => {
     if (currency === base) return amount;
-    const rate = rates.get(currency) ?? null;
+    const rate = fxOnDay ? d(fxOnDay) : rates.get(currency) ?? null;
     return rate === null ? null : amount.times(rate);
   };
 
@@ -80,7 +81,7 @@ export async function computeDividends(db: DB, userId: string, scope?: ScopeArg)
   const bySecurity = new Map<string, { name: string; symbol: string; amount: Decimal }>();
   const events = rows.map((r) => {
     const amount = d(r.grossAmount);
-    const baseAmount = toBase(amount, r.currency);
+    const baseAmount = toBase(amount, r.currency, r.fxRateToBase);
     if (baseAmount === null) unconvertible.add(r.currency);
     else {
       total = total.plus(baseAmount);
@@ -123,7 +124,8 @@ export async function computeDividends(db: DB, userId: string, scope?: ScopeArg)
     const sec = secById.get(r.securityId);
     const cur = perSec.get(r.securityId) ?? { name: sec?.name ?? "—", symbol: sec?.symbol ?? "—", datesAsc: [], amountsAsc: [] };
     cur.datesAsc.push(r.tradeDate.slice(0, 10));
-    cur.amountsAsc.push(toBase(d(r.grossAmount), r.currency));
+    // Today's rate here: a yield sets income against today's value, so both sides use the same one.
+    cur.amountsAsc.push(toBase(d(r.grossAmount), r.currency, null));
     perSec.set(r.securityId, cur);
   }
 

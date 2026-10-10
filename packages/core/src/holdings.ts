@@ -67,6 +67,13 @@ export interface Holding {
   investedBaseAtCost: Decimal | null;
   /** Weighted-average FX-at-cost (base per 1 local): investedBaseAtCost / invested. */
   avgFxAtCost: Decimal | null;
+  /**
+   * Booked profit in the base currency: each sale's proceeds at the sale day's rate, less the cost
+   * of what it closed at the buy days' rates. Null unless every event involved carried a rate.
+   */
+  realisedPnlBase: Decimal | null;
+  /** Dividends/interest in the base currency at each payout day's rate (null if any lacked one). */
+  dividendsBase: Decimal | null;
 }
 
 interface Running {
@@ -74,7 +81,9 @@ interface Running {
   costBase: Decimal; // cost basis in base currency, using FX-at-cost of each buy
   fxCostKnown: boolean; // every contributing buy carried an fxRateToBase
   realised: Decimal;
+  realisedBase: Decimal | null; // null once an event without a rate is involved
   dividends: Decimal;
+  dividendsBase: Decimal | null;
   fees: Decimal;
   taxes: Decimal;
   oversell: boolean;
@@ -93,7 +102,9 @@ function empty(): Running {
     costBase: ZERO,
     fxCostKnown: true,
     realised: ZERO,
+    realisedBase: ZERO,
     dividends: ZERO,
+    dividendsBase: ZERO,
     fees: ZERO,
     taxes: ZERO,
     oversell: false,
@@ -117,6 +128,9 @@ function settleDay(r: Running): void {
   r.fxCostKnown = true;
 }
 
+/** The tx's own-day rate to the base currency, if it carried one. */
+const fxOf = (tx: CanonicalTx): Decimal | null => (tx.fxRateToBase != null && tx.fxRateToBase !== "" ? d(tx.fxRateToBase) : null);
+
 function apply(r: Running, tx: CanonicalTx): void {
   const qty = d(tx.quantity);
   const price = d(tx.price);
@@ -130,6 +144,10 @@ function apply(r: Running, tx: CanonicalTx): void {
       const out = applyBuy(r.pos, qty, price, fees, taxes);
       r.pos = out.position;
       r.realised = r.realised.plus(out.realised);
+      if (!out.realised.isZero()) {
+        const fx = fxOf(tx);
+        r.realisedBase = fx && r.realisedBase ? r.realisedBase.plus(out.realised.times(fx)) : null;
+      }
       if (out.openedLongCost.greaterThan(0)) {
         if (tx.fxRateToBase != null && tx.fxRateToBase !== "") {
           r.costBase = r.costBase.plus(out.openedLongCost.times(d(tx.fxRateToBase)));
@@ -156,6 +174,8 @@ function apply(r: Running, tx: CanonicalTx): void {
     case "transfer_out": {
       // Closes long inventory first; any excess opens a short (credited, not booked as profit).
       const costBefore = r.pos.cost;
+      const costBaseBefore = r.costBase;
+      const fxKnownBefore = r.fxCostKnown;
       const out = applySell(r.pos, qty, price, fees, taxes);
       r.pos = out.position;
       r.realised = r.realised.plus(out.realised);
@@ -166,6 +186,14 @@ function apply(r: Running, tx: CanonicalTx): void {
       // Reduce base-currency cost proportionally so avg FX-at-cost is preserved.
       if (costBefore.greaterThan(0)) {
         r.costBase = r.costBase.times(costBefore.minus(out.basisReleased).div(costBefore));
+      }
+      if (out.closedSomething) {
+        // Proceeds (after charges) at today's rate, less the closed cost at the buy days' rates.
+        const fx = fxOf(tx);
+        r.realisedBase =
+          fx && fxKnownBefore && r.realisedBase
+            ? r.realisedBase.plus(out.realised.plus(out.basisReleased).times(fx)).minus(costBaseBefore.minus(r.costBase))
+            : null;
       }
       if (!r.pos.qty.greaterThan(0)) {
         r.costBase = ZERO;
@@ -178,6 +206,8 @@ function apply(r: Running, tx: CanonicalTx): void {
     case "dividend":
     case "interest": {
       r.dividends = r.dividends.plus(d(tx.grossAmount));
+      const fx = fxOf(tx);
+      r.dividendsBase = fx && r.dividendsBase ? r.dividendsBase.plus(d(tx.grossAmount).times(fx)) : null;
       break;
     }
     case "fee": {
@@ -262,6 +292,8 @@ export function computeHoldings(
       avgCost,
       realisedPnl: r.realised,
       dividends: r.dividends,
+      realisedPnlBase: r.realisedBase,
+      dividendsBase: r.dividendsBase,
       feesTotal: r.fees,
       taxesTotal: r.taxes,
       currentValue,

@@ -12,6 +12,7 @@ import {
 import { Segmented } from "@/components/kit/Segmented";
 import { useAllAccounts, useFilter, usePortfolios, type MarketFilter } from "@/lib/hooks";
 import { brokerLabel } from "@/lib/brokers";
+import { useAuth } from "@/auth/AuthContext";
 
 const US_BROKERS = new Set(["vested", "ibkr"]);
 
@@ -20,9 +21,9 @@ const US_BROKERS = new Set(["vested", "ibkr"]);
  * several), in which market (India, US, or both). It's remembered per login and applies everywhere —
  * every figure on every page is worked out from just that slice of the ledger. Each control only
  * shows when there's something to choose between. `market={false}` hides the market switch, for a
- * page that has its own.
+ * page that has its own; `currency` adds the "US in ₹" switch, for pages that show US figures.
  */
-export function ScopeSelect({ market = true, clearable = true }: { market?: boolean; clearable?: boolean }) {
+export function ScopeSelect({ market = true, clearable = true, currency = false }: { market?: boolean; clearable?: boolean; currency?: boolean }) {
   const f = useFilter();
   const { data: people } = usePortfolios();
   const { data: accounts } = useAllAccounts();
@@ -71,12 +72,46 @@ export function ScopeSelect({ market = true, clearable = true }: { market?: bool
           ]}
         />
       )}
+      {currency && <CurrencySwitch />}
       {clearable && f.active && (
         <Button variant="ghost" size="sm" onClick={f.clear} aria-label="Clear the filter">
           <X /> Clear
         </Button>
       )}
     </div>
+  );
+}
+
+const SYMBOL: Record<string, string> = { INR: "₹", USD: "$", EUR: "€", GBP: "£" };
+
+/**
+ * Show US figures in their own dollars or in rupees. In rupees, what something is worth is at today's
+ * rate and what you paid or received is at the rate on that day. Only shown when there's US money
+ * in view.
+ */
+export function CurrencySwitch() {
+  const f = useFilter();
+  const { user } = useAuth();
+  const { data: accounts } = useAllAccounts();
+  const base = user?.baseCurrency ?? "INR";
+  if (!accounts || f.market === "in") return null;
+  const foreign = accounts.find((a) => a.currency !== base) ?? accounts.find((a) => US_BROKERS.has(a.broker));
+  if (!foreign) return null;
+  const own = foreign.currency !== base ? foreign.currency : "USD";
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+      US in
+      <Segmented<"own" | "base">
+        size="xs"
+        ariaLabel="Show US figures in"
+        value={f.usInBase ? "base" : "own"}
+        onChange={(v) => f.setUsInBase(v === "base")}
+        options={[
+          { value: "own", label: SYMBOL[own] ?? own },
+          { value: "base", label: SYMBOL[base] ?? base },
+        ]}
+      />
+    </span>
   );
 }
 

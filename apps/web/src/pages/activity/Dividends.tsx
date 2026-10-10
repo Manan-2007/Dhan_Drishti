@@ -39,7 +39,7 @@ function Hint({ children }: { children: ReactNode }) {
 
 /** Money your holdings paid you: when, from what, and roughly when the next payouts are due. */
 export function Dividends() {
-  const { scope, active } = useFilter();
+  const { scope, active, usInBase } = useFilter();
   const { data, isLoading } = useDividends(scope);
   const reduceMotion = useReducedMotion();
   const [span, setSpan] = useState<"12" | "24">("12");
@@ -82,7 +82,7 @@ export function Dividends() {
   return (
     <div className="space-y-5">
       <div className="flex justify-end">
-        <ScopeSelect />
+        <ScopeSelect currency />
       </div>
       {!data.fxComplete && (
         <p className="rounded-2xl border border-warning/40 bg-card px-4 py-3 text-sm">
@@ -188,8 +188,17 @@ export function Dividends() {
               </span>
               <span className="min-w-0 flex-1 truncate">{e.security ? displayName(e.security) : "—"}</span>
               <span className="shrink-0 font-semibold text-gain tabular-nums">
-                +{money(e.amount, e.currency)}
-                {e.currency !== ccy && e.baseAmount && <span className="ml-1 text-xs font-normal text-muted-foreground">({money(e.baseAmount, ccy)})</span>}
+                {usInBase && e.currency !== ccy && e.baseAmount ? (
+                  <>
+                    +{money(e.baseAmount, ccy)}
+                    <span className="ml-1 text-xs font-normal text-muted-foreground">({money(e.amount, e.currency)})</span>
+                  </>
+                ) : (
+                  <>
+                    +{money(e.amount, e.currency)}
+                    {e.currency !== ccy && e.baseAmount && <span className="ml-1 text-xs font-normal text-muted-foreground">({money(e.baseAmount, ccy)})</span>}
+                  </>
+                )}
               </span>
             </li>
           ))}

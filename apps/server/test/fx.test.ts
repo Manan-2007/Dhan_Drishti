@@ -115,6 +115,13 @@ describe("multi-currency & FX", () => {
     expect(h.fxImpact.currencyReturn).toBe("4500");
     expect(h.fxImpact.total).toBe("44500"); // = 1500×83 − 1000×80
     expect(h.fxImpact.decomposablePositions).toBe(1);
+    // In rupees: worth now at today's rate, cost at the buy day's — so the gain carries the FX move.
+    expect(row.fxRate).toBe("83");
+    expect(row.baseCurrentValue).toBe("124500");
+    expect(row.baseInvested).toBe("80000");
+    expect(row.baseUnrealisedPnl).toBe("44500");
+    expect(h.summary.invested).toBe("80000");
+    expect(h.summary.unrealisedPnl).toBe("44500");
   });
 
   it("flags a foreign holding with no FX-at-cost as not decomposable", async () => {

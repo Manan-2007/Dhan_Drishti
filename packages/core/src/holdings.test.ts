@@ -141,6 +141,34 @@ describe("computeHoldings — average cost", () => {
     expect(h.avgFxAtCost!.toString()).toBe("85"); // 170000 / 2000
   });
 
+  it("books a foreign sale's profit at the sale day's rate against cost at the buy days' rates", () => {
+    // Bought 10 @ $100 at ₹80 and 10 @ $100 at ₹90; sold 10 @ $120 at ₹95 with $10 of charges.
+    const h = only([
+      tx({ type: "buy", quantity: "10", price: "100", currency: "USD", fxRateToBase: "80" }),
+      tx({ type: "buy", quantity: "10", price: "100", currency: "USD", fxRateToBase: "90", tradeDate: "2024-02-01T00:00:00Z" }),
+      tx({ type: "sell", quantity: "10", price: "120", fees: "10", currency: "USD", fxRateToBase: "95", tradeDate: "2024-03-01T00:00:00Z" }),
+      tx({ type: "dividend", grossAmount: "5", currency: "USD", fxRateToBase: "96", tradeDate: "2024-04-01T00:00:00Z" }),
+    ]);
+    expect(h.realisedPnl.toString()).toBe("190"); // 1200 − 1000 − 10
+    // Proceeds after charges 1190 × 95 = 113050, less half the ₹170000 cost = 85000 → 28050.
+    expect(h.realisedPnlBase!.toString()).toBe("28050");
+    expect(h.investedBaseAtCost!.toString()).toBe("85000");
+    expect(h.dividendsBase!.toString()).toBe("480"); // 5 × 96
+  });
+
+  it("leaves base profit null when a sale or its cost lacks a rate", () => {
+    const noSellRate = only([
+      tx({ type: "buy", quantity: "10", price: "100", currency: "USD", fxRateToBase: "80" }),
+      tx({ type: "sell", quantity: "5", price: "120", currency: "USD", tradeDate: "2024-02-01T00:00:00Z" }),
+    ]);
+    expect(noSellRate.realisedPnlBase).toBeNull();
+    const noBuyRate = only([
+      tx({ type: "buy", quantity: "10", price: "100", currency: "USD" }),
+      tx({ type: "sell", quantity: "5", price: "120", currency: "USD", fxRateToBase: "90", tradeDate: "2024-02-01T00:00:00Z" }),
+    ]);
+    expect(noBuyRate.realisedPnlBase).toBeNull();
+  });
+
   it("leaves FX-at-cost null when any contributing buy lacks a rate", () => {
     const h = only([
       tx({ type: "buy", quantity: "10", price: "100", currency: "USD", fxRateToBase: "80" }),

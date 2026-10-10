@@ -15,6 +15,7 @@ import { assetClassLabel, compactMoney, dateShort, financialYear, money, qty } f
 import type { Transaction } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { readableContract } from "@/lib/instrument";
+import { useMoneyView } from "@/lib/money-view";
 
 type Group = "all" | "trades" | "income" | "cash" | "other";
 const GROUPS: { value: Group; label: string; types?: string[] }[] = [
@@ -226,7 +227,7 @@ export function Activity() {
               ))}
           </select>
         )}
-        <ScopeSelect />
+        <ScopeSelect currency />
         <Button className="ml-auto" variant="outline" onClick={() => setAdding(true)} disabled={!portfolios?.length}>
           <Plus /> Add an entry
         </Button>
@@ -349,13 +350,14 @@ function Amount({ value, currency, tone }: { value: number | null; currency: str
 
 function SingleSummary({ t }: { t: Transaction }) {
   const d = describe(t);
+  const m = useMoneyView().tx(t);
   const contract = t.security ? readableContract(t.security.symbol) : null;
   const what = contract?.title ?? t.security?.symbol ?? (t.type === "deposit" || t.type === "withdrawal" ? "Cash" : "—");
   const detail =
     t.type === "split"
       ? `×${Number(t.price)} units`
       : Number(t.quantity) && Number(t.price)
-        ? `${qty(t.quantity)} @ ${money(t.price, t.currency)}`
+        ? `${qty(t.quantity)} @ ${money(Number(t.price) * m.k, m.cur)}`
         : Number(t.quantity)
           ? `${qty(t.quantity)} units`
           : null;
@@ -371,22 +373,27 @@ function SingleSummary({ t }: { t: Transaction }) {
           {[contract?.expiry ?? (t.security && t.security.name !== t.security.symbol ? t.security.name : null), t.account?.name, d.tag, timeOf(t.tradeDate)].filter(Boolean).join(" · ")}
         </span>
       </span>
-      <Amount value={d.cash} currency={t.currency} tone={d.tone} />
+      <Amount value={d.cash === null ? null : d.cash * m.k} currency={m.cur} tone={d.tone} />
     </span>
   );
 }
 
 function FoldedSummary({ rows }: { rows: Transaction[] }) {
   const t = rows[0]!;
+  const view = useMoneyView();
+  // Same day, same account — one currency and one day's rate, unless a row lacks it.
+  const ms = rows.map((r) => view.tx(r));
+  const all = ms.every((x) => x.converted);
+  const cur = all ? ms[0]!.cur : t.currency;
   let bought = 0;
   let sold = 0;
   let cash = 0;
-  for (const r of rows) {
+  rows.forEach((r, i) => {
     const d = describe(r);
     if (r.type === "buy") bought += Number(r.quantity);
     else sold += Number(r.quantity);
-    cash += d.cash ?? 0;
-  }
+    cash += (d.cash ?? 0) * (all ? ms[i]!.k : 1);
+  });
   const contract = t.security ? readableContract(t.security.symbol) : null;
   const verb: Described = bought && sold ? { verb: "Traded", tone: "neutral", cash } : bought ? { verb: "Bought", tone: "buy", cash } : { verb: "Sold", tone: "sell", cash };
   return (
@@ -403,25 +410,27 @@ function FoldedSummary({ rows }: { rows: Transaction[] }) {
           {[bought ? `bought ${qty(bought)}` : null, sold ? `sold ${qty(sold)}` : null, contract?.expiry, t.account?.name].filter(Boolean).join(" · ")}
         </span>
       </span>
-      <Amount value={cash} currency={t.currency} tone={cash > 0 ? "sell" : "buy"} />
+      <Amount value={cash} currency={cur} tone={cash > 0 ? "sell" : "buy"} />
     </span>
   );
 }
 
 function FoldedDetail({ rows }: { rows: Transaction[] }) {
+  const view = useMoneyView();
   return (
     <div className="space-y-3">
       <ul className="space-y-2">
         {rows.map((r) => {
           const d = describe(r);
+          const m = view.tx(r);
           return (
             <li key={r.id} className="flex items-center gap-3 text-sm">
               <Verb d={d} />
               <span className="flex-1 text-muted-foreground">
-                {qty(r.quantity)} @ {money(r.price, r.currency)}
+                {qty(r.quantity)} @ {money(Number(r.price) * m.k, m.cur)}
                 {timeOf(r.tradeDate) && <> · {timeOf(r.tradeDate)}</>}
               </span>
-              <Amount value={d.cash} currency={r.currency} tone={d.tone} />
+              <Amount value={d.cash === null ? null : d.cash * m.k} currency={m.cur} tone={d.tone} />
             </li>
           );
         })}
@@ -443,6 +452,8 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 function Detail({ t }: { t: Transaction }) {
   const d = describe(t);
   const charges = Number(t.fees) + Number(t.taxes);
+  const m = useMoneyView().tx(t);
+  const show = (v: string | number) => money(Number(v) * m.k, m.cur);
   return (
     <div className="space-y-4">
       <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
@@ -452,15 +463,18 @@ function Detail({ t }: { t: Transaction }) {
         </Field>
         {t.security && <Field label="Kind">{assetClassLabel(t.security.assetClass) + (t.security.sector ? ` · ${t.security.sector}` : "")}</Field>}
         {Number(t.quantity) > 0 && t.type !== "split" && <Field label="Units">{qty(t.quantity)}</Field>}
-        {Number(t.price) > 0 && t.type !== "split" && <Field label="Price">{money(t.price, t.currency)}</Field>}
-        <Field label="Amount">{money(t.grossAmount, t.currency)}</Field>
+        {Number(t.price) > 0 && t.type !== "split" && <Field label="Price">{show(t.price)}</Field>}
+        <Field label="Amount">
+          {show(t.grossAmount)}
+          {m.converted && <span className="text-muted-foreground"> ({money(t.grossAmount, t.currency)})</span>}
+        </Field>
         {charges > 0 && (
           <Field label="Charges">
-            {money(charges, t.currency)}
-            <span className="text-muted-foreground"> (fees {money(t.fees, t.currency)} · taxes {money(t.taxes, t.currency)})</span>
+            {show(charges)}
+            <span className="text-muted-foreground"> (fees {show(t.fees)} · taxes {show(t.taxes)})</span>
           </Field>
         )}
-        {d.cash !== null && <Field label={d.cash >= 0 ? "Money in" : "Money out"}>{money(Math.abs(d.cash), t.currency)}</Field>}
+        {d.cash !== null && <Field label={d.cash >= 0 ? "Money in" : "Money out"}>{show(Math.abs(d.cash))}</Field>}
         {t.account && <Field label="Account">{t.account.name}</Field>}
         {t.security?.isin && <Field label="ISIN">{t.security.isin}</Field>}
         {t.fxRateToBase && t.currency !== "INR" && <Field label="Exchange rate that day">{Number(t.fxRateToBase).toFixed(4)}</Field>}

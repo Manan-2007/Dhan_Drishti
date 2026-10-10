@@ -94,7 +94,17 @@ plain-language flags for single-stock and sector concentration. Every input is a
 net_worth = Σ over holdings [ current_value(asset ccy) · fx_rate(asset→base) ]
 ```
 Every holding is converted into the user's **base currency** before summary/allocation
-aggregation (`fx_rate` from the latest stored `exchange_rates`; base→base = 1). A holding
+aggregation. What a holding is **worth** uses today's rate (`fx_rate` from the latest stored
+`exchange_rates`; base→base = 1). Money that **went in or came out** uses the rate on its own day
+(`fxRateToBase`) wherever every event involved carries one, else today's rate:
+```
+base_invested   = investedBaseAtCost                        // each buy at its day's rate
+base_unrealised = value_local · fx_now − investedBaseAtCost // includes the currency's move
+base_realised   = Σ sells [ net_proceeds · fx_sell_day − closed_cost_at_buy_days_rates ]
+base_dividends  = Σ payouts [ amount · fx_payout_day ]
+```
+So a US holding's rupee gain is what the investor actually made in rupees. The UI's "US in ₹"
+switch shows these per-holding figures; off, a foreign row shows its own currency. A holding
 whose currency has **no rate** is excluded from base totals and surfaced via
 `fxComplete=false` + `unconvertibleCurrencies` — never summed as if it were the base
 currency. Allocation weights are computed on base-currency values so cross-currency slices
@@ -134,7 +144,8 @@ component. The decomposition is surfaced per holding and summed in `holdings.fxI
 ```
 income_total = Σ over (dividend, interest) transactions of gross_amount  // converted to base
 ```
-Reported in base currency with the FY (Apr→Mar) and per-security breakdown, plus the raw
+A foreign payout converts at its own day's rate (else today's). The trailing yield sets income
+against today's value, so it uses today's rate on both sides. Reported in base currency with the FY (Apr→Mar) and per-security breakdown, plus the raw
 event list. Income whose currency has no FX rate is excluded from base totals and flagged.
 
 **Trailing yield & an estimated calendar.** The trailing-12-month income and the yield (that income
