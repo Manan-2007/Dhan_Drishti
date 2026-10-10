@@ -25,6 +25,8 @@ import { registerReportRoutes } from "./domain/reports.js";
 import { registerSecurityDetailRoutes } from "./domain/security-detail.js";
 import { registerFundamentalsRoutes } from "./domain/fundamentals.js";
 import { YahooFundamentalsProvider, type FundamentalsProvider } from "./market/providers/yahoo-fundamentals.js";
+import { NasdaqFundamentalsProvider } from "./market/providers/nasdaq-fundamentals.js";
+import { CachedFundamentals } from "./market/providers/fundamentals.js";
 import type { MarketDataProvider, FxProvider, BenchmarkProvider, SecurityHistoryProvider } from "./market/types.js";
 import { YahooProvider } from "./market/providers/yahoo.js";
 import { AmfiProvider } from "./market/providers/amfi.js";
@@ -251,7 +253,13 @@ export function buildApp(db: DB, options: AppOptions = {}): FastifyInstance {
   registerManualAssetRoutes(app, db);
   registerReportRoutes(app, db);
   registerSecurityDetailRoutes(app, db, historyProvider, historySources);
-  const fundamentalsProvider = options.fundamentalsProvider ?? (options.backgroundFetch ? new YahooFundamentalsProvider() : null);
+  // Fundamentals: kept in the database for a day; US listings from Nasdaq's public data (Yahoo fills gaps), India from Yahoo.
+  const fundamentalsProvider =
+    options.fundamentalsProvider !== undefined
+      ? options.fundamentalsProvider
+      : options.backgroundFetch
+        ? new CachedFundamentals(db, new NasdaqFundamentalsProvider(), new YahooFundamentalsProvider())
+        : null;
   registerFundamentalsRoutes(app, db, fundamentalsProvider);
   registerDiscoverRoutes(app, db, options.tickerSource !== undefined ? options.tickerSource : options.backgroundFetch ? new YahooTickerSource() : null, fundamentalsProvider);
   registerAccountManagementRoutes(app, db);

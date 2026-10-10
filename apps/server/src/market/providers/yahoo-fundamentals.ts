@@ -33,6 +33,8 @@ export interface Fundamentals {
   recommendationKey: string | null; // "buy" | "hold" | "sell" | …
   numberOfAnalysts: number | null;
   asOf: string; // ISO time this was fetched
+  /** Where the figures came from ("Yahoo", "Nasdaq", "Nasdaq + Yahoo"). */
+  source?: string;
 }
 
 export interface FundamentalsProvider {
@@ -78,6 +80,7 @@ export function parseFundamentals(result: Record<string, unknown>, asOf = new Da
     recommendationKey: str(fd, "recommendationKey"),
     numberOfAnalysts: num(fd, "numberOfAnalystOpinions"),
     asOf,
+    source: "Yahoo",
   };
 }
 
@@ -85,6 +88,14 @@ export class YahooFundamentalsProvider implements FundamentalsProvider {
   private cookie: string | null = null;
   private crumb: string | null = null;
   private cache = new Map<string, { value: Fundamentals; at: number }>();
+  /** After Yahoo says "Too Many Requests", leave it alone for a while instead of hammering it. */
+  private blockedUntil = 0;
+  static readonly COOL_OFF_MS = 30 * 60_000;
+
+  /** Is Yahoo cooling off right now (rate-limited recently)? */
+  get coolingOff(): boolean {
+    return Date.now() < this.blockedUntil;
+  }
 
   constructor(
     private ttlMs = 12 * 3600_000,
@@ -111,6 +122,7 @@ export class YahooFundamentalsProvider implements FundamentalsProvider {
     });
     await this.withTimeout(async (signal) => {
       const res = await fetch("https://query1.finance.yahoo.com/v1/test/getcrumb", { headers: { "user-agent": UA, cookie: this.cookie ?? "" }, signal });
+      if (res.status === 429) this.blockedUntil = Date.now() + YahooFundamentalsProvider.COOL_OFF_MS;
       const crumb = (await res.text()).trim();
       if (crumb && !/\s/.test(crumb) && crumb.length <= 40) this.crumb = crumb;
       else this.crumb = null;
@@ -123,6 +135,10 @@ export class YahooFundamentalsProvider implements FundamentalsProvider {
     const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=${modules}&crumb=${encodeURIComponent(this.crumb)}`;
     return this.withTimeout(async (signal) => {
       const res = await fetch(url, { headers: { "user-agent": UA, cookie: this.cookie! }, signal });
+      if (res.status === 429) {
+        this.blockedUntil = Date.now() + YahooFundamentalsProvider.COOL_OFF_MS;
+        return null;
+      }
       if (res.status === 401 || res.status === 403) return "unauthorized";
       if (!res.ok) return null;
       const json = (await res.json()) as { quoteSummary?: { result?: Record<string, unknown>[] } };
@@ -134,10 +150,11 @@ export class YahooFundamentalsProvider implements FundamentalsProvider {
   async getFundamentals(ticker: string): Promise<Fundamentals | null> {
     const hit = this.cache.get(ticker);
     if (hit && Date.now() - hit.at < this.ttlMs) return hit.value;
+    if (this.coolingOff) return hit?.value ?? null;
     try {
       if (!this.crumb || !this.cookie) await this.handshake();
       let data = await this.fetchOnce(ticker);
-      if (data === "unauthorized") {
+      if (data === "unauthorized" && !this.coolingOff) {
         await this.handshake(); // crumb expired or missing — try once more
         data = await this.fetchOnce(ticker);
       }

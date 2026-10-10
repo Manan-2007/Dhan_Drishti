@@ -428,6 +428,13 @@ export const attentionHistory = sqliteTable(
   (t) => [primaryKey({ columns: [t.userId, t.itemId] })],
 );
 
+/** Company fundamentals as last fetched, per public ticker — so a restart doesn't re-ask the provider. */
+export const fundamentalsCache = sqliteTable("fundamentals_cache", {
+  ticker: text("ticker").primaryKey(),
+  data: text("data").notNull(), // JSON (Fundamentals)
+  fetchedAt: text("fetched_at").notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Portfolio = typeof portfolios.$inferSelect;

@@ -263,7 +263,7 @@ function StockResearch({ id }: { id: string }) {
 
       {s.assetClass === "equity" && <LatestNews id={id} />}
 
-      {/* Fundamentals — from Yahoo (public ticker only) */}
+      {/* Fundamentals — Nasdaq (US) / Yahoo (India), public ticker only */}
       <FundamentalsPanel id={id} scope={scope} cur={cur} />
     </div>
   );
@@ -460,7 +460,7 @@ function FundamentalsView({ query, cur }: { query: { data: FundamentalsResponse 
   const rec = f?.recommendationKey ? f.recommendationKey.replace(/_/g, " ") : null;
 
   return (
-    <Panel title="Fundamentals" action={data?.ticker ? <span className="text-xs text-muted-foreground">Yahoo · {data.ticker}</span> : undefined}>
+    <Panel title="Fundamentals" action={data?.ticker ? <span className="text-xs text-muted-foreground">{f?.source ?? "Yahoo"} · {data.ticker}</span> : undefined}>
       {isLoading ? (
         <div className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
@@ -494,7 +494,9 @@ function FundamentalsView({ query, cur }: { query: { data: FundamentalsResponse 
               {rec && <span className="rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize">{rec}</span>}
             </div>
           )}
-          <p className="mt-4 text-xs text-muted-foreground">From Yahoo Finance by public ticker only — nothing about your portfolio is sent. Figures can lag or be missing; nothing here is advice.</p>
+          <p className="mt-4 text-xs text-muted-foreground">From {f.source === "Nasdaq" ? "Nasdaq's public data" : f.source === "Nasdaq + Yahoo" ? "Nasdaq's public data and Yahoo Finance" : "Yahoo Finance"} by public ticker only — nothing about your portfolio is sent.{" "}
+            {f.source?.startsWith("Nasdaq") && "P/E, margins, growth and return on equity are worked out from the company's last four reported quarters. "}
+            Figures can lag or be missing; nothing here is advice.</p>
         </>
       ) : (
         <div className="flex items-start gap-3 text-sm text-muted-foreground">

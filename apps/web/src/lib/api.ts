@@ -389,8 +389,10 @@ export interface Technicals {
   bars: number;
 }
 
-/** Company fundamentals from Yahoo quoteSummary (fractions for margins/growth/yield). */
+/** Company fundamentals — Nasdaq's public data for US listings, Yahoo for Indian (fractions for margins/growth/yield). */
 export interface Fundamentals {
+  /** Where these came from: "Nasdaq", "Yahoo", "Nasdaq + Yahoo". */
+  source?: string;
   currency: string | null;
   marketCap: number | null;
   trailingPE: number | null;
