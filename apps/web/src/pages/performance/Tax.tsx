@@ -43,8 +43,8 @@ function toCsv(rows: CapitalGainRow[], base: string): string {
 /** Capital gains by financial year, the way the tax return asks for them. */
 export function Tax() {
   const navigate = useNavigate();
-  const { portfolioId } = useFilter();
-  const { data, isLoading } = useCapitalGains(portfolioId);
+  const { portfolioId, scope } = useFilter();
+  const { data, isLoading } = useCapitalGains(scope);
   const [fy, setFy] = useState<string>("");
 
   useEffect(() => {

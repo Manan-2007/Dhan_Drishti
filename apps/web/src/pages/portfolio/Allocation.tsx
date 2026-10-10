@@ -10,6 +10,7 @@ import { assetClassLabel, compactMoney } from "@/lib/format";
 import type { AllocationSlice } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Empty } from "@/components/kit/Empty";
+import { NoMatch, ScopeSelect } from "@/components/shell/ScopeSelect";
 
 type Dim = "asset" | "sector" | "currency" | "region";
 const DIMS: { value: Dim; label: string }[] = [
@@ -22,13 +23,14 @@ const DIMS: { value: Dim; label: string }[] = [
 const SECTOR_PALETTE = ["#f0b23e", "#5fb7a6", "#8c8fe0", "#d97757", "#7fa66b", "#c9a27e", "#d77fb3", "#7cc7d9", "#e3c07a", "#9dbf8c", "#b8a9e8", "#a3a3ad"];
 
 export function Allocation() {
-  const { portfolioId } = useFilter();
-  const { data, isLoading } = useHoldings(portfolioId);
+  const { scope, active } = useFilter();
+  const { data, isLoading } = useHoldings(scope);
   const [dim, setDim] = useState<Dim>("asset");
   const [view, setView] = useState<"bars" | "map">("bars");
   const reduceMotion = useReducedMotion();
 
   if (isLoading) return <Skeleton className="h-[420px] rounded-2xl" />;
+  if ((!data || data.holdings.length === 0) && active) return <NoMatch />;
   if (!data || data.holdings.length === 0) return <Empty title="No allocation yet" body="Once your holdings are in, this shows how your money is spread." />;
 
   const a = data.allocation;
@@ -76,6 +78,9 @@ export function Allocation() {
 
   return (
     <div className="grid gap-5 lg:grid-cols-12">
+      <div className="flex justify-end lg:col-span-12">
+        <ScopeSelect />
+      </div>
       <section className="rounded-2xl border bg-card p-6 lg:col-span-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground">By {a.basis === "current_value" ? "current value" : "amount invested (some prices missing)"}</p>

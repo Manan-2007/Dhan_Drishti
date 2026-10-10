@@ -18,8 +18,8 @@ import {
 import type { DB } from "../db/index.js";
 import { transactions, securities, quotes, type Security } from "../db/schema.js";
 import { authed } from "../lib/routes.js";
-import { getPortfolioOwned } from "./portfolios.js";
 import { recordSnapshotOnRead } from "./snapshots.js";
+import { scopeFromRequest, scopeKey, snapshotScope, txScopeClauses, type ScopeArg } from "./scope.js";
 import { computeManualAssets, regionForCurrency } from "./manual-assets.js";
 import { withHoldingsCache } from "./holdings-cache.js";
 import { baseCurrencyOf, rateMap } from "../market/fx.js";
@@ -215,17 +215,15 @@ function allocation(
   };
 }
 
-const querySchema = z.object({ portfolioId: z.string().optional() });
-
 /** Cached entry point (see holdings-cache.ts). Every consumer goes through this, so a page that
- *  fires several holdings-derived endpoints recomputes the portfolio once, not once per endpoint. */
-export function computePortfolioHoldings(db: DB, userId: string, portfolioId?: string) {
-  return withHoldingsCache(userId, portfolioId ?? null, () => computeHoldingsUncached(db, userId, portfolioId));
+ *  fires several holdings-derived endpoints recomputes the portfolio once, not once per endpoint.
+ *  `scope` picks the people / brokers / market (see scope.ts); a bare portfolio id still works. */
+export function computePortfolioHoldings(db: DB, userId: string, scope?: ScopeArg) {
+  return withHoldingsCache(userId, scopeKey(scope), () => computeHoldingsUncached(db, userId, scope));
 }
 
-async function computeHoldingsUncached(db: DB, userId: string, portfolioId?: string) {
-  const clauses = [eq(transactions.userId, userId)];
-  if (portfolioId) clauses.push(eq(transactions.portfolioId, portfolioId));
+async function computeHoldingsUncached(db: DB, userId: string, scope?: ScopeArg) {
+  const clauses = await txScopeClauses(db, userId, scope);
   const txRows = await db
     .select()
     .from(transactions)
@@ -317,7 +315,7 @@ async function computeHoldingsUncached(db: DB, userId: string, portfolioId?: str
     }
   }
   // Manual (non-market) assets — FDs, PPF, gold, real estate, … — fold into net worth & allocation.
-  const manual = await computeManualAssets(db, userId, portfolioId);
+  const manual = await computeManualAssets(db, userId, scope);
   const manualBase = d(manual.total);
   for (const ccy of manual.unconvertibleCurrencies) unconvertible.add(ccy);
   const manualByClass = manual.byAssetClass.map((s) => ({ key: s.key, value: d(s.value) }));
@@ -419,14 +417,15 @@ async function computeHoldingsUncached(db: DB, userId: string, portfolioId?: str
 export function registerHoldingsRoutes(app: FastifyInstance, db: DB): void {
   const opts = authed(app);
   app.get("/api/holdings", opts, async (req) => {
-    const { portfolioId } = querySchema.parse(req.query);
     const userId = req.user!.id;
-    if (portfolioId) await getPortfolioOwned(db, userId, portfolioId); // ownership guard
-    const result = await computePortfolioHoldings(db, userId, portfolioId);
+    const scope = await scopeFromRequest(db, userId, req.query); // parses + ownership guard
+    const result = await computePortfolioHoldings(db, userId, scope);
     // Accrue the net-worth-over-time series just by using the app — but only once per scope per day
-    // (a daily cron and the login refresh also record it), so reads don't repeatedly write.
+    // (a daily cron and the login refresh also record it), so reads don't repeatedly write. Only
+    // one person or everyone has a stored series; a custom slice is never written.
     try {
-      await recordSnapshotOnRead(db, userId, portfolioId ?? null, result);
+      const bucket = snapshotScope(scope);
+      if (bucket !== false) await recordSnapshotOnRead(db, userId, bucket, result);
     } catch {
       /* a snapshot write must never break the holdings response */
     }

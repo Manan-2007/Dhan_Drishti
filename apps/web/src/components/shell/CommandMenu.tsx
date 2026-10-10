@@ -21,8 +21,8 @@ import { JUMP_TARGETS } from "./nav";
 export function CommandMenu({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const navigate = useNavigate();
   const { logout } = useAuth();
-  const { portfolioId } = useFilter();
-  const { data } = useHoldings(portfolioId);
+  const { portfolioId, scope } = useFilter();
+  const { data } = useHoldings(scope);
   const refresh = useRefreshPrices();
 
   const holdings = (data?.holdings ?? []).filter((h) => Number(h.netQty) !== 0);

@@ -5,6 +5,7 @@ import type { FastifyInstance } from "fastify";
 import { d, ZERO, type Decimal } from "@dhan-drishti/core";
 import type { DB } from "../db/index.js";
 import { allocationTargets } from "../db/schema.js";
+import { scopeFromRequest, snapshotScope, type ScopeArg } from "./scope.js";
 import { authed } from "../lib/routes.js";
 import { BadRequestError } from "../lib/errors.js";
 import { getPortfolioOwned } from "./portfolios.js";
@@ -49,12 +50,14 @@ async function getTargets(db: DB, userId: string, portfolioId: string | null, di
   return new Map(rows.map((r) => [r.key, r.targetWeight]));
 }
 
-export async function computeRebalance(db: DB, userId: string, portfolioId: string | undefined, dimension: Dimension) {
-  const holdings = await computePortfolioHoldings(db, userId, portfolioId);
+export async function computeRebalance(db: DB, userId: string, scope: ScopeArg, dimension: Dimension) {
+  const holdings = await computePortfolioHoldings(db, userId, scope);
   const slices = holdings.allocation[allocField(dimension)];
   const total = slices.reduce((acc, s) => acc.plus(d(s.value)), ZERO);
   const currentByKey = new Map(slices.map((s) => [s.key, s]));
-  const targets = await getTargets(db, userId, portfolioId ?? null, dimension);
+  // Targets are kept per person or for everyone; a custom slice measures against everyone's.
+  const bucket = snapshotScope(scope);
+  const targets = await getTargets(db, userId, bucket === false ? null : bucket, dimension);
 
   const keys = [...new Set([...currentByKey.keys(), ...targets.keys()])];
   const rows = keys.map((key) => {
@@ -134,9 +137,9 @@ export function registerRebalanceRoutes(app: FastifyInstance, db: DB): void {
   const opts = authed(app);
 
   app.get("/api/rebalance", opts, async (req) => {
-    const { portfolioId, dimension } = querySchema.parse(req.query);
-    if (portfolioId) await getPortfolioOwned(db, req.user!.id, portfolioId);
-    return computeRebalance(db, req.user!.id, portfolioId, dimension);
+    const { dimension } = querySchema.parse(req.query);
+    const scope = await scopeFromRequest(db, req.user!.id, req.query);
+    return computeRebalance(db, req.user!.id, scope, dimension);
   });
 
   app.put("/api/rebalance", opts, async (req) => {

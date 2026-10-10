@@ -8,7 +8,7 @@ import { Stat } from "@/components/kit/Stat";
 import { Empty } from "@/components/kit/Empty";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ScopeSelect } from "@/components/shell/ScopeSelect";
+import { NoMatch, ScopeSelect } from "@/components/shell/ScopeSelect";
 import { useFilter, useFundamentals, useHoldings, useSecurityDetail } from "@/lib/hooks";
 import type { PriceRange } from "@/lib/api";
 import { assetClassLabel, compactMoney, dateShort, money, num, qty, signedMoney, signedPct } from "@/lib/format";
@@ -23,8 +23,8 @@ export function Research() {
 // ---- Search landing ---------------------------------------------------------------------------
 
 function ResearchSearch() {
-  const { portfolioId } = useFilter();
-  const { data, isLoading } = useHoldings(portfolioId);
+  const { portfolioId, scope, active } = useFilter();
+  const { data, isLoading } = useHoldings(scope);
   const [q, setQ] = useState("");
   const nav = useNavigate();
 
@@ -58,7 +58,11 @@ function ResearchSearch() {
           ))}
         </div>
       ) : rows.length === 0 ? (
-        <Empty title={q ? "No match" : "Nothing to research yet"} body={q ? "No held stock matches that." : "Once you hold some shares, look them up here."} />
+        !q && active ? (
+          <NoMatch />
+        ) : (
+          <Empty title={q ? "No match" : "Nothing to research yet"} body={q ? "No held stock matches that." : "Once you hold some shares, look them up here."} />
+        )
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {rows.map((h) => (
@@ -102,8 +106,8 @@ const RANGES: { value: Range; label: string; days: number | null }[] = [
 ];
 
 function StockResearch({ id }: { id: string }) {
-  const { portfolioId } = useFilter();
-  const { data, isLoading, isError } = useSecurityDetail(id, portfolioId);
+  const { portfolioId, scope } = useFilter();
+  const { data, isLoading, isError } = useSecurityDetail(id, scope);
   const [range, setRange] = useState<Range>("1y");
 
   const series = useMemo(() => {
@@ -233,13 +237,13 @@ function StockResearch({ id }: { id: string }) {
       )}
 
       {/* Fundamentals — from Yahoo (public ticker only) */}
-      <FundamentalsPanel id={id} portfolioId={portfolioId} cur={cur} />
+      <FundamentalsPanel id={id} scope={scope} cur={cur} />
     </div>
   );
 }
 
-function FundamentalsPanel({ id, portfolioId, cur }: { id: string; portfolioId: string | null; cur: string }) {
-  const { data, isLoading } = useFundamentals(id, portfolioId);
+function FundamentalsPanel({ id, scope, cur }: { id: string; scope: string; cur: string }) {
+  const { data, isLoading } = useFundamentals(id, scope);
   const f = data?.available ? data.fundamentals : null;
   const ratio = (v: number | null | undefined) => (v == null ? "—" : v.toFixed(2));
   const perc = (v: number | null | undefined) => (v == null ? "—" : `${(v * 100).toFixed(1)}%`);

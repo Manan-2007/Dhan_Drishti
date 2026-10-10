@@ -80,8 +80,8 @@ function timeLeft(daysLeft: number): string {
 
 /** Things with no market price — FDs, PPF, gold, property — that still count in net worth. */
 export function OtherAssets() {
-  const { portfolioId } = useFilter();
-  const { data, isLoading } = useManualAssets(portfolioId);
+  const { portfolioId, scope } = useFilter();
+  const { data, isLoading } = useManualAssets(scope);
   const [adding, setAdding] = useState<string | null>(null);
 
   if (isLoading) return <Skeleton className="h-72 rounded-2xl" />;

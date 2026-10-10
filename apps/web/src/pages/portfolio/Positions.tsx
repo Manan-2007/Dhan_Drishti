@@ -92,8 +92,8 @@ function HeadCell({ col, sortKey, dir, onSort }: { col: (typeof COLS)[number]; s
 export function Positions() {
   const navigate = useNavigate();
   const reduceMotion = useReducedMotion();
-  const { portfolioId } = useFilter();
-  const { data, isLoading } = useHoldings(portfolioId);
+  const { portfolioId, scope } = useFilter();
+  const { data, isLoading } = useHoldings(scope);
   const status = useMarketStatus();
   const refresh = useRefreshPrices();
   const [search, setSearch] = useState("");

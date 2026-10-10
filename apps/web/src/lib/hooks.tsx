@@ -3,34 +3,41 @@ import { useAuth } from "@/auth/AuthContext";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { api, type ActivityPage, type Portfolio, type Account, type HoldingsResponse, type Transaction, type ImportBatch, type NetWorthSeries, type RebalanceResponse, type RebalanceDimension, type ManualAssetsResult, type CapitalGainsReport, type SecurityDetail, type IndicesResponse, type NewsResponse, type NewsMarket, type FundamentalsResponse } from "./api.js";
 
-export function useCapitalGains(portfolioId: string | null) {
-  const qs = portfolioId ? `?portfolioId=${portfolioId}` : "";
+/**
+ * Every data hook takes `scope`: the query string for the people / brokers / market chosen in the
+ * filter bar ("" = everything). See useFilter() below and server/domain/scope.ts.
+ */
+export function withScope(path: string, scope: string, extra: Record<string, string | null | undefined> = {}): string {
+  const p = new URLSearchParams(scope);
+  for (const [k, v] of Object.entries(extra)) if (v != null && v !== "") p.set(k, v);
+  const q = p.toString();
+  return q ? `${path}?${q}` : path;
+}
+
+/** The scope for one person — e.g. a card on the People page. */
+export const personScope = (portfolioId: string) => `portfolioIds=${encodeURIComponent(portfolioId)}`;
+
+export function useCapitalGains(scope: string) {
   return useQuery({
-    queryKey: ["capital-gains", portfolioId],
-    queryFn: () => api.get<CapitalGainsReport>(`/api/reports/capital-gains${qs}`),
+    queryKey: ["capital-gains", scope],
+    queryFn: () => api.get<CapitalGainsReport>(withScope("/api/reports/capital-gains", scope)),
   });
 }
 
-export function useSecurityDetail(id: string | undefined, portfolioId: string | null) {
-  const search = new URLSearchParams();
-  if (portfolioId) search.set("portfolioId", portfolioId);
-  const qs = search.toString();
+export function useSecurityDetail(id: string | undefined, scope: string) {
   return useQuery({
     enabled: !!id,
-    queryKey: ["security-detail", id, portfolioId],
-    queryFn: () => api.get<SecurityDetail>(`/api/securities/${id}/detail${qs ? `?${qs}` : ""}`),
+    queryKey: ["security-detail", id, scope],
+    queryFn: () => api.get<SecurityDetail>(withScope(`/api/securities/${id}/detail`, scope)),
   });
 }
 
 /** Company fundamentals — fetched separately so the detail page loads before Yahoo answers. */
-export function useFundamentals(id: string | undefined, portfolioId: string | null) {
-  const search = new URLSearchParams();
-  if (portfolioId) search.set("portfolioId", portfolioId);
-  const qs = search.toString();
+export function useFundamentals(id: string | undefined, scope: string) {
   return useQuery({
     enabled: !!id,
-    queryKey: ["fundamentals", id, portfolioId],
-    queryFn: () => api.get<FundamentalsResponse>(`/api/securities/${id}/fundamentals${qs ? `?${qs}` : ""}`),
+    queryKey: ["fundamentals", id, scope],
+    queryFn: () => api.get<FundamentalsResponse>(withScope(`/api/securities/${id}/fundamentals`, scope)),
     staleTime: 60 * 60 * 1000,
     retry: false,
   });
@@ -49,44 +56,35 @@ export function useIndices() {
 
 /** News about what you hold. Polls quickly while the server is still fetching, then every 15 s.
  *  `market` picks the India or US side; omit it and the server shows your larger market. */
-export function useNews(portfolioId: string | null, market?: NewsMarket) {
-  const qs = new URLSearchParams();
-  if (portfolioId) qs.set("portfolioId", portfolioId);
-  if (market) qs.set("market", market);
-  const q = qs.toString();
+export function useNews(scope: string, market?: NewsMarket) {
   return useQuery({
-    queryKey: ["news", portfolioId, market ?? null],
-    queryFn: () => api.get<NewsResponse>(`/api/news${q ? `?${q}` : ""}`),
+    queryKey: ["news", scope, market ?? null],
+    queryFn: () => api.get<NewsResponse>(withScope("/api/news", scope, { market })),
     refetchInterval: (query) => (query.state.data?.refreshing ? 3000 : 15000),
     refetchIntervalInBackground: false,
     placeholderData: (prev) => prev,
   });
 }
 
-export function useManualAssets(portfolioId: string | null) {
-  const qs = portfolioId ? `?portfolioId=${portfolioId}` : "";
+export function useManualAssets(scope: string) {
   return useQuery({
-    queryKey: ["manual-assets", portfolioId],
-    queryFn: () => api.get<ManualAssetsResult>(`/api/manual-assets${qs}`),
+    queryKey: ["manual-assets", scope],
+    queryFn: () => api.get<ManualAssetsResult>(withScope("/api/manual-assets", scope)),
   });
 }
 
-export function useRebalance(portfolioId: string | null, dimension: RebalanceDimension) {
-  const search = new URLSearchParams({ dimension });
-  if (portfolioId) search.set("portfolioId", portfolioId);
+export function useRebalance(scope: string, dimension: RebalanceDimension) {
   return useQuery({
-    queryKey: ["rebalance", portfolioId, dimension],
-    queryFn: () => api.get<RebalanceResponse>(`/api/rebalance?${search.toString()}`),
+    queryKey: ["rebalance", scope, dimension],
+    queryFn: () => api.get<RebalanceResponse>(withScope("/api/rebalance", scope, { dimension })),
   });
 }
 
 export type NetWorthRange = "1m" | "3m" | "6m" | "1y" | "max";
-export function useNetWorth(portfolioId: string | null, range: NetWorthRange) {
-  const search = new URLSearchParams({ range });
-  if (portfolioId) search.set("portfolioId", portfolioId);
+export function useNetWorth(scope: string, range: NetWorthRange) {
   return useQuery({
-    queryKey: ["networth", portfolioId, range],
-    queryFn: () => api.get<NetWorthSeries>(`/api/performance/networth?${search.toString()}`),
+    queryKey: ["networth", scope, range],
+    queryFn: () => api.get<NetWorthSeries>(withScope("/api/performance/networth", scope, { range })),
   });
 }
 
@@ -114,16 +112,15 @@ export function useAllAccounts() {
   });
 }
 
-export function useHoldings(portfolioId: string | null) {
-  const qs = portfolioId ? `?portfolioId=${portfolioId}` : "";
+export function useHoldings(scope: string) {
   return useQuery({
-    queryKey: ["holdings", portfolioId],
-    queryFn: () => api.get<HoldingsResponse>(`/api/holdings${qs}`),
+    queryKey: ["holdings", scope],
+    queryFn: () => api.get<HoldingsResponse>(withScope("/api/holdings", scope)),
   });
 }
 
 export interface ActivityFilter {
-  portfolioId: string | null;
+  scope: string;
   accountId?: string;
   types?: string[];
   q?: string;
@@ -137,8 +134,9 @@ export function useActivity(filter: ActivityFilter, pageSize = 150) {
     queryKey: ["transactions", "activity", filter, pageSize],
     initialPageParam: 0,
     queryFn: ({ pageParam }) => {
-      const search = new URLSearchParams({ limit: String(pageSize), offset: String(pageParam) });
-      if (filter.portfolioId) search.set("portfolioId", filter.portfolioId);
+      const search = new URLSearchParams(filter.scope);
+      search.set("limit", String(pageSize));
+      search.set("offset", String(pageParam));
       if (filter.accountId) search.set("accountId", filter.accountId);
       if (filter.types?.length) search.set("types", filter.types.join(","));
       if (filter.q) search.set("q", filter.q);
@@ -151,9 +149,8 @@ export function useActivity(filter: ActivityFilter, pageSize = 150) {
   });
 }
 
-export function useTransactions(params: { portfolioId: string | null; type?: string; limit?: number }) {
-  const search = new URLSearchParams();
-  if (params.portfolioId) search.set("portfolioId", params.portfolioId);
+export function useTransactions(params: { scope: string; type?: string; limit?: number }) {
+  const search = new URLSearchParams(params.scope);
   if (params.type) search.set("type", params.type);
   search.set("limit", String(params.limit ?? 100));
   return useQuery({
@@ -181,11 +178,10 @@ export interface PerformanceSummary {
   bySegment: { key: string; realised: string }[];
 }
 
-export function usePerformance(portfolioId: string | null) {
-  const qs = portfolioId ? `?portfolioId=${portfolioId}` : "";
+export function usePerformance(scope: string) {
   return useQuery({
-    queryKey: ["performance", portfolioId],
-    queryFn: () => api.get<PerformanceSummary>(`/api/performance/summary${qs}`),
+    queryKey: ["performance", scope],
+    queryFn: () => api.get<PerformanceSummary>(withScope("/api/performance/summary", scope)),
   });
 }
 
@@ -236,24 +232,21 @@ export interface ValueHistory {
 }
 
 /** Investments' value per trading day. Polls while price history is still being fetched. */
-export function useValueHistory(portfolioId: string | null, range: string) {
-  const search = new URLSearchParams({ range });
-  if (portfolioId) search.set("portfolioId", portfolioId);
+export function useValueHistory(scope: string, range: string) {
   return useQuery({
-    queryKey: ["value-history", portfolioId, range],
-    queryFn: () => api.get<ValueHistory>(`/api/performance/value-history?${search.toString()}`),
+    queryKey: ["value-history", scope, range],
+    queryFn: () => api.get<ValueHistory>(withScope("/api/performance/value-history", scope, { range })),
     placeholderData: (prev) => prev,
     refetchInterval: (q) => ((q.state.data?.pending ?? 0) > 0 ? 4000 : false),
   });
 }
 
-export function useTwr(portfolioId: string | null, enabled: boolean) {
-  const qs = portfolioId ? `?portfolioId=${portfolioId}` : "";
+export function useTwr(scope: string, enabled: boolean) {
   return useQuery({
     enabled,
     staleTime: 60_000,
-    queryKey: ["twr", portfolioId],
-    queryFn: () => api.get<TwrResponse>(`/api/performance/twr${qs}`),
+    queryKey: ["twr", scope],
+    queryFn: () => api.get<TwrResponse>(withScope("/api/performance/twr", scope)),
   });
 }
 
@@ -265,14 +258,11 @@ export function useBenchmarks() {
   });
 }
 
-export function useBenchmark(portfolioId: string | null, benchmarkId: string | null) {
-  const search = new URLSearchParams();
-  if (portfolioId) search.set("portfolioId", portfolioId);
-  if (benchmarkId) search.set("benchmark", benchmarkId);
+export function useBenchmark(scope: string, benchmarkId: string | null) {
   return useQuery({
     enabled: !!benchmarkId,
-    queryKey: ["benchmark", portfolioId, benchmarkId],
-    queryFn: () => api.get<BenchmarkComparison>(`/api/performance/benchmark?${search.toString()}`),
+    queryKey: ["benchmark", scope, benchmarkId],
+    queryFn: () => api.get<BenchmarkComparison>(withScope("/api/performance/benchmark", scope, { benchmark: benchmarkId })),
   });
 }
 
@@ -316,11 +306,10 @@ export interface DividendsResponse {
   }[];
 }
 
-export function useDividends(portfolioId: string | null) {
-  const qs = portfolioId ? `?portfolioId=${portfolioId}` : "";
+export function useDividends(scope: string) {
   return useQuery({
-    queryKey: ["dividends", portfolioId],
-    queryFn: () => api.get<DividendsResponse>(`/api/dividends${qs}`),
+    queryKey: ["dividends", scope],
+    queryFn: () => api.get<DividendsResponse>(withScope("/api/dividends", scope)),
   });
 }
 
@@ -331,47 +320,95 @@ export function useImports() {
   });
 }
 
-// ---- Selected-portfolio filter (remembered per login, in this browser) ----
-interface FilterCtx {
-  portfolioId: string | null; // null = All portfolios
+// ---- The filter: whose money, at which brokers, in which market (remembered per login) ----
+
+export type MarketFilter = "in" | "us" | null;
+export interface Filter {
+  people: string[]; // portfolio ids; empty = everyone
+  brokers: string[]; // broker ids (zerodha, vested, …); empty = all brokers
+  market: MarketFilter; // null = both
+}
+interface FilterCtx extends Filter {
+  /** Query string for the API ("" = everything). Pass it to the data hooks. */
+  scope: string;
+  /** The one person, when exactly one is chosen — who new things (an FD, a target) belong to. */
+  portfolioId: string | null;
+  /** Anything narrowed at all? */
+  active: boolean;
   setPortfolioId: (id: string | null) => void;
+  setPeople: (ids: string[]) => void;
+  setBrokers: (ids: string[]) => void;
+  setMarket: (m: MarketFilter) => void;
+  clear: () => void;
 }
 const Ctx = createContext<FilterCtx | null>(null);
 
-const filterKey = (userId: string | undefined) => `dd-portfolio:${userId ?? "anon"}`;
+const EMPTY: Filter = { people: [], brokers: [], market: null };
+const filterKey = (userId: string | undefined) => `dd-filter:${userId ?? "anon"}`;
+const legacyKey = (userId: string | undefined) => `dd-portfolio:${userId ?? "anon"}`;
+
+export function scopeOf(f: Filter): string {
+  const p = new URLSearchParams();
+  if (f.people.length) p.set("portfolioIds", [...f.people].sort().join(","));
+  if (f.brokers.length) p.set("brokers", [...f.brokers].sort().join(","));
+  if (f.market) p.set("market", f.market);
+  return p.toString();
+}
 
 export function FilterProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const key = filterKey(user?.id);
-  const read = (): string | null => {
+  const read = (): Filter => {
     try {
-      const v = localStorage.getItem(key);
-      return v && v !== "all" ? v : null;
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const f = JSON.parse(raw) as Partial<Filter>;
+        return { people: f.people ?? [], brokers: f.brokers ?? [], market: f.market === "in" || f.market === "us" ? f.market : null };
+      }
+      // The older single-person choice carries over.
+      const legacy = localStorage.getItem(legacyKey(user?.id));
+      if (legacy && legacy !== "all") return { ...EMPTY, people: [legacy] };
     } catch {
-      return null;
+      /* fall through */
     }
+    return EMPTY;
   };
-  const [state, setState] = useState<{ key: string; id: string | null }>(() => ({ key, id: read() }));
+  const [state, setState] = useState<{ key: string; f: Filter }>(() => ({ key, f: read() }));
   // A different login in the same browser starts from its own choice, never the last one's.
-  const portfolioId = state.key === key ? state.id : read();
-  const setPortfolioId = (id: string | null) => {
-    setState({ key, id });
+  const f = state.key === key ? state.f : read();
+  const save = (next: Filter) => {
+    setState({ key, f: next });
     try {
-      localStorage.setItem(key, id ?? "all");
+      localStorage.setItem(key, JSON.stringify(next));
     } catch {
       /* ignore */
     }
   };
 
-  // A remembered person who isn't one of this login's (deleted, or left over from before) would
-  // make every screen ask for data it may not see — and look empty. Fall back to everyone.
+  // A remembered person or broker that isn't this login's any more (deleted, or left over) would make
+  // every screen ask for data it can't see — and look empty. Drop it.
   const { data: portfolios } = usePortfolios();
+  const { data: accounts } = useAllAccounts();
   useEffect(() => {
-    if (portfolioId && portfolios && !portfolios.some((p) => p.id === portfolioId)) setPortfolioId(null);
+    if (!portfolios || !accounts) return;
+    const people = f.people.filter((id) => portfolios.some((p) => p.id === id));
+    const brokers = f.brokers.filter((b) => accounts.some((a) => a.broker === b));
+    if (people.length !== f.people.length || brokers.length !== f.brokers.length) save({ ...f, people, brokers });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [portfolioId, portfolios]);
+  }, [portfolios, accounts, f.people.join(","), f.brokers.join(",")]);
 
-  return <Ctx.Provider value={{ portfolioId, setPortfolioId }}>{children}</Ctx.Provider>;
+  const value: FilterCtx = {
+    ...f,
+    scope: scopeOf(f),
+    portfolioId: f.people.length === 1 ? f.people[0]! : null,
+    active: f.people.length > 0 || f.brokers.length > 0 || f.market !== null,
+    setPortfolioId: (id) => save({ ...f, people: id ? [id] : [] }),
+    setPeople: (people) => save({ ...f, people }),
+    setBrokers: (brokers) => save({ ...f, brokers }),
+    setMarket: (market) => save({ ...f, market }),
+    clear: () => save(EMPTY),
+  };
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
 export function useFilter(): FilterCtx {

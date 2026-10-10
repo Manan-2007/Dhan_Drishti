@@ -9,7 +9,7 @@ import { BadRequestError } from "../lib/errors.js";
 import type { BenchmarkProvider, SecurityHistoryProvider, BenchmarkBar } from "../market/types.js";
 import { BENCHMARKS, getBenchmark } from "../market/benchmarks.js";
 import { baseCurrencyOf, rateMap } from "../market/fx.js";
-import { getPortfolioOwned } from "./portfolios.js";
+import { scopeFromRequest, snapshotScope, txScopeClauses, type ScopeArg } from "./scope.js";
 import { computePortfolioHoldings } from "./holdings.js";
 import { getNetWorthSeries } from "./snapshots.js";
 import { computeValueHistory } from "./value-history.js";
@@ -37,9 +37,8 @@ async function baseCashflows(db: DB, userId: string, txRows: CanonicalTx[]) {
   return { base, flows, fxMissing: flows.some((f) => !Number.isFinite(f.amount)) };
 }
 
-export async function computePerformance(db: DB, userId: string, portfolioId?: string) {
-  const clauses = [eq(transactions.userId, userId)];
-  if (portfolioId) clauses.push(eq(transactions.portfolioId, portfolioId));
+export async function computePerformance(db: DB, userId: string, scope?: ScopeArg) {
+  const clauses = await txScopeClauses(db, userId, scope);
   const txRows = (await db
     .select()
     .from(transactions)
@@ -47,7 +46,7 @@ export async function computePerformance(db: DB, userId: string, portfolioId?: s
     .all()) as unknown as CanonicalTx[];
 
   const roll = rollupRealised(txRows);
-  const holdings = await computePortfolioHoldings(db, userId, portfolioId);
+  const holdings = await computePortfolioHoldings(db, userId, scope);
   const s = holdings.summary;
 
   // XIRR needs a terminal value for still-open positions; only compute when every open
@@ -95,13 +94,12 @@ export async function computeBenchmark(
   userId: string,
   provider: BenchmarkProvider,
   benchmarkId: string,
-  portfolioId?: string,
+  scope?: ScopeArg,
 ) {
   const benchmark = getBenchmark(benchmarkId);
   if (!benchmark) throw new BadRequestError("unknown_benchmark", `No such benchmark: ${benchmarkId}`);
 
-  const clauses = [eq(transactions.userId, userId)];
-  if (portfolioId) clauses.push(eq(transactions.portfolioId, portfolioId));
+  const clauses = await txScopeClauses(db, userId, scope);
   const txRows = (await db
     .select()
     .from(transactions)
@@ -115,7 +113,7 @@ export async function computeBenchmark(
   if (flows.length === 0) return unavailable("No cashflows to compare yet.");
   if (fxMissing) return unavailable("Some foreign trades have no exchange rate yet. They fill in automatically within a few hours.");
 
-  const perf = await computePerformance(db, userId, portfolioId);
+  const perf = await computePerformance(db, userId, scope);
 
   // Only the public index symbol + a date range leave the machine — never any holdings.
   const from = flows.reduce((min, f) => (f.date < min ? f.date : min), flows[0]!.date).slice(0, 10);
@@ -182,9 +180,8 @@ async function inBatches<T, R>(items: T[], size: number, fn: (item: T) => Promis
  * security (mutual funds have none → honestly reported as uncovered). Dividends are income,
  * shown separately, and are not treated as flows here (we don't track a cash balance).
  */
-export async function computeTwr(db: DB, userId: string, historyProvider: SecurityHistoryProvider, portfolioId?: string) {
-  const clauses = [eq(transactions.userId, userId)];
-  if (portfolioId) clauses.push(eq(transactions.portfolioId, portfolioId));
+export async function computeTwr(db: DB, userId: string, historyProvider: SecurityHistoryProvider, scope?: ScopeArg) {
+  const clauses = await txScopeClauses(db, userId, scope);
   const txs = (await db.select().from(transactions).where(and(...clauses)).all()) as unknown as CanonicalTx[];
   const unavailable = (reason: string, extra: Record<string, unknown> = {}) => ({ available: false as const, reason, ...extra });
   if (txs.length === 0) return unavailable("No transactions yet.");
@@ -247,7 +244,7 @@ export async function computeTwr(db: DB, userId: string, historyProvider: Securi
     points.push({ date: day, value, flow: flowByDate.get(day)! });
   }
 
-  const holdings = await computePortfolioHoldings(db, userId, portfolioId);
+  const holdings = await computePortfolioHoldings(db, userId, scope);
   if (holdings.summary.openPositions > 0 && !holdings.summary.allPriced) return unavailable("Refresh prices for all open positions first.");
   // Holdings plus the cash of tracked accounts — the same thing each earlier point measures.
   const endValue = Number(holdings.summary.currentValue) + (anyCash ? Number(holdings.summary.cash) : 0);
@@ -266,14 +263,13 @@ export function registerPerformanceRoutes(app: FastifyInstance, db: DB, benchmar
 
   // Investments' value on every trading day (ledger × cached public closes) for the stock-style chart.
   app.get("/api/performance/value-history", opts, async (req) => {
-    const { portfolioId, range } = valueHistoryQuerySchema.parse(req.query);
-    if (portfolioId) await getPortfolioOwned(db, req.user!.id, portfolioId);
-    return computeValueHistory(db, req.user!.id, portfolioId, range, sources);
+    const { range } = valueHistoryQuerySchema.parse(req.query);
+    const scope = await scopeFromRequest(db, req.user!.id, req.query);
+    return computeValueHistory(db, req.user!.id, scope, range, sources);
   });
   app.get("/api/performance/summary", opts, async (req) => {
-    const { portfolioId } = querySchema.parse(req.query);
-    if (portfolioId) await getPortfolioOwned(db, req.user!.id, portfolioId);
-    return computePerformance(db, req.user!.id, portfolioId);
+    const scope = await scopeFromRequest(db, req.user!.id, req.query);
+    return computePerformance(db, req.user!.id, scope);
   });
 
   app.get("/api/performance/benchmarks", opts, async () => ({
@@ -281,23 +277,26 @@ export function registerPerformanceRoutes(app: FastifyInstance, db: DB, benchmar
   }));
 
   app.get("/api/performance/benchmark", opts, async (req) => {
-    const { portfolioId, benchmark } = benchmarkQuerySchema.parse(req.query);
-    if (portfolioId) await getPortfolioOwned(db, req.user!.id, portfolioId);
-    return computeBenchmark(db, req.user!.id, benchmarkProvider, benchmark, portfolioId);
+    const { benchmark } = benchmarkQuerySchema.parse(req.query);
+    const scope = await scopeFromRequest(db, req.user!.id, req.query);
+    return computeBenchmark(db, req.user!.id, benchmarkProvider, benchmark, scope);
   });
 
   app.get("/api/performance/twr", opts, async (req) => {
-    const { portfolioId } = querySchema.parse(req.query);
-    if (portfolioId) await getPortfolioOwned(db, req.user!.id, portfolioId);
-    return computeTwr(db, req.user!.id, historyProvider, portfolioId);
+    const scope = await scopeFromRequest(db, req.user!.id, req.query);
+    return computeTwr(db, req.user!.id, historyProvider, scope);
   });
 
   // Net-worth-over-time series for the dashboard chart + windowed returns.
   app.get("/api/performance/networth", opts, async (req) => {
-    const { portfolioId, range } = netWorthQuerySchema.parse(req.query);
-    if (portfolioId) await getPortfolioOwned(db, req.user!.id, portfolioId);
+    const { range } = netWorthQuerySchema.parse(req.query);
+    const scope = await scopeFromRequest(db, req.user!.id, req.query);
     const days = RANGES[range];
     const from = days == null ? undefined : new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
-    return getNetWorthSeries(db, req.user!.id, portfolioId, from);
+    // Daily snapshots exist for one person or everyone; a custom slice (several people, a broker,
+    // a market) has none — the value-history chart covers it instead.
+    const bucket = snapshotScope(scope);
+    if (bucket === false) return { currency: await baseCurrencyOf(db, req.user!.id), series: [] };
+    return getNetWorthSeries(db, req.user!.id, bucket ?? undefined, from);
   });
 }

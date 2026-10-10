@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Loader2, Wand2 } from "lucide-react";
 import { Segmented } from "@/components/kit/Segmented";
 import { Empty } from "@/components/kit/Empty";
-import { ScopeSelect } from "@/components/shell/ScopeSelect";
+import { NoMatch, ScopeSelect } from "@/components/shell/ScopeSelect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -27,9 +27,9 @@ const pctOf = (s: string) => {
 
 /** Your own target mix against today's, and how much to add or trim to get there. Not advice. */
 export function Rebalance() {
-  const { portfolioId } = useFilter();
+  const { portfolioId, scope, active } = useFilter();
   const [dimension, setDimension] = useState<RebalanceDimension>("asset_class");
-  const { data, isLoading } = useRebalance(portfolioId, dimension);
+  const { data, isLoading } = useRebalance(scope, dimension);
   const qc = useQueryClient();
   const reduceMotion = useReducedMotion();
   const [draft, setDraft] = useState<Record<string, string>>({});
@@ -59,6 +59,7 @@ export function Rebalance() {
 
   if (isLoading) return <Skeleton className="h-96 rounded-2xl" />;
   if (!data || data.rows.length === 0) {
+    if (active) return <NoMatch />;
     return <Empty title="Nothing to balance yet" body="Once you have holdings, set the mix you want — say 60% shares, 30% funds, 10% gold — and see how far each part is from it." />;
   }
 

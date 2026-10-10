@@ -7,6 +7,7 @@ import type { DB } from "../db/index.js";
 import { transactions, securities, accounts, type Transaction } from "../db/schema.js";
 import { BadRequestError, NotFoundError } from "../lib/errors.js";
 import { authed } from "../lib/routes.js";
+import { parseScope, txScopeClauses } from "./scope.js";
 import type { FxProvider } from "../market/types.js";
 import { baseCurrencyOf, fxAtCost, rateMap } from "../market/fx.js";
 import { getPortfolioOwned } from "./portfolios.js";
@@ -203,8 +204,8 @@ export function registerTransactionRoutes(app: FastifyInstance, db: DB, fxProvid
   app.get("/api/transactions", opts, async (req) => {
     const q = searchSchema.parse(req.query);
     const userId = req.user!.id;
-    const clauses = [eq(transactions.userId, userId)];
-    if (q.portfolioId) clauses.push(eq(transactions.portfolioId, q.portfolioId));
+    // People / brokers / market (always within this user's rows, so no ownership lookup is needed).
+    const clauses = await txScopeClauses(db, userId, parseScope(req.query));
     if (q.accountId) clauses.push(eq(transactions.accountId, q.accountId));
     if (q.securityId) clauses.push(eq(transactions.securityId, q.securityId));
     if (q.type) clauses.push(eq(transactions.type, q.type));

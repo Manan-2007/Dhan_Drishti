@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { api, ApiError, type Account, type Portfolio } from "@/lib/api";
-import { useAllAccounts, useHoldings, useImports, usePortfolios } from "@/lib/hooks";
+import { personScope, useAllAccounts, useHoldings, useImports, usePortfolios } from "@/lib/hooks";
 import { ago, compactMoney } from "@/lib/format";
 import { BROKER_CHOICES, brokerLabel, isPersonal } from "@/lib/brokers";
 import { cn } from "@/lib/utils";
@@ -123,7 +123,7 @@ function AddBrokers({ portfolioId, have }: { portfolioId: string; have: Set<stri
 }
 
 function PersonCard({ person, index, accounts, lastImport }: { person: Portfolio; index: number; accounts: Account[]; lastImport: Map<string, string> }) {
-  const { data: holdings } = useHoldings(person.id);
+  const { data: holdings } = useHoldings(personScope(person.id));
   const refresh = useRefresh();
   const reduceMotion = useReducedMotion();
   const [renaming, setRenaming] = useState(false);

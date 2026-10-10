@@ -2,6 +2,7 @@ import { inArray } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import type { DB } from "../db/index.js";
 import { securities } from "../db/schema.js";
+import { scopeFromRequest } from "./scope.js";
 import { authed } from "../lib/routes.js";
 import { computePortfolioHoldings } from "./holdings.js";
 import type { CompanyKey, NewsHub } from "../news/hub.js";
@@ -33,8 +34,10 @@ export function registerNewsRoutes(app: FastifyInstance, db: DB, hub: NewsHub | 
   }));
 
   app.get("/api/news", opts, async (req) => {
-    const { portfolioId, market } = req.query as { portfolioId?: string; market?: string };
-    const data = await computePortfolioHoldings(db, req.user!.id, portfolioId);
+    const { market: sideFilter, ...people } = await scopeFromRequest(db, req.user!.id, req.query);
+    const market = sideFilter as string | undefined;
+    // Both sides' holdings (for the per-market counts); the market itself picks which side is shown.
+    const data = await computePortfolioHoldings(db, req.user!.id, people);
     const equities = data.holdings.filter((h) => h.security.assetClass === "equity" && Number(h.netQty) > 0);
     const valueOf = (h: (typeof equities)[number]) => Math.max(0, Number(h.baseCurrentValue ?? h.baseInvested ?? 0));
     // India vs US by the security's own currency (Vested / IBKR US holdings are USD).

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/kit/Segmented";
 import { Skeleton } from "@/components/ui/skeleton";
 import { IndexTicker } from "@/components/market/IndexTicker";
+import { ScopeSelect } from "@/components/shell/ScopeSelect";
 import { useFilter, useNews } from "@/lib/hooks";
 import type { FeedItem, Headline, NewsCompany, NewsMarket, NewsStance, NewsTone } from "@/lib/api";
 import { ago } from "@/lib/format";
@@ -333,9 +334,12 @@ function LiveFeed({ feed }: { feed: FeedItem[] }) {
  * only a company's name and its headlines. Which companies you hold and how much stay here.
  */
 export function News() {
-  const { portfolioId } = useFilter();
-  const [marketSel, setMarketSel] = useState<NewsMarket | undefined>(undefined);
-  const { data, isLoading, isError, dataUpdatedAt, isFetching } = useNews(portfolioId, marketSel);
+  const { scope, market: filterMarket } = useFilter();
+  // The page's own India/US pick; it starts from (and resets with) the market in the shared filter.
+  const [pick, setPick] = useState<{ from: typeof filterMarket; market: NewsMarket } | null>(null);
+  const marketSel = pick && pick.from === filterMarket ? pick.market : undefined;
+  const setMarketSel = (market: NewsMarket) => setPick({ from: filterMarket, market });
+  const { data, isLoading, isError, dataUpdatedAt, isFetching } = useNews(scope, marketSel);
   const ai = !!data?.ai.enabled;
   const region = data?.region ?? "in";
   // Always offer the switch: even with no US stocks, the US market's own news is worth a look.
@@ -359,6 +363,7 @@ export function News() {
           <p className="mt-2 text-sm text-muted-foreground">What's being said about what you own. Refreshes on its own.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          <ScopeSelect market={false} />
           {showToggle && (
             <Segmented
               size="sm"

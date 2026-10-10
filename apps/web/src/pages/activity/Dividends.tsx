@@ -6,7 +6,7 @@ import { Panel } from "@/components/kit/Panel";
 import { Stat } from "@/components/kit/Stat";
 import { Empty } from "@/components/kit/Empty";
 import { Segmented } from "@/components/kit/Segmented";
-import { ScopeSelect } from "@/components/shell/ScopeSelect";
+import { NoMatch, ScopeSelect } from "@/components/shell/ScopeSelect";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useDividends, useFilter, type DividendCadence } from "@/lib/hooks";
@@ -39,8 +39,8 @@ function Hint({ children }: { children: ReactNode }) {
 
 /** Money your holdings paid you: when, from what, and roughly when the next payouts are due. */
 export function Dividends() {
-  const { portfolioId } = useFilter();
-  const { data, isLoading } = useDividends(portfolioId);
+  const { scope, active } = useFilter();
+  const { data, isLoading } = useDividends(scope);
   const reduceMotion = useReducedMotion();
   const [span, setSpan] = useState<"12" | "24">("12");
 
@@ -70,6 +70,7 @@ export function Dividends() {
     );
   }
   if (!data || data.count === 0) {
+    if (active) return <NoMatch what="dividends" />;
     return <Empty title="No dividends yet" body="Dividends and interest from your broker statements show up here — every one a real payout, never a projection." />;
   }
 

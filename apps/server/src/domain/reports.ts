@@ -6,6 +6,7 @@ import { baseCurrencyOf, rateMap } from "../market/fx.js";
 import { asOf, loadFx } from "../market/history-store.js";
 import type { DB } from "../db/index.js";
 import { transactions, securities } from "../db/schema.js";
+import { scopeFromRequest, txScopeClauses, type ScopeArg } from "./scope.js";
 import { authed } from "../lib/routes.js";
 import { getPortfolioOwned } from "./portfolios.js";
 
@@ -37,9 +38,8 @@ const termOut = (t: { gain: Decimal; proceeds: Decimal; cost: Decimal; count: nu
   count: t.count,
 });
 
-export async function computeCapitalGains(db: DB, userId: string, portfolioId?: string) {
-  const clauses = [eq(transactions.userId, userId)];
-  if (portfolioId) clauses.push(eq(transactions.portfolioId, portfolioId));
+export async function computeCapitalGains(db: DB, userId: string, scope?: ScopeArg) {
+  const clauses = await txScopeClauses(db, userId, scope);
   const txs = (await db.select().from(transactions).where(and(...clauses)).all()) as unknown as CanonicalTx[];
 
   const secIds = [...new Set(txs.map((t) => t.securityId).filter((x): x is string => !!x))];
@@ -143,8 +143,7 @@ export async function computeCapitalGains(db: DB, userId: string, portfolioId?: 
 export function registerReportRoutes(app: FastifyInstance, db: DB): void {
   const opts = authed(app);
   app.get("/api/reports/capital-gains", opts, async (req) => {
-    const { portfolioId } = querySchema.parse(req.query);
-    if (portfolioId) await getPortfolioOwned(db, req.user!.id, portfolioId);
-    return computeCapitalGains(db, req.user!.id, portfolioId);
+    const scope = await scopeFromRequest(db, req.user!.id, req.query);
+    return computeCapitalGains(db, req.user!.id, scope);
   });
 }

@@ -2,6 +2,7 @@ import { and, eq, inArray, notInArray } from "drizzle-orm";
 import { valueTimeline, type CanonicalTx } from "@dhan-drishti/core";
 import type { DB } from "../db/index.js";
 import { quotes, securities, transactions } from "../db/schema.js";
+import { txScopeClauses, type ScopeArg } from "./scope.js";
 import { baseCurrencyOf, rateMap } from "../market/fx.js";
 import { asOf, fillFx, fillHistory, hasHistory, loadFx, loadHistory, missingHistory, type HistorySources } from "../market/history-store.js";
 
@@ -48,9 +49,8 @@ export function fillLater(db: DB, userId: string, ids: string[], from: string, c
   })();
 }
 
-export async function computeValueHistory(db: DB, userId: string, portfolioId: string | undefined, range: string, sources?: HistorySources) {
-  const clauses = [eq(transactions.userId, userId), notInArray(transactions.segment, ["fno", "commodity"])];
-  if (portfolioId) clauses.push(eq(transactions.portfolioId, portfolioId));
+export async function computeValueHistory(db: DB, userId: string, scope: ScopeArg, range: string, sources?: HistorySources) {
+  const clauses = [...(await txScopeClauses(db, userId, scope)), notInArray(transactions.segment, ["fno", "commodity"])];
   const txs = (await db.select().from(transactions).where(and(...clauses)).all()) as unknown as CanonicalTx[];
   const held = txs.filter((t) => t.securityId);
   const base = await baseCurrencyOf(db, userId);

@@ -7,7 +7,7 @@ import { IndexTicker } from "@/components/market/IndexTicker";
 import CountUp from "@/components/reactbits/CountUp";
 import { StockChart } from "@/components/charts/StockChart";
 import { Segmented } from "@/components/kit/Segmented";
-import { ScopeSelect } from "@/components/shell/ScopeSelect";
+import { NoMatch, ScopeSelect } from "@/components/shell/ScopeSelect";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useFilter, useHoldings, usePortfolios, useValueHistory } from "@/lib/hooks";
@@ -138,10 +138,10 @@ function useAttention(data: HoldingsResponse | undefined): Attention[] {
 }
 
 export function Home() {
-  const { portfolioId } = useFilter();
-  const { data, isLoading, isError, refetch } = useHoldings(portfolioId);
+  const { portfolioId, scope, active } = useFilter();
+  const { data, isLoading, isError, refetch } = useHoldings(scope);
   const [range, setRange] = useState<Range>("1y");
-  const history = useValueHistory(portfolioId, range);
+  const history = useValueHistory(scope, range);
   const attention = useAttention(data);
   const reduceMotion = useReducedMotion();
 
@@ -201,7 +201,7 @@ export function Home() {
   }
 
   const nothingYet = !data || (data.holdings.length === 0 && (data.manualAssets?.length ?? 0) === 0);
-  if (nothingYet) return <Welcome />;
+  if (nothingYet) return active ? <NoMatch /> : <Welcome />;
 
   const s = data.summary;
   const netWorth = num(s.netWorth) ?? 0;

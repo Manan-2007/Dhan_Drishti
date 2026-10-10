@@ -26,8 +26,8 @@ const VERB: Record<string, string> = { buy: "Bought", sell: "Sold", dividend: "D
 /** One share, fund or contract: its price with your trades on it, your position, and every entry. */
 export function Security() {
   const { id } = useParams();
-  const { portfolioId } = useFilter();
-  const { data, isLoading, isError } = useSecurityDetail(id, portfolioId);
+  const { portfolioId, scope } = useFilter();
+  const { data, isLoading, isError } = useSecurityDetail(id, scope);
   const [range, setRange] = useState<Range>("1y");
 
   const series = useMemo(() => {

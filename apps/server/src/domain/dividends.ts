@@ -4,6 +4,7 @@ import type { FastifyInstance } from "fastify";
 import { d, ZERO, financialYear, type Decimal } from "@dhan-drishti/core";
 import type { DB } from "../db/index.js";
 import { transactions, securities } from "../db/schema.js";
+import { scopeFromRequest, txScopeClauses, type ScopeArg } from "./scope.js";
 import { authed } from "../lib/routes.js";
 import { baseCurrencyOf, rateMap } from "../market/fx.js";
 import { getPortfolioOwned } from "./portfolios.js";
@@ -52,9 +53,8 @@ function estimateNextDate(lastDate: string, medianDays: number | null, todayMs: 
  * in their own currency and, where an FX rate exists, aggregated into the base currency;
  * income whose currency has no rate is excluded from base totals and flagged (never faked).
  */
-export async function computeDividends(db: DB, userId: string, portfolioId?: string) {
-  const clauses = [eq(transactions.userId, userId), or(eq(transactions.type, "dividend"), eq(transactions.type, "interest"))!];
-  if (portfolioId) clauses.push(eq(transactions.portfolioId, portfolioId));
+export async function computeDividends(db: DB, userId: string, scope?: ScopeArg) {
+  const clauses = [...(await txScopeClauses(db, userId, scope)), or(eq(transactions.type, "dividend"), eq(transactions.type, "interest"))!];
   const rows = await db
     .select()
     .from(transactions)
@@ -113,7 +113,7 @@ export async function computeDividends(db: DB, userId: string, portfolioId?: str
   const today = now.toISOString().slice(0, 10);
   const windowFrom = new Date(todayMs - 365 * DAY).toISOString().slice(0, 10);
 
-  const holdings = await computePortfolioHoldings(db, userId, portfolioId);
+  const holdings = await computePortfolioHoldings(db, userId, scope);
   const heldById = new Map(holdings.holdings.filter((h) => h.netQty !== "0").map((h) => [h.security.id, h]));
 
   // Per-security payout history (ascending), base-currency amounts, for cadence + TTM.
@@ -204,8 +204,7 @@ export async function computeDividends(db: DB, userId: string, portfolioId?: str
 export function registerDividendRoutes(app: FastifyInstance, db: DB): void {
   const opts = authed(app);
   app.get("/api/dividends", opts, async (req) => {
-    const { portfolioId } = querySchema.parse(req.query);
-    if (portfolioId) await getPortfolioOwned(db, req.user!.id, portfolioId);
-    return computeDividends(db, req.user!.id, portfolioId);
+    const scope = await scopeFromRequest(db, req.user!.id, req.query);
+    return computeDividends(db, req.user!.id, scope);
   });
 }

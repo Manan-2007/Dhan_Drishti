@@ -4,6 +4,7 @@ import { computeTechnicals } from "@dhan-drishti/core";
 import type { FastifyInstance } from "fastify";
 import type { DB } from "../db/index.js";
 import { transactions, securities } from "../db/schema.js";
+import { scopeFromRequest, txScopeClauses } from "./scope.js";
 import { authed } from "../lib/routes.js";
 import { NotFoundError } from "../lib/errors.js";
 import type { SecurityHistoryProvider } from "../market/types.js";
@@ -24,20 +25,18 @@ export function registerSecurityDetailRoutes(app: FastifyInstance, db: DB, histo
 
   app.get("/api/securities/:id/detail", opts, async (req) => {
     const { id } = req.params as { id: string };
-    const { portfolioId } = querySchema.parse(req.query);
     const userId = req.user!.id;
-    if (portfolioId) await getPortfolioOwned(db, userId, portfolioId);
+    const scope = await scopeFromRequest(db, userId, req.query);
 
     const security = await db.select().from(securities).where(eq(securities.id, id)).get();
     if (!security) throw new NotFoundError("Security");
 
-    const txClauses = [eq(transactions.userId, userId), eq(transactions.securityId, id)];
-    if (portfolioId) txClauses.push(eq(transactions.portfolioId, portfolioId));
+    const txClauses = [...(await txScopeClauses(db, userId, scope)), eq(transactions.securityId, id)];
     const txRows = await db.select().from(transactions).where(and(...txClauses)).orderBy(desc(transactions.tradeDate), desc(transactions.createdAt)).all();
     if (txRows.length === 0) throw new NotFoundError("Position"); // not held / not traded by this user
 
     // Position from the same computation as the Holdings page, so every figure matches.
-    const holdings = await computePortfolioHoldings(db, userId, portfolioId);
+    const holdings = await computePortfolioHoldings(db, userId, scope);
     const position = holdings.holdings.find((h) => h.security.id === id) ?? null;
 
     // Public price history for the chart (only the ticker/ISIN + a date range leave the machine).

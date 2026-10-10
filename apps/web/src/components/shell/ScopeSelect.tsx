@@ -1,41 +1,138 @@
-import { ChevronDown, Users } from "lucide-react";
+import type { ReactNode } from "react";
+import { ChevronDown, Landmark, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useFilter, usePortfolios } from "@/lib/hooks";
+import { Segmented } from "@/components/kit/Segmented";
+import { useAllAccounts, useFilter, usePortfolios, type MarketFilter } from "@/lib/hooks";
+import { brokerLabel } from "@/lib/brokers";
 
-/** Whose money every screen shows: everyone, or one portfolio. */
-export function ScopeSelect() {
-  const { portfolioId, setPortfolioId } = useFilter();
-  const { data: portfolios } = usePortfolios();
-  const current = portfolios?.find((p) => p.id === portfolioId)?.name ?? "Everyone";
-  if (!portfolios || portfolios.length < 2) return null; // nothing to choose between
+const US_BROKERS = new Set(["vested", "ibkr"]);
+
+/**
+ * The filter every data screen shares: whose money (one or several people), at which brokers (one or
+ * several), in which market (India, US, or both). It's remembered per login and applies everywhere —
+ * every figure on every page is worked out from just that slice of the ledger. Each control only
+ * shows when there's something to choose between. `market={false}` hides the market switch, for a
+ * page that has its own.
+ */
+export function ScopeSelect({ market = true, clearable = true }: { market?: boolean; clearable?: boolean }) {
+  const f = useFilter();
+  const { data: people } = usePortfolios();
+  const { data: accounts } = useAllAccounts();
+  if (!people || !accounts) return null;
+
+  const brokerIds = [...new Set(accounts.map((a) => a.broker))].sort((a, b) => brokerLabel(a).localeCompare(brokerLabel(b)));
+  const showPeople = people.length > 1;
+  const showBrokers = brokerIds.length > 1;
+  const showMarket = market && accounts.some((a) => a.currency !== "INR" || US_BROKERS.has(a.broker)) || (market && f.market !== null);
+  if (!showPeople && !showBrokers && !showMarket && !f.active) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter what's shown">
+      {showPeople && (
+        <MultiPick
+          icon={<Users />}
+          title="Whose money"
+          everyone="Everyone"
+          plural="people"
+          options={people.map((p) => ({ id: p.id, label: p.name }))}
+          value={f.people}
+          onChange={f.setPeople}
+        />
+      )}
+      {showBrokers && (
+        <MultiPick
+          icon={<Landmark />}
+          title="Which brokers"
+          everyone="All brokers"
+          plural="brokers"
+          options={brokerIds.map((b) => ({ id: b, label: brokerLabel(b) }))}
+          value={f.brokers}
+          onChange={f.setBrokers}
+        />
+      )}
+      {showMarket && (
+        <Segmented<"all" | "in" | "us">
+          size="sm"
+          ariaLabel="Market"
+          value={f.market ?? "all"}
+          onChange={(v) => f.setMarket(v === "all" ? null : (v as MarketFilter))}
+          options={[
+            { value: "all", label: "Both" },
+            { value: "in", label: "🇮🇳 India" },
+            { value: "us", label: "🇺🇸 US" },
+          ]}
+        />
+      )}
+      {clearable && f.active && (
+        <Button variant="ghost" size="sm" onClick={f.clear} aria-label="Clear the filter">
+          <X /> Clear
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function MultiPick({
+  icon,
+  title,
+  everyone,
+  plural,
+  options,
+  value,
+  onChange,
+}: {
+  icon: ReactNode;
+  title: string;
+  everyone: string;
+  plural: string;
+  options: { id: string; label: string }[];
+  value: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const label = value.length === 0 ? everyone : value.length === 1 ? (options.find((o) => o.id === value[0])?.label ?? `1 ${plural}`) : `${value.length} ${plural}`;
+  const toggle = (id: string) => onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" aria-label="Choose whose portfolio to show">
-          <Users /> {current} <ChevronDown className="opacity-60" />
+        <Button variant={value.length ? "secondary" : "outline"} size="sm" aria-label={`${title}: ${label}`}>
+          {icon} {label} <ChevronDown className="opacity-60" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-56 rounded-2xl">
-        <DropdownMenuLabel className="text-muted-foreground">Show</DropdownMenuLabel>
+      <DropdownMenuContent align="start" className="w-60 rounded-2xl">
+        <DropdownMenuLabel className="text-muted-foreground">{title} · pick any</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuRadioGroup value={portfolioId ?? "all"} onValueChange={(v) => setPortfolioId(v === "all" ? null : v)}>
-          <DropdownMenuRadioItem value="all">Everyone</DropdownMenuRadioItem>
-          {portfolios.map((p) => (
-            <DropdownMenuRadioItem key={p.id} value={p.id}>
-              {p.name}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
+        <DropdownMenuCheckboxItem checked={value.length === 0} onCheckedChange={() => onChange([])} onSelect={(e) => e.preventDefault()}>
+          {everyone}
+        </DropdownMenuCheckboxItem>
+        {options.map((o) => (
+          <DropdownMenuCheckboxItem key={o.id} checked={value.includes(o.id)} onCheckedChange={() => toggle(o.id)} onSelect={(e) => e.preventDefault()}>
+            {o.label}
+          </DropdownMenuCheckboxItem>
+        ))}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+/** Shown instead of a page's "nothing yet" state when it's the filter that's empty, not the data. */
+export function NoMatch({ what = "holdings" }: { what?: string }) {
+  const f = useFilter();
+  return (
+    <div className="flex flex-col items-center gap-4 rounded-2xl border bg-card px-6 py-12 text-center">
+      <p className="font-display text-3xl">Nothing in this view</p>
+      <p className="max-w-md text-sm text-muted-foreground">No {what} match the people, brokers or market you've picked. Widen the filter, or clear it to see everything.</p>
+      <ScopeSelect clearable={false} />
+      <Button onClick={f.clear}>
+        <X /> Clear the filter
+      </Button>
+    </div>
   );
 }

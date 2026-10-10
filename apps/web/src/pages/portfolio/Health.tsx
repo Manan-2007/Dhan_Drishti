@@ -3,7 +3,7 @@ import { Panel } from "@/components/kit/Panel";
 import { Stat } from "@/components/kit/Stat";
 import { Empty } from "@/components/kit/Empty";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ScopeSelect } from "@/components/shell/ScopeSelect";
+import { NoMatch, ScopeSelect } from "@/components/shell/ScopeSelect";
 import { useFilter, useHoldings } from "@/lib/hooks";
 import type { XrayFinding, XraySeverity } from "@/lib/api";
 import { assetClassLabel } from "@/lib/format";
@@ -21,13 +21,14 @@ const pct = (w: number) => `${(w * 100).toFixed(0)}%`;
 
 /** Portfolio X-ray: one health score plus the plain-language risks in how your money is spread. */
 export function Health() {
-  const { portfolioId } = useFilter();
-  const { data, isLoading } = useHoldings(portfolioId);
+  const { scope, active } = useFilter();
+  const { data, isLoading } = useHoldings(scope);
 
   if (isLoading) return <Skeleton className="h-72 rounded-2xl" />;
   const h = data?.health;
   const div = data?.diversification;
   if (!h || !h.available) {
+    if (active) return <NoMatch />;
     return <Empty title="Nothing to x-ray yet" body="Once you hold some priced positions, their health read shows up here." />;
   }
 

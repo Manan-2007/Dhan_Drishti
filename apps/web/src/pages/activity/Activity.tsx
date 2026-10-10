@@ -144,7 +144,7 @@ function foldDay(rows: Transaction[]): Entry[] {
 }
 
 export function Activity() {
-  const { portfolioId } = useFilter();
+  const { portfolioId, scope } = useFilter();
   const { data: portfolios } = usePortfolios();
   const { data: accounts } = useAllAccounts();
   const navigate = useNavigate();
@@ -162,7 +162,7 @@ export function Activity() {
 
   const range = useMemo(() => periodRange(period), [period]);
   const types = GROUPS.find((g) => g.value === group)?.types;
-  const query = useActivity({ portfolioId, accountId: accountId || undefined, types, q: q || undefined, ...range });
+  const query = useActivity({ scope, accountId: accountId || undefined, types, q: q || undefined, ...range });
   const rows = useMemo(() => query.data?.pages.flatMap((p) => p.transactions) ?? [], [query.data]);
   const summary = query.data?.pages[0]?.summary;
 

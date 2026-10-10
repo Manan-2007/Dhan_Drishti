@@ -35,9 +35,9 @@ function Hint({ children }: { children: ReactNode }) {
 
 export function Returns() {
   const navigate = useNavigate();
-  const { portfolioId } = useFilter();
-  const { data, isLoading } = usePerformance(portfolioId);
-  const { data: holdings } = useHoldings(portfolioId);
+  const { portfolioId, scope } = useFilter();
+  const { data, isLoading } = usePerformance(scope);
+  const { data: holdings } = useHoldings(scope);
   const reduceMotion = useReducedMotion();
 
   if (isLoading) {
@@ -183,10 +183,10 @@ function Bars({ rows, ccy }: { rows: { key: string; label: string; value: number
 }
 
 function BenchmarkPanel() {
-  const { portfolioId } = useFilter();
+  const { portfolioId, scope } = useFilter();
   const { data: list } = useBenchmarks();
   const [id, setId] = useState("nifty50");
-  const { data, isLoading } = useBenchmark(portfolioId, id);
+  const { data, isLoading } = useBenchmark(scope, id);
   const options = (list ?? [{ id: "nifty50", label: "Nifty 50" }]).map((b) => ({ value: b.id, label: b.label }));
   const lines = useMemo(
     () =>
@@ -250,9 +250,9 @@ function Figure({ label, value, sub, tone }: { label: string; value: string; sub
 function MoreDetail() {
   const [open, setOpen] = useState(false);
   const reduceMotion = useReducedMotion();
-  const { portfolioId } = useFilter();
-  const twr = useTwr(portfolioId, open);
-  const { data: holdings } = useHoldings(portfolioId);
+  const { portfolioId, scope } = useFilter();
+  const twr = useTwr(scope, open);
+  const { data: holdings } = useHoldings(scope);
   const fx = holdings?.fxImpact;
   const ccy = holdings?.baseCurrency ?? "INR";
   return (

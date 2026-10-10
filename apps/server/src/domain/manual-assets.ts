@@ -9,6 +9,7 @@ import { authed } from "../lib/routes.js";
 import { NotFoundError } from "../lib/errors.js";
 import { baseCurrencyOf, rateMap } from "../market/fx.js";
 import { getPortfolioOwned } from "./portfolios.js";
+import { manualScopeClauses, scopeFromRequest, type ScopeArg } from "./scope.js";
 
 /**
  * Manual (non-market) assets: FDs, PPF, EPF, NPS, physical gold, real estate, savings, bonds —
@@ -145,9 +146,8 @@ async function getOwned(db: DB, userId: string, id: string): Promise<ManualAsset
  * Load + value the user's manual assets for a scope. `portfolioId` restricts to that portfolio;
  * omit it for every manual asset (the "all portfolios" aggregate includes unassigned ones).
  */
-export async function computeManualAssets(db: DB, userId: string, portfolioId?: string): Promise<ManualAssetsResult> {
-  const clauses = [eq(manualAssets.userId, userId)];
-  if (portfolioId) clauses.push(eq(manualAssets.portfolioId, portfolioId));
+export async function computeManualAssets(db: DB, userId: string, scope?: ScopeArg): Promise<ManualAssetsResult> {
+  const clauses = manualScopeClauses(userId, scope);
   const rows = await db.select().from(manualAssets).where(and(...clauses)).all();
 
   const base = await baseCurrencyOf(db, userId);
@@ -239,9 +239,8 @@ export function registerManualAssetRoutes(app: FastifyInstance, db: DB): void {
   const opts = authed(app);
 
   app.get("/api/manual-assets", opts, async (req) => {
-    const { portfolioId } = querySchema.parse(req.query);
-    if (portfolioId) await getPortfolioOwned(db, req.user!.id, portfolioId);
-    return computeManualAssets(db, req.user!.id, portfolioId);
+    const scope = await scopeFromRequest(db, req.user!.id, req.query);
+    return computeManualAssets(db, req.user!.id, scope);
   });
 
   app.post("/api/manual-assets", opts, async (req, reply) => {
