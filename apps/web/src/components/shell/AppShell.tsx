@@ -89,9 +89,10 @@ export function AppShell() {
             <Button variant="outline" size="icon" className="sm:hidden" onClick={() => setCmdOpen(true)} aria-label="Search">
               <Search />
             </Button>
-            <Button onClick={() => navigate("/accounts")}>
+            <Button onClick={() => navigate("/accounts")} aria-label="Add data">
               <Plus />
-              <span className="hidden sm:inline">Add data</span>
+              {/* Icon-only while the full nav shares the bar with it below 1280px. */}
+              <span className="hidden sm:inline lg:hidden xl:inline">Add data</span>
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
