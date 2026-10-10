@@ -1,8 +1,8 @@
-import { eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { computeHoldings, d, type CanonicalTx, type Holding } from "@dhan-drishti/core";
 import type { DB } from "../db/index.js";
-import { accounts, portfolios, securities, splitReviews, transactions, type Security, type Transaction } from "../db/schema.js";
+import { accounts, attentionHistory, portfolios, securities, splitReviews, transactions, type Security, type Transaction } from "../db/schema.js";
 import { authed } from "../lib/routes.js";
 import { SNAPSHOT_SOURCE } from "../import/snapshot.js";
 import { EXPIRY_SOURCE } from "../import/expiry.js";
@@ -76,7 +76,45 @@ function contractExpiry(sec: Security): string | null {
   return p.expiryApprox ? monthlyExpiryDay(p.expiryISO) : p.expiryISO;
 }
 
-export async function computeAttention(db: DB, userId: string, scope: Scope): Promise<{ items: AttentionItem[]; baseCurrency: string }> {
+/** An issue that has gone away, kept for the page's history. */
+export interface ResolvedIssue {
+  id: string;
+  kind: string;
+  severity: AttentionSeverity;
+  title: string;
+  accountName: string | null;
+  firstSeen: string;
+  resolvedAt: string;
+}
+
+/**
+ * Keep the history in step with what's open now: new issues are recorded, ones still open are
+ * touched, and ones that have disappeared are marked resolved (and reopened if they come back).
+ * Only from the unfiltered view — a filter hiding an issue doesn't mean it was fixed.
+ */
+async function syncHistory(db: DB, userId: string, open: AttentionItem[]): Promise<Map<string, string>> {
+  const now = new Date().toISOString();
+  const known = await db.select().from(attentionHistory).where(eq(attentionHistory.userId, userId)).all();
+  const byId = new Map(known.map((h) => [h.itemId, h]));
+  const openIds = new Set(open.map((i) => i.id));
+  await db.transaction(async (trx) => {
+    for (const i of open) {
+      const row = { kind: i.kind, severity: i.severity, title: i.title, accountName: i.account?.name ?? null, lastSeen: now, resolvedAt: null };
+      if (byId.has(i.id)) await trx.update(attentionHistory).set(row).where(and(eq(attentionHistory.userId, userId), eq(attentionHistory.itemId, i.id))).run();
+      else await trx.insert(attentionHistory).values({ userId, itemId: i.id, firstSeen: now, ...row }).run();
+    }
+    for (const h of known)
+      if (!openIds.has(h.itemId) && !h.resolvedAt)
+        await trx.update(attentionHistory).set({ resolvedAt: now }).where(and(eq(attentionHistory.userId, userId), eq(attentionHistory.itemId, h.itemId))).run();
+  });
+  return new Map([...open.map((i) => [i.id, byId.get(i.id)?.firstSeen ?? now] as const)]);
+}
+
+export async function computeAttention(
+  db: DB,
+  userId: string,
+  scope: Scope,
+): Promise<{ items: (AttentionItem & { since?: string })[]; resolved: ResolvedIssue[]; baseCurrency: string }> {
   const today = new Date().toISOString().slice(0, 10);
   const base = await baseCurrencyOf(db, userId);
   const people = await db.select().from(portfolios).where(eq(portfolios.userId, userId)).all();
@@ -396,7 +434,21 @@ export async function computeAttention(db: DB, userId: string, scope: Scope): Pr
     });
 
   items.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
-  return { items, baseCurrency: base };
+
+  // History: what's open now (things done for you aren't issues), and what's been resolved.
+  const unfiltered = !scope.portfolioIds?.length && !scope.brokers?.length;
+  const openIssues = items.filter((i) => i.severity !== "done");
+  const since = unfiltered ? await syncHistory(db, userId, openIssues) : new Map<string, string>();
+  const resolved = (
+    await db
+      .select()
+      .from(attentionHistory)
+      .where(and(eq(attentionHistory.userId, userId), isNotNull(attentionHistory.resolvedAt)))
+      .orderBy(desc(attentionHistory.resolvedAt))
+      .limit(100)
+      .all()
+  ).map((h) => ({ id: h.itemId, kind: h.kind, severity: h.severity as AttentionSeverity, title: h.title, accountName: h.accountName, firstSeen: h.firstSeen, resolvedAt: h.resolvedAt! }));
+  return { items: items.map((i) => (since.has(i.id) ? { ...i, since: since.get(i.id)! } : i)), resolved, baseCurrency: base };
 }
 
 export function registerAttentionRoutes(app: FastifyInstance, db: DB): void {

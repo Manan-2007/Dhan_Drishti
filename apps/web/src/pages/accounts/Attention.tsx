@@ -29,7 +29,7 @@ import { stockHref } from "@/components/StockLinks";
 import { useAttention, useFilter } from "@/lib/hooks";
 import { useRefreshPrices } from "@/lib/prices";
 import { brokerLabel } from "@/lib/brokers";
-import { api, type AttentionItem, type AttentionSeverity } from "@/lib/api";
+import { api, type AttentionItem, type AttentionResponse, type AttentionSeverity } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const ICON: Record<string, typeof Clock> = {
@@ -57,6 +57,13 @@ const SEV: Record<AttentionSeverity, { label: string; ring: string; icon: string
   done: { label: "Done for you", ring: "border-gain/30", icon: "text-gain", pill: "bg-gain/15 text-gain" },
 };
 
+type Tab = "fix" | "check" | "done";
+const TABS: { key: Tab; label: string; on: string }[] = [
+  { key: "fix", label: "Worth fixing", on: "bg-warning/15 text-warning" },
+  { key: "check", label: "Good to check", on: "bg-raised text-foreground" },
+  { key: "done", label: "Done", on: "bg-gain/15 text-gain" },
+];
+
 const longDate = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 
 /** "From 14 Apr 2026 to today", "Up to 1 Apr 2024", … — the dates the file must cover. */
@@ -83,8 +90,18 @@ export function Attention() {
   }, [hash, data]);
 
   const items = data?.items ?? [];
-  const open = items.filter((i) => i.severity !== "done");
-  const counts = { fix: items.filter((i) => i.severity === "high" || i.severity === "warn").length, check: items.filter((i) => i.severity === "info").length, done: items.filter((i) => i.severity === "done").length };
+  const resolved = data?.resolved ?? [];
+  const groups: Record<Tab, typeof items> = {
+    fix: items.filter((i) => i.severity === "high" || i.severity === "warn"),
+    check: items.filter((i) => i.severity === "info"),
+    done: items.filter((i) => i.severity === "done"),
+  };
+  const [picked, setPicked] = useState<Tab | null>(null);
+  // Opened on one item (from Home): its tab. Otherwise the first with something in it.
+  const hashed = hash ? items.find((i) => hash === `#${encodeURIComponent(i.id)}` || hash === `#${i.id}`) : undefined;
+  const tabOf = (i: AttentionItem): Tab => (i.severity === "done" ? "done" : i.severity === "info" ? "check" : "fix");
+  const tab: Tab = picked ?? (hashed ? tabOf(hashed) : groups.fix.length ? "fix" : groups.check.length ? "check" : "done");
+  const shown = groups[tab];
 
   return (
     <div className="space-y-5">
@@ -102,34 +119,82 @@ export function Attention() {
         </div>
       ) : (
         <>
-          <div className="flex flex-wrap gap-2 text-sm">
-            <span className={cn("rounded-full px-3 py-1 font-medium", counts.fix ? SEV.warn.pill : "bg-raised text-muted-foreground")}>{counts.fix} worth fixing</span>
-            <span className="rounded-full bg-raised px-3 py-1 font-medium text-muted-foreground">{counts.check} good to check</span>
-            {counts.done > 0 && <span className={cn("rounded-full px-3 py-1 font-medium", SEV.done.pill)}>{counts.done} done for you</span>}
+          <div role="tablist" aria-label="Show" className="flex flex-wrap gap-2 text-sm">
+            {TABS.map((t) => {
+              const n = t.key === "done" ? groups.done.length + resolved.length : groups[t.key].length;
+              const on = tab === t.key;
+              return (
+                <button
+                  key={t.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={on}
+                  onClick={() => setPicked(t.key)}
+                  className={cn(
+                    "rounded-full border px-3.5 py-1.5 font-medium transition-colors",
+                    on ? cn("border-transparent", t.on) : "bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground",
+                  )}
+                >
+                  {t.label} <span className="ml-1 tabular-nums opacity-80">{n}</span>
+                </button>
+              );
+            })}
           </div>
-          {open.length === 0 && (
+          {tab !== "done" && shown.length === 0 && (
             <div className="flex items-center gap-3 rounded-2xl border bg-card p-6">
               <CircleCheck className="size-6 text-gain" />
               <div>
-                <p className="font-semibold">All clear</p>
-                <p className="text-sm text-muted-foreground">Your files cover everything we can check: prices, exchange rates, purchases behind every sale, and splits.</p>
+                <p className="font-semibold">{tab === "fix" ? "Nothing to fix" : "Nothing to check"}</p>
+                <p className="text-sm text-muted-foreground">Your files cover everything we can check here: prices, exchange rates, purchases behind every sale, and splits.</p>
               </div>
             </div>
           )}
+          {tab === "done" && shown.length > 0 && <h2 className="pt-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">Done for you</h2>}
           <ul className="space-y-3">
-            {items.map((i) => (
+            {shown.map((i) => (
               <li key={i.id}>
                 <ItemCard item={i} focused={hash === `#${encodeURIComponent(i.id)}` || hash === `#${i.id}`} />
               </li>
             ))}
           </ul>
+          {tab === "done" && <ResolvedList resolved={resolved} />}
+          {tab === "done" && shown.length === 0 && resolved.length === 0 && (
+            <p className="rounded-2xl border bg-card p-6 text-sm text-muted-foreground">Nothing here yet. Issues you fix, and things filled in for you, are listed here as they happen.</p>
+          )}
         </>
       )}
     </div>
   );
 }
 
-function ItemCard({ item, focused }: { item: AttentionItem; focused: boolean }) {
+/** Issues that have gone away — the history of what needed attention and when it was settled. */
+function ResolvedList({ resolved }: { resolved: AttentionResponse["resolved"] }) {
+  if (!resolved.length) return null;
+  return (
+    <section className="space-y-2 pt-2">
+      <h2 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Resolved</h2>
+      <ul className="divide-y rounded-2xl border bg-card">
+        {resolved.map((r) => {
+          const Icon = ICON[r.kind] ?? FileWarning;
+          return (
+            <li key={r.id} className="flex items-start gap-3 px-4 py-3">
+              <Icon className="mt-0.5 size-4 shrink-0 text-gain" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm">{r.title}</p>
+                <p className="text-xs text-muted-foreground">
+                  {[r.accountName, `${SEV[r.severity]?.label.toLowerCase() ?? "noted"} from ${longDate(r.firstSeen)}`].filter(Boolean).join(" · ")}
+                </p>
+              </div>
+              <span className="shrink-0 text-xs text-gain">Resolved {longDate(r.resolvedAt)}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+function ItemCard({ item, focused }: { item: AttentionItem & { since?: string }; focused: boolean }) {
   const sev = SEV[item.severity];
   const Icon = ICON[item.kind] ?? FileWarning;
   const [showAll, setShowAll] = useState(false);
@@ -142,6 +207,7 @@ function ItemCard({ item, focused }: { item: AttentionItem; focused: boolean }) 
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="font-semibold">{item.title}</h2>
             <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", sev.pill)}>{sev.label}</span>
+            {item.since && <span className="text-[11px] text-muted-foreground">since {longDate(item.since)}</span>}
             {item.account && (
               <span className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">
                 {brokerLabel(item.account.broker)}

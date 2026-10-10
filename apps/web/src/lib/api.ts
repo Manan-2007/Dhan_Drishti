@@ -632,8 +632,19 @@ export interface AttentionItem {
   need: { file: string; guide: string | null; from: string | null; to: string | null; segment?: string } | null;
   fix: "add_files" | "refresh_prices" | "check_splits" | null;
 }
+export interface ResolvedIssue {
+  id: string;
+  kind: string;
+  severity: AttentionSeverity;
+  title: string;
+  accountName: string | null;
+  firstSeen: string;
+  resolvedAt: string;
+}
 export interface AttentionResponse {
-  items: AttentionItem[];
+  items: (AttentionItem & { since?: string })[];
+  /** Issues that have gone away, newest first. */
+  resolved: ResolvedIssue[];
   baseCurrency: string;
 }
 

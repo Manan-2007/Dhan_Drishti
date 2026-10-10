@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion, useReducedMotion } from "motion/react";
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, CalendarClock, CheckCircle2, Loader2, FileWarning, PieChart, RefreshCw, Upload } from "lucide-react";
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, CalendarClock, Loader2, FileWarning, PieChart, RefreshCw, Upload } from "lucide-react";
 import { IndexTicker } from "@/components/market/IndexTicker";
 import CountUp from "@/components/reactbits/CountUp";
 import { StockChart } from "@/components/charts/StockChart";
@@ -237,19 +237,16 @@ export function Home() {
         </section>
 
         <div className="space-y-5 lg:col-span-4">
-          <Panel
-            title="Needs attention"
-            action={
-              <Link to="/accounts/attention" className="text-xs text-muted-foreground hover:text-foreground">
-                {moreGaps ? `All ${gapItems.length} →` : "Details →"}
-              </Link>
-            }
-          >
-            {attention.length === 0 ? (
-              <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                <CheckCircle2 className="size-4 text-gain" /> All clear. Your files, prices and rates look complete.
-              </p>
-            ) : (
+          {/* Only when there's something to look at — an empty "all clear" card is just noise. */}
+          {attention.length > 0 && (
+            <Panel
+              title="Needs attention"
+              action={
+                <Link to="/accounts/attention" className="text-xs text-muted-foreground hover:text-foreground">
+                  {moreGaps ? `All ${gapItems.length} →` : "Details →"}
+                </Link>
+              }
+            >
               <ul className="space-y-3">
                 {attention.map((a, i) => (
                   <motion.li
@@ -265,8 +262,8 @@ export function Home() {
                   </motion.li>
                 ))}
               </ul>
-            )}
-          </Panel>
+            </Panel>
+          )}
 
           <Panel title="Top movers today" action={<Link to="/portfolio" className="text-xs text-muted-foreground hover:text-foreground">All positions →</Link>}>
             {movers.length === 0 ? (

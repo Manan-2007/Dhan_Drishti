@@ -406,6 +406,28 @@ export const splitReviews = sqliteTable(
   (t) => [primaryKey({ columns: [t.userId, t.portfolioId, t.accountKey, t.securityId, t.exDate] })],
 );
 
+/**
+ * Every Needs-attention issue a user has had: when it first showed, when it was last seen, and when
+ * it went away (fixed by a new file, a confirmation, …). Gives the page its history.
+ */
+export const attentionHistory = sqliteTable(
+  "attention_history",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    itemId: text("item_id").notNull(),
+    kind: text("kind").notNull(),
+    severity: text("severity").notNull(),
+    title: text("title").notNull(),
+    accountName: text("account_name"),
+    firstSeen: text("first_seen").notNull(),
+    lastSeen: text("last_seen").notNull(),
+    resolvedAt: text("resolved_at"),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.itemId] })],
+);
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Portfolio = typeof portfolios.$inferSelect;

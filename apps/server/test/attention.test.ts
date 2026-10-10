@@ -52,6 +52,10 @@ describe("needs attention", () => {
     const after = (await get("/api/attention")).json().items as { kind: string }[];
     expect(after.some((i) => i.kind === "stale_files")).toBe(false);
     expect(after.some((i) => i.kind === "file_gap")).toBe(true); // gaps between files are a separate question
+    // …and it moves to the history, with when it was seen and when it went away.
+    const resolved = (await get("/api/attention")).json().resolved as { kind: string; resolvedAt: string; firstSeen: string }[];
+    expect(resolved.map((r) => r.kind)).toEqual(["stale_files"]);
+    expect(resolved[0]!.resolvedAt >= resolved[0]!.firstSeen).toBe(true);
     const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
     expect((await app.inject({ method: "PUT", url: `/api/accounts/${zerodha}`, headers: { cookie }, payload: { coveredThrough: tomorrow } })).statusCode).toBe(400);
 
