@@ -43,7 +43,7 @@ export function Allocation() {
   const d = data.diversification;
 
   // Treemap of the selected dimension's slices (size = value).
-  const treemapItems: TreemapItem[] = slices.map((s, i) => ({ key: s.key, label: label(s.key), value: Number(s.value), color: color(s.key, i), pct: Number(s.weight) }));
+  const treemapItems: TreemapItem[] = slices.map((s, i) => ({ key: s.key, label: label(s.key), value: Number(s.value), color: color(s.key, i), pct: Number(s.weight), detail: compactMoney(s.value, data.baseCurrency) }));
 
   // Sunburst: asset class (inner) → sector (outer), from priced holdings.
   const byClass = new Map<string, { value: number; sectors: Map<string, number> }>();
@@ -162,7 +162,7 @@ export function Allocation() {
           <div className="rounded-2xl border bg-card p-6">
             <p className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">Class → sector</p>
             <div className="mt-3">
-              <Sunburst groups={sunburst} size={260} />
+              <Sunburst groups={sunburst} size={260} format={(v) => compactMoney(v, data.baseCurrency)} />
             </div>
             <p className="mt-2 text-center text-xs text-muted-foreground">Inner ring: asset class · outer ring: its sectors</p>
           </div>

@@ -4,6 +4,59 @@
  * net-worth composition waterfall. Every figure is passed in already derived — nothing is faked.
  */
 
+import { useRef, useState } from "react";
+import { cn } from "@/lib/utils";
+
+interface TipLine {
+  text: string;
+  tone?: "gain" | "loss";
+}
+interface Tip {
+  x: number;
+  y: number;
+  flip: boolean;
+  /** Open above the pointer (near the chart's bottom edge). */
+  up: boolean;
+  title: string;
+  lines: TipLine[];
+}
+
+/** A hover card that follows the pointer over a chart (and opens on tap) — every tile's values,
+ *  however small the tile. */
+function useTip() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [tip, setTip] = useState<Tip | null>(null);
+  const show = (e: React.MouseEvent, title: string, lines: TipLine[]) => {
+    const box = ref.current?.getBoundingClientRect();
+    if (!box) return;
+    const x = e.clientX - box.left;
+    const y = e.clientY - box.top;
+    setTip({ x, y, flip: x > box.width - 230, up: y > box.height - 120, title, lines });
+  };
+  return { ref, tip, show, hide: () => setTip(null) };
+}
+
+function TipCard({ tip }: { tip: Tip | null }) {
+  if (!tip) return null;
+  return (
+    <div
+      role="tooltip"
+      className="pointer-events-none absolute z-30 max-w-60 min-w-36 rounded-xl border bg-popover px-3 py-2 text-xs shadow-[0_12px_32px_-8px_rgba(0,0,0,0.8)]"
+      style={{
+        ...(tip.up ? { bottom: `calc(100% - ${tip.y - 14}px)` } : { top: tip.y + 14 }),
+        ...(tip.flip ? { right: `calc(100% - ${tip.x - 14}px)` } : { left: tip.x + 14 }),
+      }}
+    >
+      <p className="text-sm font-semibold text-foreground">{tip.title}</p>
+      {tip.lines.map((l, i) => (
+        <p key={i} className={cn("mt-0.5 tabular-nums", l.tone === "gain" ? "text-gain" : l.tone === "loss" ? "text-loss" : "text-muted-foreground")}>
+          {l.text}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 // ---- Treemap (binary split: simple, stable, readable) -----------------------------------------
 
 export interface TreemapItem {
@@ -12,6 +65,8 @@ export interface TreemapItem {
   value: number;
   color: string;
   pct: number; // 0..1
+  /** Shown on hover, e.g. the amount ("₹1.75 L"). */
+  detail?: string;
 }
 
 interface Rect<T> {
@@ -49,21 +104,22 @@ function splitLayout<T extends { value: number }>(items: T[], x: number, y: numb
 }
 
 export function Treemap({ items, height = 300 }: { items: TreemapItem[]; height?: number }) {
+  const { ref, tip, show, hide } = useTip();
   const W = 1000;
   const sorted = [...items].filter((i) => i.value > 0).sort((a, b) => b.value - a.value);
   if (sorted.length === 0) return null;
   const rects: Rect<TreemapItem>[] = [];
   splitLayout(sorted, 0, 0, W, height, true, rects);
+  const lines = (it: TreemapItem): TipLine[] => [{ text: `${(it.pct * 100).toFixed(1)}% of the split` }, ...(it.detail ? [{ text: it.detail }] : [])];
   return (
+    <div ref={ref} className="relative" onMouseLeave={hide}>
     <svg viewBox={`0 0 ${W} ${height}`} width="100%" height={height} role="img" aria-label="Holdings treemap" style={{ display: "block" }}>
       {rects.map((r) => {
         const big = r.w > 90 && r.h > 44;
         const mid = r.w > 60 && r.h > 28;
         return (
-          <g key={r.item.key}>
-            <rect x={r.x + 1.5} y={r.y + 1.5} width={Math.max(0, r.w - 3)} height={Math.max(0, r.h - 3)} rx={8} fill={r.item.color} opacity={0.92}>
-              <title>{`${r.item.label} · ${(r.item.pct * 100).toFixed(1)}%`}</title>
-            </rect>
+          <g key={r.item.key} onMouseMove={(e) => show(e, r.item.label, lines(r.item))} onClick={(e) => show(e, r.item.label, lines(r.item))}>
+            <rect x={r.x + 1.5} y={r.y + 1.5} width={Math.max(0, r.w - 3)} height={Math.max(0, r.h - 3)} rx={8} fill={r.item.color} opacity={tip?.title === r.item.label ? 1 : 0.92} />
             {mid && (
               <text x={r.x + 14} y={r.y + 26} fill="#16120a" fontSize={big ? 20 : 15} fontWeight={600} style={{ pointerEvents: "none" }}>
                 {r.item.label.length > r.w / 10 ? `${r.item.label.slice(0, Math.max(3, Math.floor(r.w / 10)))}…` : r.item.label}
@@ -78,6 +134,8 @@ export function Treemap({ items, height = 300 }: { items: TreemapItem[]; height?
         );
       })}
     </svg>
+    <TipCard tip={tip} />
+    </div>
   );
 }
 
@@ -104,9 +162,15 @@ function arcPath(cx: number, cy: number, rI: number, rO: number, a0: number, a1:
   return `M${x0},${y0} A${rO},${rO} 0 ${large} 0 ${x1},${y1} L${x2},${y2} A${rI},${rI} 0 ${large} 1 ${x3},${y3} Z`;
 }
 
-export function Sunburst({ groups, size = 300 }: { groups: SunburstGroup[]; size?: number }) {
+export function Sunburst({ groups, size = 300, format }: { groups: SunburstGroup[]; size?: number; format?: (v: number) => string }) {
+  const { ref, tip, show, hide } = useTip();
   const total = groups.reduce((s, g) => s + g.value, 0);
   if (total <= 0) return null;
+  const lines = (value: number, parent?: string): TipLine[] => [
+    { text: `${((value / total) * 100).toFixed(1)}% of your holdings` },
+    ...(format ? [{ text: format(value) }] : []),
+    ...(parent ? [{ text: `in ${parent}` }] : []),
+  ];
   const cx = size / 2;
   const cy = size / 2;
   const rInner = size * 0.18;
@@ -117,22 +181,25 @@ export function Sunburst({ groups, size = 300 }: { groups: SunburstGroup[]; size
   for (const g of groups) {
     const span = (g.value / total) * 360;
     const gEnd = angle + span;
-    segments.push(<path key={`c-${g.label}`} d={arcPath(cx, cy, rInner, rMid, angle, gEnd)} fill={g.color} opacity={0.95}><title>{`${g.label} · ${((g.value / total) * 100).toFixed(1)}%`}</title></path>);
+    segments.push(<path key={`c-${g.label}`} d={arcPath(cx, cy, rInner, rMid, angle, gEnd)} fill={g.color} opacity={0.95} onMouseMove={(e) => show(e, g.label, lines(g.value))} onClick={(e) => show(e, g.label, lines(g.value))} />);
     // outer ring: this group's children within its angle
     const childTotal = g.children.reduce((s, c) => s + c.value, 0) || g.value;
     let ca = angle;
     const kids = g.children.length ? g.children : [{ label: g.label, color: g.color, value: g.value }];
     for (const c of kids) {
       const cSpan = (c.value / childTotal) * span;
-      segments.push(<path key={`s-${g.label}-${c.label}`} d={arcPath(cx, cy, rMid + 2, rOuter, ca, ca + cSpan)} fill={c.color} opacity={0.82}><title>{`${c.label} · ${((c.value / total) * 100).toFixed(1)}%`}</title></path>);
+      segments.push(<path key={`s-${g.label}-${c.label}`} d={arcPath(cx, cy, rMid + 2, rOuter, ca, ca + cSpan)} fill={c.color} opacity={0.82} onMouseMove={(e) => show(e, c.label, lines(c.value, g.label))} onClick={(e) => show(e, c.label, lines(c.value, g.label))} />);
       ca += cSpan;
     }
     angle = gEnd;
   }
   return (
-    <svg viewBox={`0 0 ${size} ${size}`} width="100%" height={size} role="img" aria-label="Asset-class and sector sunburst" style={{ display: "block" }}>
-      {segments}
-    </svg>
+    <div ref={ref} className="relative" onMouseLeave={hide}>
+      <svg viewBox={`0 0 ${size} ${size}`} width="100%" height={size} role="img" aria-label="Asset-class and sector sunburst" style={{ display: "block" }}>
+        {segments}
+      </svg>
+      <TipCard tip={tip} />
+    </div>
   );
 }
 
@@ -151,6 +218,9 @@ export interface HeatItem {
   label: string;
   value: number; // size (base-currency worth)
   changePct: number | null; // today's move, as a fraction (e.g. 0.012)
+  /** Shown on hover: the company's name, and the worth ("₹23,728"). */
+  name?: string;
+  detail?: string;
 }
 
 /** Diverging fill: green for a gain, red for a loss, muted when flat/unknown. Intensity caps at ±3%. */
@@ -164,22 +234,27 @@ function heatFill(changePct: number | null): string {
 }
 
 export function Heatmap({ items, height = 320 }: { items: HeatItem[]; height?: number }) {
+  const { ref, tip, show, hide } = useTip();
   const W = 1000;
   const sorted = [...items].filter((i) => i.value > 0).sort((a, b) => b.value - a.value);
   if (sorted.length === 0) return null;
   const rects: Rect<HeatItem>[] = [];
   splitLayout(sorted, 0, 0, W, height, true, rects);
   const pct = (c: number | null) => (c === null ? "—" : `${c >= 0 ? "+" : "−"}${(Math.abs(c) * 100).toFixed(2)}%`);
+  const lines = (it: HeatItem): TipLine[] => [
+    ...(it.name && it.name !== it.label ? [{ text: it.name }] : []),
+    { text: it.changePct === null ? "No move yet today" : `${pct(it.changePct)} today`, tone: it.changePct === null ? undefined : it.changePct >= 0 ? "gain" : "loss" },
+    ...(it.detail ? [{ text: it.detail }] : []),
+  ];
   return (
+    <div ref={ref} className="relative" onMouseLeave={hide}>
     <svg viewBox={`0 0 ${W} ${height}`} width="100%" height={height} role="img" aria-label="Today's movers heatmap" style={{ display: "block" }}>
       {rects.map((r) => {
         const big = r.w > 90 && r.h > 44;
         const mid = r.w > 56 && r.h > 26;
         return (
-          <g key={r.item.key}>
-            <rect x={r.x + 1.5} y={r.y + 1.5} width={Math.max(0, r.w - 3)} height={Math.max(0, r.h - 3)} rx={8} fill={heatFill(r.item.changePct)} stroke="rgba(243,239,230,0.08)">
-              <title>{`${r.item.label} · ${pct(r.item.changePct)}`}</title>
-            </rect>
+          <g key={r.item.key} onMouseMove={(e) => show(e, r.item.label, lines(r.item))} onClick={(e) => show(e, r.item.label, lines(r.item))}>
+            <rect x={r.x + 1.5} y={r.y + 1.5} width={Math.max(0, r.w - 3)} height={Math.max(0, r.h - 3)} rx={8} fill={heatFill(r.item.changePct)} stroke={tip?.title === r.item.label ? "rgba(243,239,230,0.6)" : "rgba(243,239,230,0.08)"} />
             {mid && (
               <text x={r.x + 14} y={r.y + 25} fill="#f3efe6" fontSize={big ? 19 : 14} fontWeight={600} style={{ pointerEvents: "none" }}>
                 {r.item.label.length > r.w / 10 ? `${r.item.label.slice(0, Math.max(3, Math.floor(r.w / 10)))}…` : r.item.label}
@@ -194,6 +269,8 @@ export function Heatmap({ items, height = 320 }: { items: HeatItem[]; height?: n
         );
       })}
     </svg>
+    <TipCard tip={tip} />
+    </div>
   );
 }
 

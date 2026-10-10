@@ -171,7 +171,14 @@ export function Positions() {
       const cv = num(h.currentValue);
       const tc = num(h.todayChange);
       const prev = cv !== null && tc !== null ? cv - tc : null;
-      return { key: h.security.id, label: h.security.symbol, value: Number(h.baseCurrentValue), changePct: prev && prev !== 0 && tc !== null ? tc / prev : null };
+      return {
+        key: h.security.id,
+        label: h.security.symbol,
+        name: h.security.name,
+        detail: `${compactMoney(h.baseCurrentValue!, ccy)} held`,
+        value: Number(h.baseCurrentValue),
+        changePct: prev && prev !== 0 && tc !== null ? tc / prev : null,
+      };
     });
   const hasMovers = heatItems.some((h) => h.changePct !== null);
 
