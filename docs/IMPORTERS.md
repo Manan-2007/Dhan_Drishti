@@ -124,7 +124,8 @@ is then auto-classified (sector / sub-sector / asset class) from a bundled NSE/A
 segment-aware rules (F&O → Derivatives). A **US** listing (Vested, IBKR — often just a ticker) is
 classified from a bundled **Nasdaq** reference instead (`scripts/build-us-listings.mjs`, regenerated
 now and then): the company's name, its sector mapped into the same vocabulary as Indian shares (so a
-US chip-maker and an Indian IT company sit in one slice), its industry as the sub-sector, and whether
+US chip-maker and an Indian IT company sit in one slice; well-known companies follow a hand-kept GICS
+list, `us-sector-overrides.ts`, where Nasdaq's SIC-based sector reads oddly), its industry as the sub-sector, and whether
 it's an ETF — ETFs grouped by what their name says they hold (index, sector/theme, international,
 income, debt, gold). Everything is reclassified at startup too, so a reference update reaches old
 imports. Nothing is guessed silently — unresolved metadata stays blank rather than fabricated.

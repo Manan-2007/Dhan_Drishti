@@ -15,6 +15,7 @@ const SECTOR_LABELS: Record<string, string> = {
   Metal: "Metals & materials",
   Chemicals: "Chemicals",
   TeleCom: "Telecom",
+  Communication: "Media & internet",
   Auto: "Auto",
   Defence: "Defence & aerospace",
   Infra: "Infrastructure",

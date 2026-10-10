@@ -1,11 +1,13 @@
 import type { AssetClass } from "@dhan-drishti/core";
 import listings from "./us-listings-data.json" with { type: "json" };
+import { US_SECTOR_OVERRIDES } from "./us-sector-overrides.js";
 
 /**
  * US holdings classified from the bundled Nasdaq reference (scripts/build-us-listings.mjs), the way
  * Indian ones are from the NSE reference: the company's name, a sector in the same vocabulary as
  * Indian shares (so a US chip-maker and an Indian IT stock sit side by side), and the industry as
- * the sub-sector. ETFs are recognised and grouped by what their name says they hold.
+ * the sub-sector — except well-known companies, which follow a hand-kept GICS list
+ * (us-sector-overrides.ts). ETFs are recognised and grouped by what their name says they hold.
  */
 export interface UsListing {
   assetClass: AssetClass;
@@ -96,6 +98,9 @@ export function classifyUsListing(symbolRaw: string): UsListing | null {
   const etf = data.etfs[symbol] ?? data.etfs[symbolRaw.trim().toUpperCase()];
   if (etf) return { assetClass: "etf", name: etf, ...classifyEtf(etf) };
   const stock = data.stocks[symbol] ?? data.stocks[symbol.replace(/-/g, "/")] ?? data.stocks[symbolRaw.trim().toUpperCase()];
+  // Well-known names follow GICS (see us-sector-overrides.ts) — even ones the screener leaves out.
+  const fixed = US_SECTOR_OVERRIDES[symbol];
+  if (fixed) return { assetClass: "equity", name: stock?.[0] ?? symbol, sector: fixed[0], subSector: fixed[1] };
   if (!stock) return null;
   const [name, sector, industry] = stock;
   return { assetClass: "equity", name, sector: sectorOf(sector, industry), subSector: industry || undefined };

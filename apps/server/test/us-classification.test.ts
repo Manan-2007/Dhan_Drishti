@@ -13,6 +13,14 @@ describe("US listings reference", () => {
     expect(classifyUsListing("ZZZZZZ")).toBeNull();
   });
 
+  it("puts well-known companies in their usual (GICS) sectors where Nasdaq's reads oddly", () => {
+    expect(classifyUsListing("V")).toMatchObject({ name: "Visa Inc.", sector: "BFSI", subSector: "Payments" }); // Nasdaq: Consumer
+    expect(classifyUsListing("PM")).toMatchObject({ sector: "FMCG", subSector: "Tobacco" }); // Nasdaq: Health care
+    expect(classifyUsListing("GOOG")).toMatchObject({ sector: "Communication", subSector: "Interactive media" }); // Nasdaq: Technology
+    expect(classifyUsListing("GE")).toMatchObject({ sector: "Defence" });
+    expect(classifyUsListing("BRK.B")).toMatchObject({ sector: "BFSI" }); // not in the screener at all
+  });
+
   it("recognises ETFs and groups them by what they hold", () => {
     expect(classifyUsListing("VOOG")).toMatchObject({ assetClass: "etf", sector: "Index", subSector: "S&P 500" });
     expect(classifyUsListing("SOXX")).toMatchObject({ assetClass: "etf", sector: "Sectorial", subSector: "Semiconductors" });
