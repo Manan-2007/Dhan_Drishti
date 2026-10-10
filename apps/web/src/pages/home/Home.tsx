@@ -288,35 +288,7 @@ export function Home() {
         </div>
       </div>
 
-      {allocation.length > 0 && (
-        <Panel
-          title={`Allocation · by ${data.allocation.basis === "current_value" ? "current value" : "amount invested"}`}
-          action={<Link to="/portfolio/allocation" className="text-xs text-muted-foreground hover:text-foreground">Details →</Link>}
-        >
-          <div className="flex h-3 w-full overflow-hidden rounded-full bg-raised" role="img" aria-label="Allocation by asset class">
-            {allocation.map((slice, i) => (
-              <motion.div
-                key={slice.key}
-                initial={reduceMotion ? false : { width: 0 }}
-                animate={{ width: `${Number(slice.weight) * 100}%` }}
-                transition={{ delay: 0.15 + i * 0.05, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-                style={{ backgroundColor: assetColor(slice.key, i) }}
-                className="h-full border-r-2 border-card last:border-r-0"
-              />
-            ))}
-          </div>
-          <ul className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm">
-            {allocation.map((slice, i) => (
-              <li key={slice.key} className="flex items-center gap-2">
-                <span className="size-2.5 rounded-full" style={{ backgroundColor: assetColor(slice.key, i) }} />
-                <span>{assetClassLabel(slice.key)}</span>
-                <span className="font-semibold">{(Number(slice.weight) * 100).toFixed(1)}%</span>
-                <span className="text-muted-foreground">{compactMoney(slice.value, data.baseCurrency)}</span>
-              </li>
-            ))}
-          </ul>
-        </Panel>
-      )}
+      {allocation.length > 0 && <AllocationPanel data={data} />}
     </div>
   );
 }
@@ -348,5 +320,107 @@ function Welcome() {
         <Upload /> Add your first files
       </Button>
     </section>
+  );
+}
+
+type AllocDim = "asset" | "sector" | "industry" | "region" | "currency" | "holdings";
+const ALLOC_DIMS: { value: AllocDim; label: string }[] = [
+  { value: "asset", label: "Asset class" },
+  { value: "sector", label: "Sector" },
+  { value: "industry", label: "Industry" },
+  { value: "region", label: "Region" },
+  { value: "currency", label: "Currency" },
+  { value: "holdings", label: "Holdings" },
+];
+const SLICE_PALETTE = ["#f0b23e", "#5fb7a6", "#8c8fe0", "#d97757", "#7fa66b", "#c9a27e", "#d77fb3", "#7cc7d9", "#e3c07a", "#9dbf8c"];
+const MAX_SLICES = 8;
+const allocKey = "dd-home-allocation";
+
+/**
+ * How your money is spread, cut any way the data allows: asset class, sector, industry, region,
+ * currency, or your biggest holdings. Beyond the top few, the rest fold into "Other".
+ */
+function AllocationPanel({ data }: { data: HoldingsResponse }) {
+  const reduceMotion = useReducedMotion();
+  const [dim, setDimState] = useState<AllocDim>(() => {
+    try {
+      const v = localStorage.getItem(allocKey) as AllocDim | null;
+      return v && ALLOC_DIMS.some((d) => d.value === v) ? v : "asset";
+    } catch {
+      return "asset";
+    }
+  });
+  const setDim = (d: AllocDim) => {
+    setDimState(d);
+    try {
+      localStorage.setItem(allocKey, d);
+    } catch {
+      /* ignore */
+    }
+  };
+  const a = data.allocation;
+  const ccy = data.baseCurrency;
+
+  const slices = useMemo(() => {
+    let raw: { key: string; label: string; value: number }[];
+    if (dim === "holdings") {
+      const open = data.holdings.filter((h) => Number(h.netQty) > 0 && num(h.baseCurrentValue ?? h.baseInvested));
+      raw = open.map((h) => ({ key: h.security.id, label: displayName(h.security), value: Number(h.baseCurrentValue ?? h.baseInvested) }));
+      // Cash and other assets are part of the picture too.
+      for (const s of a.byAssetClass) if (!data.holdings.some((h) => h.security.assetClass === s.key)) raw.push({ key: `class-${s.key}`, label: assetClassLabel(s.key), value: Number(s.value) });
+    } else {
+      const src = { asset: a.byAssetClass, sector: a.bySector, industry: a.bySubSector ?? [], region: a.byRegion ?? [], currency: a.byCurrency }[dim];
+      const label = (k: string) => (dim === "asset" ? assetClassLabel(k) : dim === "sector" ? sectorLabel(k) : k);
+      raw = src.map((s) => ({ key: s.key, label: label(s.key), value: Number(s.value) }));
+    }
+    raw = raw.filter((s) => s.value > 0).sort((x, y) => y.value - x.value);
+    const total = raw.reduce((t, s) => t + s.value, 0) || 1;
+    const top = raw.slice(0, MAX_SLICES);
+    const rest = raw.slice(MAX_SLICES);
+    if (rest.length) top.push({ key: "__other", label: `Other (${rest.length})`, value: rest.reduce((t, s) => t + s.value, 0) });
+    return top.map((s, i) => ({
+      ...s,
+      weight: s.value / total,
+      color: s.key === "__other" ? "#3a3a42" : dim === "asset" ? assetColor(s.key, i) : (SLICE_PALETTE[i % SLICE_PALETTE.length] ?? "#6f6f7a"),
+    }));
+  }, [a, data.holdings, dim]);
+
+  return (
+    <Panel
+      title={`Allocation · by ${a.basis === "current_value" ? "current value" : "amount invested"}`}
+      action={
+        <div className="flex flex-wrap items-center gap-3">
+          <Segmented ariaLabel="Break down by" size="xs" options={ALLOC_DIMS} value={dim} onChange={setDim} className="no-scrollbar max-w-full overflow-x-auto" />
+          <Link to="/portfolio/allocation" className="text-xs text-muted-foreground hover:text-foreground">
+            Details →
+          </Link>
+        </div>
+      }
+    >
+      <div className="flex h-3 w-full overflow-hidden rounded-full bg-raised" role="img" aria-label={`Allocation by ${ALLOC_DIMS.find((d) => d.value === dim)!.label.toLowerCase()}`}>
+        {slices.map((slice, i) => (
+          <motion.div
+            key={`${dim}-${slice.key}`}
+            initial={reduceMotion ? false : { width: 0 }}
+            animate={{ width: `${slice.weight * 100}%` }}
+            transition={{ delay: 0.05 + i * 0.04, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+            style={{ backgroundColor: slice.color }}
+            className="h-full border-r-2 border-card last:border-r-0"
+            title={`${slice.label} · ${(slice.weight * 100).toFixed(1)}%`}
+          />
+        ))}
+      </div>
+      <ul className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+        {slices.map((slice) => (
+          <li key={`${dim}-${slice.key}`} className="flex items-center gap-2">
+            <span className="size-2.5 rounded-full" style={{ backgroundColor: slice.color }} />
+            <span>{slice.label}</span>
+            <span className="font-semibold">{(slice.weight * 100).toFixed(1)}%</span>
+            <span className="text-muted-foreground">{compactMoney(slice.value, ccy)}</span>
+          </li>
+        ))}
+      </ul>
+      {slices.length === 0 && <p className="text-sm text-muted-foreground">Nothing to break down this way yet.</p>}
+    </Panel>
   );
 }
