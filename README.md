@@ -8,7 +8,7 @@
 
 <br/>
 
-![Tests](https://img.shields.io/badge/tests-313%20passing-3ec98a?style=flat-square&labelColor=0b0b0d)
+![Tests](https://img.shields.io/badge/tests-352%20passing-3ec98a?style=flat-square&labelColor=0b0b0d)
 &nbsp;![Money](https://img.shields.io/badge/money-never%20a%20float-f0b23e?style=flat-square&labelColor=0b0b0d)
 &nbsp;![TypeScript](https://img.shields.io/badge/TypeScript-strict-5fb7a6?style=flat-square&labelColor=0b0b0d)
 &nbsp;![Stack](https://img.shields.io/badge/React%20·%20Fastify%20·%20SQLite-informational-8c8fe0?style=flat-square&labelColor=0b0b0d)
@@ -35,7 +35,7 @@ flowchart LR
   D --> E["Analytics<br/>XIRR · TWR · tax · benchmark"]
   E --> F["Dashboard"]
   M["Manual assets<br/>FD · gold · property"] --> D
-  P["Prices · FX · news<br/>public tickers only"] -. refresh .-> D
+  P["Prices · FX · splits · news<br/>public tickers only"] -. refresh .-> D
   P -. refresh .-> E
   classDef accent fill:#f0b23e,stroke:#f0b23e,color:#16120a;
   classDef ledger fill:#1d1d22,stroke:#f0b23e,color:#f3efe6;
@@ -77,7 +77,7 @@ flowchart TB
     CORE["Core engine<br/>pure · decimal.js"]
     DBx[("SQLite<br/>Drizzle + libsql")]
   end
-  EXT["Public providers<br/>Yahoo · AMFI · FX · news"]
+  EXT["Public providers<br/>Yahoo · AMFI · FX · splits · news"]
   W <-->|"REST /api"| S
   S --> CORE
   S --> DBx
@@ -88,17 +88,39 @@ flowchart TB
 
 ## ✨ Highlights
 
-- 🔌 **Every broker, one ledger** — Zerodha, Dhan, Vested & Interactive Brokers (US), Binance
-  (crypto), Excel (`.xlsx`) holdings, and a mutual‑fund **CAS PDF** (CAMS / KFintech — one
-  password‑protected file covers every AMC), plus a generic column‑mapping importer. **Drop a file
-  and it works out the rest**, reconciled against the broker's own P&amp;L. Imports are idempotent,
-  deduped and **atomic**.
+- 🔌 **Every broker, one ledger** — Zerodha (tradebook, holdings, tax P&amp;L), Dhan, Vested &
+  Interactive Brokers (US), Binance (crypto), Excel (`.xlsx`) holdings and broker P&amp;L reports, and
+  a mutual‑fund **CAS PDF** (CAMS / KFintech — one password‑protected file covers every AMC), plus a
+  generic column‑mapping importer. **Drop a whole folder** and it recognises each broker, account
+  and person on its own, skips anything already seen, and **checks your profit against the broker's
+  own P&amp;L report**. Imports are idempotent, deduped and **atomic**.
+- 🪄 **Fills the gaps itself** — **stock splits** your files leave out (Netflix's 10‑for‑1, say) are
+  filled in from public data, each one **confirmed against your own trade prices** first; remove one
+  and it never comes back. Holdings statements are reconciled against the trades, never added on top.
+- 🩺 **Needs attention** — a page that pins down exactly what's missing: sales with no purchase on
+  record, gaps between files, files that stop long ago, accounts with nothing added, missing
+  dividends, unconfirmed splits, unpriced holdings — each with **the account, the stocks, and the
+  exact broker file (with its dates) that fixes it**, plus how to download it.
+- 👨‍👩‍👧 **People, brokers, markets** — track yourself or the whole family. **One filter bar** on every
+  page narrows to any mix of **people**, **brokers** and **India / US**, and every figure is worked out
+  from just that slice of the ledger.
+- 🇺🇸 **US holdings in ₹, honestly** — a **"US in $ / ₹" switch**: value at today's rate, but cost,
+  sales and dividends at **the rate on their own day**, so your rupee gain includes the dollar's move.
 - 🧮 **Holdings you can trust** — average‑cost positions, invested value and realised gains derived
-  from the ledger, a **diversification / concentration score**, and a per‑security detail page with
-  a **stock‑style price chart** drawn from real history. Missing prices show `—`, never a fake `0`.
+  from the ledger, a **portfolio X‑ray** (concentration, cash drag, sector skew), heatmaps and
+  treemaps with values on hover, and a per‑security page with a **stock‑style price chart** drawn
+  from real history. Missing prices show `—`, never a fake `0`.
 - 📈 **Honest performance** — realised gains by financial year, **XIRR**, a **time‑weighted return**
-  valued at each trade from real historical prices, and a **benchmark overlay** that mirrors your
-  exact cashflows into Nifty 50 / Sensex — a chart, not just a stat.
+  valued at each trade from real historical prices, winners & losers, and a **benchmark overlay**
+  that mirrors your exact cashflows into Nifty 50 / Sensex / S&amp;P 500.
+- 🔎 **Research any stock** — yours or not, anything listed in India or the US: price history,
+  52‑week and period ranges, RSI, moving averages, support / resistance, **fundamentals**, and the
+  latest news. Your own stocks add your position and buy/sell markers on the chart.
+- 📰 **News on what you own** — headlines for your holdings and the market, refreshed on their own,
+  a page per stock, and an optional **AI read** (risks, outlook, tailwind / headwind) via Azure OpenAI.
+- 🧭 **Everything connected** — every stock links to its holding, research, news and trades; the
+  **search in the top bar (⌘K)** answers from your portfolio first (value and return inline), then
+  stocks you've sold, then any listed stock.
 - 💰 **Full net worth** — holdings + cash + **manual assets** (FDs & bonds that **track their rate
   and maturity**, PPF / EPF / NPS, gold with **weight & purity**, real estate with **area &
   purchase date**), a **net‑worth‑over‑time** chart, and allocation by asset class, sector, **region**
@@ -106,36 +128,41 @@ flowchart TB
 - 🎯 **Plan, income & tax** — set **target weights** and see the drift in percent and rupees, a
   trailing **dividend yield** with an estimated payout calendar, and a **FIFO capital‑gains** report
   (short‑ vs long‑term) you can export as CSV for your ITR.
-- 📰 **Markets in context** — a **live index strip** (Nifty 50 · Bank Nifty · Sensex · **USD / INR**)
-  and a **News page** that surfaces headlines for what you actually hold, freshness‑stamped.
-- ⚙️ **Fresh & installable** — prices refresh nightly in the background and on login; the UI is an
-  installable **PWA** with an offline shell.
-- 🔒 **Private by design** — runs on your machine; only public ticker symbols and company names ever
-  leave it.
+- 🚪 **A proper front door** — a front page that shows what it does, and sign‑in / create‑account
+  pages; first‑time setup asks **which brokers you use** (or sets up the family) and creates the
+  accounts for you.
+- ⚙️ **Fresh & installable** — prices, exchange rates and splits refresh in the background and on
+  login; the UI is an installable **PWA** with an offline shell.
+- 🔒 **Private by design** — runs on your machine; only public ticker symbols, currency codes and
+  company names ever leave it.
 
 ## 🖥️ The app
 
-Six destinations; everything else lives under one of them.
+Seven destinations; everything else lives under one of them. Signed out, you land on the front page,
+with **sign in** and **create account** one click away.
 
 | Destination | What's inside |
 |---|---|
-| 🏠 **Home** | Net‑worth headline + composition, the live index strip, net‑worth‑over‑time chart, allocation, top holdings, recent activity |
-| 📦 **Portfolio** | **Positions** (avg cost, value, gains, filters), **Allocation** (class · sector · region · currency), a per‑**Security** detail page, and **Other assets** (FDs, bonds, gold, property…) |
-| 🧾 **Activity** | The full ledger as a day‑by‑day **timeline**, plus **Dividends** — income by FY, trailing yield, forward calendar |
-| 📈 **Performance** | **Returns** (realised gains, XIRR, TWR, benchmark overlay, diversification, FX impact), **Rebalance** (drift in % and ₹), and **Tax** (FIFO capital gains, CSV export) |
-| 📰 **News** | Live index strip and headlines for your holdings, as tiles, freshness‑stamped |
-| 👥 **Accounts** | Drop‑anything **import wizard**, and **People & accounts** — family members, brokers, portfolios & groups |
+| 🏠 **Home** | Net‑worth headline + composition, the live index strip, net‑worth‑over‑time chart, top movers, and **Needs attention** at a glance |
+| 📦 **Portfolio** | **Positions** (avg cost, value, gains, heatmap, research/news shortcuts per row), **Allocation** (class · sector · region · currency), **Health** (X‑ray), a per‑**Security** page, and **Other assets** (FDs, bonds, gold, property…) |
+| 🧾 **Activity** | The full ledger as a day‑by‑day **timeline** (filter to one stock), plus **Dividends** — income by FY, trailing yield, forward calendar |
+| 📈 **Performance** | **Returns** (realised gains, XIRR, TWR, benchmark, winners & losers, FX impact), **Rebalance** (drift in % and ₹), and **Tax** (FIFO capital gains, CSV export) |
+| 🔎 **Research** | Any stock — your position, chart, ranges, technicals, fundamentals and latest news |
+| 📰 **News** | Live index strip, headlines for your holdings as tiles with an AI read, a market feed, and a page per stock |
+| 👥 **Accounts** | Drop‑anything **import wizard**, **Needs attention** (what's missing and the file that fixes it), and **People & accounts** — family members, brokers, portfolios |
 
-> **Settings** (data export, account delete, FX rates) sits alongside the six.
+> **Settings** (data export, account delete, FX rates) sits alongside. Every data page shares the
+> **people · brokers · market** filter, and US figures can be shown in ₹.
 
 ## 🧱 Tech stack
 
 | Layer | Choice |
 |---|---|
-| Frontend | React 19 + TypeScript + Vite (route‑level code‑split), Tailwind CSS v4, **shadcn/ui**, TanStack Query, Recharts |
+| Frontend | React 19 + TypeScript + Vite (route‑level code‑split), Tailwind CSS v4, **shadcn/ui**, TanStack Query, Motion, custom SVG charts + lightweight‑charts |
 | Design | Dark‑only, solid colours, one marigold accent · **IBM Plex Sans** (tabular figures) + **Instrument Serif** display |
 | Backend | Node + Fastify · argon2id auth · session cookies |
 | Data | SQLite via Drizzle ORM + libsql (WAL; dialect‑swappable to Postgres) |
+| Market data | Yahoo (prices, history, splits, fundamentals, search) · AMFI / mfapi (funds) · Frankfurter (FX) · Google News · optional Azure OpenAI |
 | Money | `decimal.js` — exact decimals end to end, **never floats** |
 | Core | A pure, deterministic, unit‑tested calculation engine (no I/O) |
 
@@ -224,8 +251,8 @@ machine? Run `setup.sh` / `setup.bat` first — see above.)
 
 On Windows, double‑click **`start.bat`** (or run it from a terminal).
 
-> **Optional — the News page.** Copy `apps/server/.env.example` → `apps/server/.env` and add your
-> Azure OpenAI key. Without it the app runs fine; News just stays quiet. Only company names and
+> **Optional — the AI read on News.** Copy `apps/server/.env.example` → `apps/server/.env` and add your
+> Azure OpenAI key. Without it the app runs fine; News shows headlines without the AI read. Only company names and
 > headlines are ever sent — never what you hold or how much.
 
 ## 🐳 Self‑host (single container)
@@ -253,14 +280,15 @@ The web app is one client of a fully headless‑ready REST API.
 argon2id password hashing · httpOnly `SameSite=Lax` session cookies · per‑user data isolation ·
 a same‑origin (CSRF) guard on mutating requests · rate‑limited auth · a Content‑Security‑Policy and
 security headers (HSTS behind HTTPS). Portfolio data never leaves your machine — only public ticker
-symbols and currency codes (to price providers) and company names + headlines (to the news provider)
-are ever sent, and prices only when you refresh.
+symbols and currency codes (to price, split and FX providers), what you type into stock search, and
+company names + headlines (to the news provider and, if configured, the AI read) are ever sent —
+never what you hold or how much.
 
 ## 🧪 Development
 
 ```bash
 pnpm install
-pnpm -r test        # 313 tests: core engine (92) + server (217) + web (4)
+pnpm -r test        # 352 tests: core engine (108) + server (240) + web (4)
 pnpm -r typecheck
 pnpm --filter @dhan-drishti/server dev     # API on http://127.0.0.1:4000
 pnpm --filter @dhan-drishti/web dev        # UI on http://localhost:5173 (proxies /api → server)
@@ -278,7 +306,8 @@ docs/           schema · calculations · importers · API reference + OpenAPI
 ## 🧭 Principles
 
 > **No fake data or dead metrics** — every figure traces to a real imported or derived value; the
-> few things that must be estimated (a dividend calendar, a benchmark mirror) say so plainly, and
+> few things that must be estimated (a dividend calendar, a benchmark mirror, an F&amp;O expiry
+> settlement) say so plainly, and
 > nothing here is tax or investment advice. **Money is never a float.** Broker logic is isolated
 > behind a single `BrokerAdapter` interface. Writes are atomic, reads are cached, and your portfolio
 > stays on your machine.
