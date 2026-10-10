@@ -177,18 +177,37 @@ Docker). Everything else is self‑contained.
 <tr><th>🍎 macOS</th><th>🪟 Windows</th></tr>
 <tr valign="top"><td>
 
-1. Install Node 20+ from [nodejs.org](https://nodejs.org) **or** `brew install node`
-2. `corepack enable` (turns on pnpm)
-3. In the project folder: `./start.sh`
+**Fresh Mac? One script does it all.** In the project folder:
+
+```bash
+./setup.sh
+```
+
+Installs Homebrew (with the Xcode Command Line Tools), Node and pnpm — only what's missing — then
+the project dependencies. Asks for your password once. Then run `./start.sh`.
 
 </td><td>
 
-1. Install Node 20+ from [nodejs.org](https://nodejs.org) (includes Corepack)
-2. In a terminal: `corepack enable` (turns on pnpm)
-3. Double‑click **`start.bat`** (or run it)
+**Fresh PC? One script does it all.** Double‑click **`setup.bat`** (or run it from a terminal).
+
+Installs Node LTS via `winget` and pnpm — only what's missing — then the project dependencies.
+Accept the admin prompt if one appears. Then double‑click **`start.bat`**.
+
+> If it says Node was installed but can't be found, open a new terminal and run `setup.bat` again.
 
 </td></tr>
 </table>
+
+Both scripts are safe to re‑run, and create `apps/server/.env` from the example if it's missing.
+
+<details>
+<summary>Prefer to install by hand?</summary>
+
+1. Install Node 20+ from [nodejs.org](https://nodejs.org) (or `brew install node` on macOS)
+2. `corepack enable` (turns on pnpm — or `npm install -g pnpm`)
+3. Run `./start.sh` (macOS / Linux) or `start.bat` (Windows)
+
+</details>
 
 > **Prefer not to install anything?** With **Docker Desktop**, skip Node and pnpm entirely — see
 > *Self‑host* below.
@@ -196,7 +215,8 @@ Docker). Everything else is self‑contained.
 ## 🚀 Run it (one command)
 
 Syncs dependencies, builds the web app, starts the single‑service server (API + UI on one port), and
-opens your browser once it's ready. Your data persists in `./data` across runs.
+opens your browser once it's ready. Your data persists in `./data` across runs. (First time on this
+machine? Run `setup.sh` / `setup.bat` first — see above.)
 
 ```bash
 ./start.sh          # macOS / Linux
