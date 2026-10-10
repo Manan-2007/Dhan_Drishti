@@ -1,0 +1,1 @@
+ALTER TABLE `accounts` ADD `covered_through` text;

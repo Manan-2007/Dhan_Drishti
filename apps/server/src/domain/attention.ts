@@ -27,6 +27,8 @@ export interface AttentionItem {
   detail: string;
   account: { id: string | null; name: string; broker: string; person: string } | null;
   stocks: { id: string; symbol: string; name: string; note?: string }[];
+  /** "Nothing new since then": lets the user confirm an account's files are complete up to today. */
+  upToDate?: { accountId: string; since: string } | null;
   /** The file that fixes it: what it is, the help guide for getting it, and the dates it must cover. */
   need: { file: string; guide: string | null; from: string | null; to: string | null; segment?: string } | null;
   fix: "add_files" | "refresh_prices" | "check_splits" | null;
@@ -91,13 +93,19 @@ export async function computeAttention(db: DB, userId: string, scope: Scope): Pr
   };
 
   const items: AttentionItem[] = [];
-  const groups: { key: string; account: AttentionItem["account"]; broker: string; rows: Transaction[] }[] = [];
+  const groups: { key: string; account: AttentionItem["account"]; broker: string; rows: Transaction[]; coveredThrough: string | null }[] = [];
   for (const a of shownAccounts)
-    groups.push({ key: a.id, account: { id: a.id, name: a.name, broker: a.broker, person: personOf.get(a.portfolioId) ?? "" }, broker: a.broker, rows: ledger.filter((t) => t.accountId === a.id) });
+    groups.push({
+      key: a.id,
+      account: { id: a.id, name: a.name, broker: a.broker, person: personOf.get(a.portfolioId) ?? "" },
+      broker: a.broker,
+      rows: ledger.filter((t) => t.accountId === a.id),
+      coveredThrough: a.coveredThrough,
+    });
   if (!scope.brokers?.length)
     for (const p of people.filter((p) => inPeople(p.id))) {
       const rows = ledger.filter((t) => t.portfolioId === p.id && !t.accountId);
-      if (rows.length) groups.push({ key: `p:${p.id}`, account: { id: null, name: `${p.name} · entered by hand`, broker: "manual", person: p.name }, broker: "manual", rows });
+      if (rows.length) groups.push({ key: `p:${p.id}`, account: { id: null, name: `${p.name} · entered by hand`, broker: "manual", person: p.name }, broker: "manual", rows, coveredThrough: null });
     }
 
   for (const g of groups) {
@@ -181,8 +189,10 @@ export async function computeAttention(db: DB, userId: string, scope: Scope): Pr
       });
     }
 
-    // Files that stop a while ago while the account still holds things.
-    const fileEnd = merged.at(-1)?.to ?? null;
+    // Files that stop a while ago while the account still holds things — unless you've told us
+    // nothing is missing since (a tradebook with no new trades looks exactly like an old one).
+    const lastTrade = merged.at(-1)?.to ?? null;
+    const fileEnd = lastTrade && g.coveredThrough && g.coveredThrough > lastTrade ? g.coveredThrough : lastTrade;
     const holdsSomething = holdings.some((h) => h.netQty.gt(0) && !(secs.get(h.securityId) && contractExpiry(secs.get(h.securityId)!)));
     if (fileEnd && holdsSomething && daysBetween(fileEnd, today) > 45) {
       const gap = daysBetween(fileEnd, today);
@@ -190,12 +200,13 @@ export async function computeAttention(db: DB, userId: string, scope: Scope): Pr
         id: `stale_files:${g.key}`,
         kind: "stale_files",
         severity: gap > 120 ? "warn" : "info",
-        title: `${label}'s files end on ${longDate(fileEnd)}`,
-        detail: `That's ${plural(gap, "day")} ago. Anything bought or sold since isn't here, so holdings, profit and dividends may be out of date. Add the trade history from ${longDate(shift(fileEnd, 1))} to today.`,
+        title: fileEnd === lastTrade ? `${label}'s last trade on file is from ${longDate(fileEnd)}` : `${label} was last checked up to ${longDate(fileEnd)}`,
+        detail: `That's ${plural(gap, "day")} ago. Anything bought or sold since isn't here, so holdings, profit and dividends may be out of date. Add the trade history from ${longDate(shift(fileEnd, 1))} to today — or, if you haven't traded since, mark it up to date.`,
         account: acc,
         stocks: [],
         need: trade ? { ...trade, from: shift(fileEnd, 1), to: today } : null,
         fix: "add_files",
+        upToDate: acc.id ? { accountId: acc.id, since: fileEnd } : null,
       });
     }
 

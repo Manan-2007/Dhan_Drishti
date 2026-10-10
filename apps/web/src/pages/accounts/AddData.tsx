@@ -471,6 +471,9 @@ function FileCard({
               {c.newSecurities > 0 && <span className="text-muted-foreground"> · {c.newSecurities} new holdings</span>}
             </p>
           )}
+          {d?.kind === "transactions" && !d.snapshot && c && c.toImport === 0 && d.suggestion?.accountId && (
+            <NothingNew accountId={d.suggestion.accountId} name={d.suggestion.accountName} />
+          )}
           {d?.kind === "prices" && <p className="mt-2 text-sm text-muted-foreground">Updates the price of {d.priceRows ?? 0} holdings. No trades are added.</p>}
           {d?.kind === "pnl_report" && (
             <p className="mt-2 text-sm text-muted-foreground">Your broker's own profit report. Used to double-check the numbers and fill in any closing trade the statement missed.</p>
@@ -843,5 +846,38 @@ function NotInStatement({ broker, filename, s }: { broker: string; filename: str
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * A fresh export with nothing new in it means no trades since the last one — but a tradebook doesn't
+ * say what dates it covers, so ask, and remember it on the account (Needs attention stops nagging).
+ */
+function NothingNew({ accountId, name }: { accountId: string; name: string }) {
+  const qc = useQueryClient();
+  const [done, setDone] = useState(false);
+  const mark = async () => {
+    try {
+      await api.put(`/api/accounts/${accountId}`, { coveredThrough: new Date().toISOString().slice(0, 10) });
+      setDone(true);
+      void qc.invalidateQueries({ queryKey: ["attention"] });
+      toast.success(`${name} marked up to date`);
+    } catch {
+      toast.error("Couldn't save that");
+    }
+  };
+  return (
+    <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+      Nothing new in this file. If it runs up to today, you simply haven't traded since.
+      {done ? (
+        <span className="inline-flex items-center gap-1 text-gain">
+          <CheckCircle2 className="size-3.5" /> {name} is up to date
+        </span>
+      ) : (
+        <Button size="xs" variant="outline" onClick={() => void mark()}>
+          Mark {name} up to date
+        </Button>
+      )}
+    </p>
   );
 }

@@ -44,7 +44,9 @@ export function Dividends() {
   const reduceMotion = useReducedMotion();
   const [span, setSpan] = useState<"12" | "24">("12");
 
-  // Income per calendar month, oldest first, in the base currency.
+  // In $ mode, foreign payouts show as paid; the totals too when they're all in one currency.
+  const own = !usInBase && !!data?.local;
+  // Income per calendar month, oldest first, in the currency shown.
   const months = useMemo(() => {
     if (!data) return [];
     const now = new Date();
@@ -56,10 +58,10 @@ export function Dividends() {
     const at = new Map(list.map((m) => [m.key, m]));
     for (const e of data.events) {
       const m = at.get(e.tradeDate.slice(0, 7));
-      if (m) m.amount += Number(e.baseAmount ?? 0);
+      if (m) m.amount += Number(own ? e.amount : (e.baseAmount ?? 0));
     }
     return list;
-  }, [data, span]);
+  }, [data, span, own]);
 
   if (isLoading) {
     return (
@@ -74,9 +76,13 @@ export function Dividends() {
     return <Empty title="No dividends yet" body="Dividends and interest from your broker statements show up here — every one a real payout, never a projection." />;
   }
 
-  const ccy = data.baseCurrency;
+  const base = data.baseCurrency;
+  const ccy = own ? data.local!.currency : base;
+  const ttm = own ? data.local!.ttm : data.income.ttm;
+  const allTime = own ? data.local!.total : data.total;
+  const sec = (s: { amount: string; currency: string; localAmount: string }) => (!usInBase && s.currency !== base ? { v: s.localAmount, c: s.currency } : { v: s.amount, c: base });
   const peak = Math.max(1, ...months.map((m) => m.amount));
-  const topMax = Math.max(1, ...data.bySecurity.slice(0, 8).map((s) => Number(s.amount)));
+  const topMax = Math.max(1, ...data.bySecurity.slice(0, 8).map((s) => Number(sec(s).v)));
   const soon = [...data.upcoming].filter((u) => u.estimatedNext).sort((a, b) => (a.estimatedNext! < b.estimatedNext! ? -1 : 1));
 
   return (
@@ -91,15 +97,15 @@ export function Dividends() {
       )}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Last 12 months" value={compactMoney(data.income.ttm, ccy)} tone="gain" title={money(data.income.ttm, ccy)} />
+        <Stat label="Last 12 months" value={compactMoney(ttm, ccy)} tone="gain" title={money(ttm, ccy)} />
         <div className="rounded-2xl border bg-card px-5 py-4">
           <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
             Yield <Hint>The last year's payouts from what you hold today, as a share of what it's worth. A rough guide to what the next year might pay.</Hint>
           </p>
           <p className="mt-1.5 text-xl font-semibold tracking-tight sm:text-2xl">{data.income.trailingYield ? pct(data.income.trailingYield) : "—"}</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">{data.income.portfolioValue ? `on ${compactMoney(data.income.portfolioValue, ccy)} held` : "needs current prices"}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{data.income.portfolioValue ? `on ${compactMoney(data.income.portfolioValue, base)} held` : "needs current prices"}</p>
         </div>
-        <Stat label="All time" value={compactMoney(data.total, ccy)} title={money(data.total, ccy)} sub={`${data.count} payouts`} />
+        <Stat label="All time" value={compactMoney(allTime, ccy)} title={money(allTime, ccy)} sub={`${data.count} payouts${own ? ` · ${money(data.total, base)} at each day's rate` : ""}`} />
         <Stat label="Paying holdings" value={String(data.bySecurity.length)} />
       </div>
 
@@ -141,12 +147,12 @@ export function Dividends() {
                   <span className="truncate" title={s.name}>
                     {displayName(s)}
                   </span>
-                  <span className="shrink-0 font-semibold text-gain tabular-nums">{money(s.amount, ccy)}</span>
+                  <span className="shrink-0 font-semibold text-gain tabular-nums">{money(sec(s).v, sec(s).c)}</span>
                 </div>
                 <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-raised">
                   <motion.div
                     initial={reduceMotion ? false : { width: 0 }}
-                    animate={{ width: `${(Number(s.amount) / topMax) * 100}%` }}
+                    animate={{ width: `${(Number(sec(s).v) / topMax) * 100}%` }}
                     transition={{ delay: 0.05 * i, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
                     className="h-full rounded-full bg-gain"
                   />
@@ -167,7 +173,7 @@ export function Dividends() {
                     <Link to={`/portfolio/security/${u.security.id}`} className="block truncate font-semibold hover:underline">
                       {displayName(u.security)}
                     </Link>
-                    <span className="text-xs text-muted-foreground">pays {CADENCE[u.cadence]} · last {money(u.lastAmount ?? "0", ccy)}</span>
+                    <span className="text-xs text-muted-foreground">pays {CADENCE[u.cadence]} · last {!usInBase && u.currency !== base ? money(u.lastAmountLocal, u.currency) : money(u.lastAmount ?? "0", base)}</span>
                   </span>
                   <span className="shrink-0 text-right text-muted-foreground">around {dateShort(u.estimatedNext!)}</span>
                 </li>
@@ -188,15 +194,15 @@ export function Dividends() {
               </span>
               <span className="min-w-0 flex-1 truncate">{e.security ? displayName(e.security) : "—"}</span>
               <span className="shrink-0 font-semibold text-gain tabular-nums">
-                {usInBase && e.currency !== ccy && e.baseAmount ? (
+                {usInBase && e.currency !== base && e.baseAmount ? (
                   <>
-                    +{money(e.baseAmount, ccy)}
+                    +{money(e.baseAmount, base)}
                     <span className="ml-1 text-xs font-normal text-muted-foreground">({money(e.amount, e.currency)})</span>
                   </>
                 ) : (
                   <>
                     +{money(e.amount, e.currency)}
-                    {e.currency !== ccy && e.baseAmount && <span className="ml-1 text-xs font-normal text-muted-foreground">({money(e.baseAmount, ccy)})</span>}
+                    {e.currency !== base && e.baseAmount && <span className="ml-1 text-xs font-normal text-muted-foreground">({money(e.baseAmount, base)})</span>}
                   </>
                 )}
               </span>

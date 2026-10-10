@@ -23,6 +23,13 @@ const updateSchema = z.object({
   broker: z.enum(BROKERS).optional(),
   accountRef: z.string().max(200).nullable().optional(),
   currency: z.string().trim().length(3).toUpperCase().optional(),
+  /** "No trades missing up to this day" — a tradebook doesn't say what dates it covers. */
+  coveredThrough: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .refine((v) => v <= new Date().toISOString().slice(0, 10), "Can't be in the future")
+    .nullable()
+    .optional(),
 });
 
 async function getAccountOwned(db: DB, userId: string, id: string): Promise<Account> {

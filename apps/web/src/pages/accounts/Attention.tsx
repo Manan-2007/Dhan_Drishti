@@ -231,9 +231,12 @@ function FixButton({ item }: { item: AttentionItem }) {
   });
   if (item.fix === "add_files")
     return (
-      <Button size="sm" onClick={() => navigate("/accounts")}>
-        <Upload /> Add the file
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" onClick={() => navigate("/accounts")}>
+          <Upload /> Add the file
+        </Button>
+        {item.upToDate && <UpToDateButton accountId={item.upToDate.accountId} since={item.upToDate.since} name={item.account?.name ?? "this account"} />}
+      </div>
     );
   if (item.fix === "refresh_prices")
     return (
@@ -270,6 +273,28 @@ function FixButton({ item }: { item: AttentionItem }) {
       </Button>
     );
   return null;
+}
+
+/**
+ * "I haven't traded since": a tradebook with no new trades looks exactly like an old one, so the
+ * account remembers you checked it up to today. The reminder comes back if no files arrive for a while.
+ */
+function UpToDateButton({ accountId, since, name }: { accountId: string; since: string; name: string }) {
+  const qc = useQueryClient();
+  const mark = useMutation({
+    mutationFn: () => api.put(`/api/accounts/${accountId}`, { coveredThrough: new Date().toISOString().slice(0, 10) }),
+    onSuccess: () => {
+      toast.success(`${name} marked up to date`);
+      void qc.invalidateQueries({ queryKey: ["attention"] });
+      void qc.invalidateQueries({ queryKey: ["accounts"] });
+    },
+    onError: () => toast.error("Couldn't save that"),
+  });
+  return (
+    <Button size="sm" variant="outline" disabled={mark.isPending} onClick={() => mark.mutate()}>
+      <CircleCheck /> No trades since {longDate(since)} — mark up to date
+    </Button>
+  );
 }
 
 /** How many things are worth fixing — shown on the tab. */

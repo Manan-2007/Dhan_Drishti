@@ -78,21 +78,29 @@ export async function computeDividends(db: DB, userId: string, scope?: ScopeArg)
   let total = ZERO;
   const unconvertible = new Set<string>();
   const byFY = new Map<string, Decimal>();
-  const bySecurity = new Map<string, { name: string; symbol: string; amount: Decimal }>();
+  const bySecurity = new Map<string, { name: string; symbol: string; amount: Decimal; currency: string; local: Decimal }>();
+  // Each payout in its own currency too, for showing foreign income as it was paid.
+  const currencies = new Set(rows.map((r) => r.currency));
+  const single = currencies.size === 1 ? [...currencies][0]! : null;
+  let totalLocal = ZERO;
+  const byFYLocal = new Map<string, Decimal>();
   const events = rows.map((r) => {
     const amount = d(r.grossAmount);
     const baseAmount = toBase(amount, r.currency, r.fxRateToBase);
+    totalLocal = totalLocal.plus(amount);
+    byFYLocal.set(financialYear(r.tradeDate), (byFYLocal.get(financialYear(r.tradeDate)) ?? ZERO).plus(amount));
+    if (r.securityId) {
+      const sec = secById.get(r.securityId);
+      const cur = bySecurity.get(r.securityId) ?? { name: sec?.name ?? "—", symbol: sec?.symbol ?? "—", amount: ZERO, currency: r.currency, local: ZERO };
+      cur.local = cur.local.plus(amount);
+      bySecurity.set(r.securityId, cur);
+    }
     if (baseAmount === null) unconvertible.add(r.currency);
     else {
       total = total.plus(baseAmount);
       const fy = financialYear(r.tradeDate);
       byFY.set(fy, (byFY.get(fy) ?? ZERO).plus(baseAmount));
-      if (r.securityId) {
-        const sec = secById.get(r.securityId);
-        const cur = bySecurity.get(r.securityId) ?? { name: sec?.name ?? "—", symbol: sec?.symbol ?? "—", amount: ZERO };
-        cur.amount = cur.amount.plus(baseAmount);
-        bySecurity.set(r.securityId, cur);
-      }
+      if (r.securityId) bySecurity.get(r.securityId)!.amount = bySecurity.get(r.securityId)!.amount.plus(baseAmount);
     }
     const sec = r.securityId ? secById.get(r.securityId) : undefined;
     return {
@@ -118,18 +126,20 @@ export async function computeDividends(db: DB, userId: string, scope?: ScopeArg)
   const heldById = new Map(holdings.holdings.filter((h) => h.netQty !== "0").map((h) => [h.security.id, h]));
 
   // Per-security payout history (ascending), base-currency amounts, for cadence + TTM.
-  const perSec = new Map<string, { name: string; symbol: string; datesAsc: string[]; amountsAsc: (Decimal | null)[] }>();
+  const perSec = new Map<string, { name: string; symbol: string; currency: string; datesAsc: string[]; amountsAsc: (Decimal | null)[]; localAsc: Decimal[] }>();
   for (const r of [...rows].reverse()) {
     if (!r.securityId) continue;
     const sec = secById.get(r.securityId);
-    const cur = perSec.get(r.securityId) ?? { name: sec?.name ?? "—", symbol: sec?.symbol ?? "—", datesAsc: [], amountsAsc: [] };
+    const cur = perSec.get(r.securityId) ?? { name: sec?.name ?? "—", symbol: sec?.symbol ?? "—", currency: r.currency, datesAsc: [], amountsAsc: [], localAsc: [] };
     cur.datesAsc.push(r.tradeDate.slice(0, 10));
+    cur.localAsc.push(d(r.grossAmount));
     // Today's rate here: a yield sets income against today's value, so both sides use the same one.
     cur.amountsAsc.push(toBase(d(r.grossAmount), r.currency, null));
     perSec.set(r.securityId, cur);
   }
 
   let ttmAll = ZERO;
+  let ttmLocal = ZERO;
   let ttmHeld = ZERO;
   let heldValue = ZERO;
   let heldValueKnown = false;
@@ -139,6 +149,9 @@ export async function computeDividends(db: DB, userId: string, scope?: ScopeArg)
     paymentsObserved: number;
     lastDate: string;
     lastAmount: string | null;
+    /** The last payout in the stock's own currency. */
+    lastAmountLocal: string;
+    currency: string;
     ttm: string;
     currentValue: string | null;
     trailingYield: string | null;
@@ -148,6 +161,7 @@ export async function computeDividends(db: DB, userId: string, scope?: ScopeArg)
   for (const [secId, h] of perSec) {
     const ttm = h.datesAsc.reduce((acc, day, i) => (day >= windowFrom && h.amountsAsc[i] ? acc.plus(h.amountsAsc[i]!) : acc), ZERO);
     ttmAll = ttmAll.plus(ttm);
+    ttmLocal = h.datesAsc.reduce((acc, day, i) => (day >= windowFrom ? acc.plus(h.localAsc[i]!) : acc), ttmLocal);
     const held = heldById.get(secId);
     if (!held) continue; // forward calendar is only for positions you still hold
     ttmHeld = ttmHeld.plus(ttm);
@@ -165,6 +179,8 @@ export async function computeDividends(db: DB, userId: string, scope?: ScopeArg)
       paymentsObserved: h.datesAsc.length,
       lastDate,
       lastAmount: lastAmount ? lastAmount.toFixed() : null,
+      lastAmountLocal: h.localAsc[h.localAsc.length - 1]!.toFixed(),
+      currency: h.currency,
       ttm: ttm.toFixed(),
       currentValue: cv,
       trailingYield: cv !== null && d(cv).greaterThan(0) ? ttm.div(d(cv)).toFixed() : null,
@@ -188,7 +204,7 @@ export async function computeDividends(db: DB, userId: string, scope?: ScopeArg)
     count: rows.length,
     byFY: [...byFY.entries()].map(([key, v]) => ({ key, amount: v.toFixed() })).sort((a, b) => (a.key < b.key ? 1 : -1)),
     bySecurity: [...bySecurity.values()]
-      .map((s) => ({ symbol: s.symbol, name: s.name, amount: s.amount.toFixed() }))
+      .map((s) => ({ symbol: s.symbol, name: s.name, amount: s.amount.toFixed(), currency: s.currency, localAmount: s.local.toFixed() }))
       .sort((a, b) => Number(b.amount) - Number(a.amount)),
     income: {
       ttm: ttmAll.toFixed(),
@@ -200,6 +216,16 @@ export async function computeDividends(db: DB, userId: string, scope?: ScopeArg)
     },
     upcoming,
     events,
+    /** When every payout here is in one foreign currency: the totals in that currency, as paid. */
+    local:
+      single && single !== base
+        ? {
+            currency: single,
+            total: totalLocal.toFixed(),
+            ttm: ttmLocal.toFixed(),
+            byFY: [...byFYLocal.entries()].map(([key, v]) => ({ key, amount: v.toFixed() })).sort((a, b) => (a.key < b.key ? 1 : -1)),
+          }
+        : null,
   };
 }
 

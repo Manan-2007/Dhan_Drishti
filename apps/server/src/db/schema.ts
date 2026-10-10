@@ -65,6 +65,8 @@ export const accounts = sqliteTable(
     broker: text("broker").notNull().default("manual"), // zerodha|dhan|vested|crypto|generic|manual
     accountRef: text("account_ref"),
     currency: text("currency").notNull().default("INR"),
+    /** The user confirmed there are no trades missing up to this day (YYYY-MM-DD) — a tradebook doesn't say. */
+    coveredThrough: text("covered_through"),
     createdAt: text("created_at").notNull().default(now),
     updatedAt: text("updated_at").notNull().default(now),
   },

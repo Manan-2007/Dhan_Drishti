@@ -327,6 +327,8 @@ export interface DividendUpcoming {
   paymentsObserved: number;
   lastDate: string;
   lastAmount: string | null;
+  lastAmountLocal: string;
+  currency: string;
   ttm: string;
   currentValue: string | null;
   trailingYield: string | null;
@@ -339,7 +341,9 @@ export interface DividendsResponse {
   total: string;
   count: number;
   byFY: { key: string; amount: string }[];
-  bySecurity: { symbol: string; name: string; amount: string }[];
+  bySecurity: { symbol: string; name: string; amount: string; currency: string; localAmount: string }[];
+  /** Set when every payout is in one foreign currency: the totals in it, as paid. */
+  local: { currency: string; total: string; ttm: string; byFY: { key: string; amount: string }[] } | null;
   income: {
     ttm: string;
     ttmHeld: string;

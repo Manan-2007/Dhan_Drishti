@@ -299,6 +299,8 @@ export interface Account {
   broker: string;
   accountRef: string | null;
   currency: string;
+  /** No trades missing up to this day (YYYY-MM-DD), as confirmed by the user. */
+  coveredThrough?: string | null;
 }
 export interface SeedPricesResult {
   rows: number;
@@ -624,6 +626,8 @@ export interface AttentionItem {
   detail: string;
   account: { id: string | null; name: string; broker: string; person: string } | null;
   stocks: { id: string; symbol: string; name: string; note?: string }[];
+  /** Lets you confirm an account's files are complete up to today (no trades since `since`). */
+  upToDate?: { accountId: string; since: string } | null;
   /** The file that fixes it, the help guide for getting it, and the dates it must cover (null = open-ended). */
   need: { file: string; guide: string | null; from: string | null; to: string | null; segment?: string } | null;
   fix: "add_files" | "refresh_prices" | "check_splits" | null;

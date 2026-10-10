@@ -92,6 +92,13 @@
       "when": 1791643475217,
       "tag": "0012_split_events",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1791658479505,
+      "tag": "0013_account_covered_through",
+      "breakpoints": true
     }
   ]
 }
