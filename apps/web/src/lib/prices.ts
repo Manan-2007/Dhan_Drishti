@@ -31,7 +31,7 @@ export function useRefreshPrices() {
       return prices;
     },
     onSuccess: () => {
-      for (const key of ["holdings", "performance", "dividends", "market-status", "networth", "security-detail", "rebalance"]) {
+      for (const key of ["holdings", "performance", "dividends", "market-status", "networth", "security-detail", "rebalance", "attention"]) {
         void qc.invalidateQueries({ queryKey: [key] });
       }
     },

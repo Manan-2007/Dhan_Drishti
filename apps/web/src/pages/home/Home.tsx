@@ -1,8 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion, useReducedMotion } from "motion/react";
-import { toast } from "sonner";
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, CalendarClock, CheckCircle2, Clock, Loader2, FileWarning, Globe, PieChart, RefreshCw, Upload } from "lucide-react";
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, CalendarClock, CheckCircle2, Loader2, FileWarning, PieChart, RefreshCw, Upload } from "lucide-react";
 import { IndexTicker } from "@/components/market/IndexTicker";
 import CountUp from "@/components/reactbits/CountUp";
 import { StockChart } from "@/components/charts/StockChart";
@@ -10,11 +9,10 @@ import { Segmented } from "@/components/kit/Segmented";
 import { NoMatch, ScopeSelect } from "@/components/shell/ScopeSelect";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useFilter, useHoldings, usePortfolios, useValueHistory } from "@/lib/hooks";
+import { useAttention as useDataAttention, useFilter, useHoldings, usePortfolios, useValueHistory } from "@/lib/hooks";
 import { Onboarding } from "@/components/Onboarding";
-import { useMarketStatus, useRefreshPrices } from "@/lib/prices";
 import { assetColor } from "@/lib/assetColors";
-import { ago, assetClassLabel, compactMoney, money, num, signedMoney, signedPct } from "@/lib/format";
+import { assetClassLabel, compactMoney, money, num, signedMoney, signedPct } from "@/lib/format";
 import type { HoldingRow, HoldingsResponse } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Panel } from "@/components/kit/Panel";
@@ -46,64 +44,11 @@ interface Attention {
   action: ReactNode;
 }
 
+/** Home's own reminders: deposits maturing and concentration. Data gaps come from the server (useDataAttention). */
 function useAttention(data: HoldingsResponse | undefined): Attention[] {
-  const status = useMarketStatus();
-  const refresh = useRefreshPrices();
   const navigate = useNavigate();
   if (!data) return [];
-  const runRefresh = () =>
-    toast.promise(refresh.mutateAsync(), {
-      loading: "Refreshing prices…",
-      success: (r) => `Priced ${r.updated} of ${r.requested}${r.failed ? ` · ${r.failed} without a price` : ""}`,
-      error: "Couldn't refresh prices",
-    });
-  const refreshBtn = (
-    <Button size="xs" variant="outline" onClick={runRefresh} disabled={refresh.isPending}>
-      <RefreshCw /> Refresh
-    </Button>
-  );
   const items: Attention[] = [];
-  const s = data.summary;
-  const unpriced = s.openPositions - s.pricedPositions;
-  const last = status.data?.lastUpdated ?? null;
-  const stale = !last || Date.now() - new Date(last).getTime() > 24 * 3600 * 1000;
-  if (stale && s.openPositions > 0) {
-    items.push({ id: "stale", icon: <Clock />, text: `Prices last updated ${ago(last)}`, action: refreshBtn });
-  }
-  if (unpriced > 0) {
-    items.push({
-      id: "unpriced",
-      icon: <AlertTriangle />,
-      text: `${unpriced} open position${unpriced === 1 ? " has" : "s have"} no current price, so they count at cost`,
-      action: stale ? <Button size="xs" variant="ghost" onClick={() => navigate("/portfolio")}>View</Button> : refreshBtn,
-    });
-  }
-  if (!data.fxComplete) {
-    items.push({
-      id: "fx",
-      icon: <Globe />,
-      text: `Holdings in ${data.unconvertibleCurrencies.join(", ")} are left out of totals until an exchange rate is fetched`,
-      action: refreshBtn,
-    });
-  }
-  const missingBuys = s.soldWithoutPurchase ?? 0;
-  if (missingBuys > 0) {
-    items.push({
-      id: "history",
-      icon: <FileWarning />,
-      text: `${missingBuys} holding${missingBuys === 1 ? " was" : "s were"} sold that ${missingBuys === 1 ? "was" : "were"} bought before your files start, so their profit isn't counted. An older statement fixes that.`,
-      action: <Button size="xs" variant="outline" onClick={() => navigate("/accounts")}><Upload /> Add files</Button>,
-    });
-  }
-  const settled = s.settledAtExpiry ?? 0;
-  if (settled > 0) {
-    items.push({
-      id: "expiry",
-      icon: <CalendarClock />,
-      text: `${settled} F&O contract${settled === 1 ? " was" : "s were"} still open at expiry in your files, so ${settled === 1 ? "it's" : "they're"} settled at the exchange's closing price. If you closed ${settled === 1 ? "it" : "them"} earlier, a newer tradebook replaces the estimate.`,
-      action: <Button size="xs" variant="outline" onClick={() => navigate("/accounts")}><Upload /> Add files</Button>,
-    });
-  }
   const today = new Date().toISOString().slice(0, 10);
   for (const m of (data.manualAssets ?? []).filter((a) => a.deposit?.maturityDate && (a.deposit.daysToMaturity ?? 99) <= 30)) {
     const dep = m.deposit!;
@@ -114,15 +59,6 @@ function useAttention(data: HoldingsResponse | undefined): Attention[] {
         ? `${m.name} matured on ${dep.maturityDate === today ? "today" : dep.maturityDate}. Renew it or move the money, then update it here.`
         : `${m.name} matures in ${dep.daysToMaturity} day${dep.daysToMaturity === 1 ? "" : "s"}${dep.maturityValue ? ` — about ${compactMoney(dep.maturityValue, data.baseCurrency)}` : ""}.`,
       action: <Button size="xs" variant="ghost" onClick={() => navigate("/portfolio/other")}>View</Button>,
-    });
-  }
-  const stuck = s.expiredOpen ?? 0;
-  if (stuck > 0) {
-    items.push({
-      id: "expired",
-      icon: <CalendarClock />,
-      text: `${stuck} expired contract${stuck === 1 ? " is" : "s are"} still open with no closing trade and no public price to settle ${stuck === 1 ? "it" : "them"} (commodities). Add the tradebook that closed ${stuck === 1 ? "it" : "them"}.`,
-      action: <Button size="xs" variant="ghost" onClick={() => navigate("/portfolio")}>View</Button>,
     });
   }
   for (const f of data.diversification?.flags ?? []) {
@@ -142,7 +78,24 @@ export function Home() {
   const { data, isLoading, isError, refetch } = useHoldings(scope);
   const [range, setRange] = useState<Range>("1y");
   const history = useValueHistory(scope, range);
-  const attention = useAttention(data);
+  const reminders = useAttention(data);
+  const gaps = useDataAttention(scope);
+  // Data gaps first (each opens its spot on the Needs attention page), then Home's own reminders.
+  const gapItems = (gaps.data?.items ?? []).filter((i) => i.severity !== "done");
+  const attention: Attention[] = [
+    ...gapItems.slice(0, 4).map((i) => ({
+      id: i.id,
+      icon: i.severity === "high" ? <AlertTriangle /> : <FileWarning />,
+      text: i.title,
+      action: (
+        <Button size="xs" variant="ghost" asChild>
+          <Link to={`/accounts/attention#${encodeURIComponent(i.id)}`}>Details</Link>
+        </Button>
+      ),
+    })),
+    ...reminders,
+  ];
+  const moreGaps = Math.max(0, gapItems.length - 4);
   const reduceMotion = useReducedMotion();
 
   const open = useMemo(() => (data?.holdings ?? []).filter((h) => Number(h.netQty) !== 0), [data]);
@@ -284,10 +237,17 @@ export function Home() {
         </section>
 
         <div className="space-y-5 lg:col-span-4">
-          <Panel title="Needs attention">
+          <Panel
+            title="Needs attention"
+            action={
+              <Link to="/accounts/attention" className="text-xs text-muted-foreground hover:text-foreground">
+                {moreGaps ? `All ${gapItems.length} →` : "Details →"}
+              </Link>
+            }
+          >
             {attention.length === 0 ? (
               <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                <CheckCircle2 className="size-4 text-gain" /> All clear. Prices and data look complete.
+                <CheckCircle2 className="size-4 text-gain" /> All clear. Your files, prices and rates look complete.
               </p>
             ) : (
               <ul className="space-y-3">

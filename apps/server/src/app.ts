@@ -37,6 +37,7 @@ import { YahooSplitSource } from "./market/providers/yahoo-splits.js";
 import { fillMissingSplits, type SplitSources } from "./market/splits.js";
 import type { SplitSource } from "./market/types.js";
 import { authed } from "./lib/routes.js";
+import { registerAttentionRoutes } from "./domain/attention.js";
 import { registerFxRoutes } from "./domain/fx.js";
 import { registerNewsRoutes } from "./domain/news.js";
 import { NewsHub } from "./news/hub.js";
@@ -221,6 +222,7 @@ export function buildApp(db: DB, options: AppOptions = {}): FastifyInstance {
   registerHoldingsRoutes(app, db);
   const splitSource = options.splitSource !== undefined ? options.splitSource : options.backgroundFetch ? new YahooSplitSource() : null;
   const splitSources: SplitSources | undefined = splitSource ? { splits: splitSource, history: historyProvider } : undefined;
+  registerAttentionRoutes(app, db);
   registerImportRoutes(app, db, options.backgroundFetch ? benchmarkProvider : undefined, options.backgroundFetch ? splitSources : undefined);
   // Fill in stock splits the files miss, from public data (also runs after imports and in the background).
   app.post("/api/splits/check", authed(app), async (req) => {

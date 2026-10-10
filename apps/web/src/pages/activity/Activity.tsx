@@ -54,6 +54,7 @@ const SOURCES: Record<string, string> = {
   holdings: "Holdings statement",
   snapshot: "Holdings statement",
   expiry: "Exchange settlement at expiry (estimated)",
+  "public-split": "Public market data — a split your files left out",
   generic: "Imported file",
   manual: "Added by hand",
 };
@@ -92,7 +93,7 @@ function describe(t: Transaction): Described {
     case "tax":
       return { verb: "Tax", tone: "neutral", cash: -gross };
     case "split":
-      return { verb: "Split", tone: "neutral", cash: null };
+      return { verb: "Split", tone: "neutral", cash: null, tag: t.sourceBroker === "public-split" ? "filled in from public data" : undefined };
     case "bonus":
       return { verb: "Bonus shares", tone: "neutral", cash: null };
     case "transfer_in":

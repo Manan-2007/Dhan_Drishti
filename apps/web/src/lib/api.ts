@@ -588,6 +588,25 @@ export interface NewsCompany {
   readAt: string | null;
   reading: boolean;
 }
+// ---- Needs attention ----
+export type AttentionSeverity = "high" | "warn" | "info" | "done";
+export interface AttentionItem {
+  id: string;
+  kind: string;
+  severity: AttentionSeverity;
+  title: string;
+  detail: string;
+  account: { id: string | null; name: string; broker: string; person: string } | null;
+  stocks: { id: string; symbol: string; name: string; note?: string }[];
+  /** The file that fixes it, the help guide for getting it, and the dates it must cover (null = open-ended). */
+  need: { file: string; guide: string | null; from: string | null; to: string | null; segment?: string } | null;
+  fix: "add_files" | "refresh_prices" | "check_splits" | null;
+}
+export interface AttentionResponse {
+  items: AttentionItem[];
+  baseCurrency: string;
+}
+
 /** One stock's news (any you've traded) — see /api/news/security/:id. */
 export interface StockNewsResponse {
   live: boolean;

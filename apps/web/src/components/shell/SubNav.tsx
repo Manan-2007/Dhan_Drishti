@@ -7,6 +7,8 @@ export interface SubNavItem {
   label: string;
   to: string;
   end?: boolean;
+  /** Shown after the label, e.g. a count. */
+  badge?: React.ReactNode;
 }
 
 /** Segmented pill tabs for a destination's sub-pages; a solid thumb glides to the active tab. */
@@ -35,7 +37,10 @@ export function SubNav({ items, className }: { items: SubNavItem[]; className?: 
                   transition={{ type: "spring", bounce: 0.18, duration: 0.45 }}
                 />
               )}
-              <span className="relative">{it.label}</span>
+              <span className="relative inline-flex items-center gap-1.5">
+                {it.label}
+                {it.badge}
+              </span>
             </>
           )}
         </NavLink>

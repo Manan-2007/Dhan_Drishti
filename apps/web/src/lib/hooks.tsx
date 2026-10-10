@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { useAuth } from "@/auth/AuthContext";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { api, type ActivityPage, type Portfolio, type Account, type HoldingsResponse, type Transaction, type ImportBatch, type NetWorthSeries, type RebalanceResponse, type RebalanceDimension, type ManualAssetsResult, type CapitalGainsReport, type SecurityDetail, type IndicesResponse, type NewsResponse, type StockNewsResponse, type NewsMarket, type FundamentalsResponse } from "./api.js";
+import { api, type ActivityPage, type Portfolio, type Account, type HoldingsResponse, type Transaction, type ImportBatch, type NetWorthSeries, type RebalanceResponse, type RebalanceDimension, type ManualAssetsResult, type CapitalGainsReport, type SecurityDetail, type IndicesResponse, type NewsResponse, type StockNewsResponse, type AttentionResponse, type NewsMarket, type FundamentalsResponse } from "./api.js";
 
 /**
  * Every data hook takes `scope`: the query string for the people / brokers / market chosen in the
@@ -63,6 +63,14 @@ export function useNews(scope: string, market?: NewsMarket) {
     refetchInterval: (query) => (query.state.data?.refreshing ? 3000 : 15000),
     refetchIntervalInBackground: false,
     placeholderData: (prev) => prev,
+  });
+}
+
+/** Everything missing or uncertain in the data, for the chosen people and brokers. */
+export function useAttention(scope: string) {
+  return useQuery({
+    queryKey: ["attention", scope],
+    queryFn: () => api.get<AttentionResponse>(withScope("/api/attention", scope)),
   });
 }
 

@@ -26,6 +26,8 @@ const Health = lazy(() => import("@/pages/portfolio/Health").then((m) => ({ defa
 const People = lazy(() => import("@/pages/accounts/People").then((m) => ({ default: m.People })));
 const Imports = lazy(() => import("./pages/Imports.js").then((m) => ({ default: m.Imports })));
 const AddData = lazy(() => import("@/pages/accounts/AddData").then((m) => ({ default: m.AddData })));
+const Attention = lazy(() => import("@/pages/accounts/Attention").then((m) => ({ default: m.Attention })));
+const AttentionCount = lazy(() => import("@/pages/accounts/Attention").then((m) => ({ default: m.AttentionCount })));
 const News = lazy(() => import("@/pages/news/News").then((m) => ({ default: m.News })));
 const Research = lazy(() => import("@/pages/research/Research").then((m) => ({ default: m.Research })));
 const Settings = lazy(() => import("./pages/Settings.js").then((m) => ({ default: m.Settings })));
@@ -127,6 +129,15 @@ function Gate() {
                       lead="Where your data comes from: add files, manage brokers and family."
                       tabs={[
                         { label: "Add data", to: "/accounts", end: true },
+                        {
+                          label: "Needs attention",
+                          to: "/accounts/attention",
+                          badge: (
+                            <Suspense fallback={null}>
+                              <AttentionCount />
+                            </Suspense>
+                          ),
+                        },
                         { label: "People & accounts", to: "/accounts/portfolios" },
                         { label: "Manual import", to: "/accounts/manual" },
                       ]}
@@ -134,6 +145,7 @@ function Gate() {
                   }
                 >
                   <Route index element={<Lazy><AddData /></Lazy>} />
+                  <Route path="attention" element={<Lazy><Attention /></Lazy>} />
                   <Route path="portfolios" element={<Lazy><People /></Lazy>} />
                   <Route path="manual" element={<Lazy><Imports /></Lazy>} />
                 </Route>
