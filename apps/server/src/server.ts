@@ -14,6 +14,7 @@ import { YahooBenchmarkProvider } from "./market/providers/yahoo-benchmark.js";
 import { YahooSecurityHistoryProvider } from "./market/providers/yahoo-security-history.js";
 import { MfApiHistoryProvider } from "./market/providers/mfapi.js";
 import { startScheduler } from "./jobs/scheduler.js";
+import { YahooSplitSource } from "./market/providers/yahoo-splits.js";
 import { convertLegacyStatements } from "./import/snapshot.js";
 import { canonicalizeSecurities } from "./import/canonical.js";
 
@@ -42,7 +43,7 @@ async function main() {
   const app = buildApp(db, { webDir: resolveWebDir(), marketProvider, fxProvider, benchmarkProvider, historyProvider, backgroundFetch: true });
   const addr = await app.listen({ port: env.port, host: env.host });
   // Nightly-ish price refresh + net-worth snapshots (only in the real server, never in tests).
-  startScheduler(db, marketProvider, { fx: fxProvider, index: benchmarkProvider, history: { shares: historyProvider, funds: { amfi: new AmfiProvider(), nav: new MfApiHistoryProvider() }, fx: fxProvider } });
+  startScheduler(db, marketProvider, { fx: fxProvider, index: benchmarkProvider, history: { shares: historyProvider, funds: { amfi: new AmfiProvider(), nav: new MfApiHistoryProvider() }, fx: fxProvider }, splits: { splits: new YahooSplitSource(), history: historyProvider } });
   // eslint-disable-next-line no-console
   console.log(`Dhan Drishti server listening on ${addr}`);
 }

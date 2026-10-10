@@ -353,6 +353,57 @@ export const fxHistory = sqliteTable(
   (t) => [primaryKey({ columns: [t.currency, t.base, t.date] })],
 );
 
+/**
+ * Stock splits (and bonus issues, which public data records as splits) per security, from public
+ * market data. `ratio` is new shares per old share. `split_checks` says when each was last looked up.
+ */
+export const splitEvents = sqliteTable(
+  "split_events",
+  {
+    securityId: text("security_id")
+      .notNull()
+      .references(() => securities.id, { onDelete: "cascade" }),
+    exDate: text("ex_date").notNull(), // YYYY-MM-DD, the day it took effect
+    ratio: text("ratio").notNull(),
+    label: text("label").notNull(), // as published, e.g. "10:1"
+    source: text("source").notNull(),
+    fetchedAt: text("fetched_at").notNull().default(now),
+  },
+  (t) => [primaryKey({ columns: [t.securityId, t.exDate] })],
+);
+
+export const splitChecks = sqliteTable("split_checks", {
+  securityId: text("security_id")
+    .primaryKey()
+    .references(() => securities.id, { onDelete: "cascade" }),
+  checkedAt: text("checked_at").notNull(),
+});
+
+/**
+ * What became of each public split for each account that held the stock: filled in, already in
+ * the files, couldn't be confirmed from the prices, or removed by the user (never re-added).
+ */
+export const splitReviews = sqliteTable(
+  "split_reviews",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    portfolioId: text("portfolio_id")
+      .notNull()
+      .references(() => portfolios.id, { onDelete: "cascade" }),
+    accountKey: text("account_key").notNull(), // the account id, or "" for rows without one
+    securityId: text("security_id")
+      .notNull()
+      .references(() => securities.id, { onDelete: "cascade" }),
+    exDate: text("ex_date").notNull(),
+    status: text("status").notNull(), // added | in_files | unconfirmed | dismissed
+    detail: text("detail"),
+    updatedAt: text("updated_at").notNull().default(now),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.portfolioId, t.accountKey, t.securityId, t.exDate] })],
+);
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Portfolio = typeof portfolios.$inferSelect;

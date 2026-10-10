@@ -37,6 +37,21 @@ export function ledgerOrder(a: CanonicalTx, b: CanonicalTx): number {
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
+/**
+ * A split is a fact about the stock, not the account: when the same split is on record twice (two
+ * accounts holding the stock, say, each with its own row), it's applied once.
+ */
+const splitKey = (t: CanonicalTx) => `${t.securityId}|${t.tradeDate.slice(0, 10)}|${Number(t.price)}`;
+
 export function sortLedger(txs: CanonicalTx[]): CanonicalTx[] {
-  return [...txs].sort(ledgerOrder);
+  const sorted = [...txs].sort(ledgerOrder);
+  if (!sorted.some((t) => t.type === "split")) return sorted;
+  const seen = new Set<string>();
+  return sorted.filter((t) => {
+    if (t.type !== "split") return true;
+    const k = splitKey(t);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
 }

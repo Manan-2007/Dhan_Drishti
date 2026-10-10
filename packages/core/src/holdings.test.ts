@@ -130,6 +130,18 @@ describe("computeHoldings — average cost", () => {
     expect(h.avgCost!.toString()).toBe("100");
   });
 
+  it("applies a split once even when two accounts each record it", () => {
+    // One row per account holding the stock; the engine sees the same split twice.
+    const h = only([
+      tx({ type: "buy", quantity: "3", price: "1000" }),
+      tx({ type: "buy", quantity: "2", price: "1000" }),
+      tx({ type: "split", price: "10", tradeDate: "2024-03-01T00:00:00Z" }),
+      tx({ type: "split", price: "10", tradeDate: "2024-03-01T00:00:00Z" }),
+    ]);
+    expect(h.netQty.toString()).toBe("50"); // (3 + 2) × 10, not × 100
+    expect(h.avgCost!.toString()).toBe("100");
+  });
+
   it("tracks base-currency cost at the FX rate of each buy (for return decomposition)", () => {
     // Two USD buys at different USD→INR rates; base cost sums at each buy's rate.
     const h = only([

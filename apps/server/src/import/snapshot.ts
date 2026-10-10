@@ -150,6 +150,21 @@ export async function reconcileSnapshots(trx: Database, scope: Scope): Promise<S
   const secs = new Map((secIds.length ? await trx.select().from(securities).where(inArray(securities.id, secIds)).all() : []).map((s) => [s.id, s]));
   const segmentOf = (securityId: string) => (secs.get(securityId)?.assetClass === "mf" ? "mf" : "equity");
 
+  // The statement counts shares after every split up to its date; an opening balance dated before
+  // the history is split along with the trades, so it's recorded in the shares of its own day.
+  const splitFactor = (securityId: string) => {
+    const seen = new Set<string>();
+    let f = d(1);
+    for (const t of ledger) {
+      if (t.type !== "split" || t.securityId !== securityId || t.tradeDate <= openingDate || t.tradeDate > endOfAsOf) continue;
+      const k = `${day(t.tradeDate)}|${d(t.price).toFixed()}`;
+      if (seen.has(k) || !d(t.price).gt(0)) continue;
+      seen.add(k);
+      f = f.times(t.price);
+    }
+    return f;
+  };
+
   const rows: (typeof transactions.$inferInsert)[] = [];
   let opening = 0;
   let reduced = 0;
@@ -173,12 +188,13 @@ export async function reconcileSnapshots(trx: Database, scope: Scope): Promise<S
     };
     if (delta.gt(0)) {
       opening++;
+      const f = splitFactor(p.securityId);
       rows.push({
         ...base,
         type: "buy",
         tradeDate: openingDate,
-        quantity: delta.toFixed(),
-        price: d(p.avgPrice).toFixed(),
+        quantity: delta.div(f).toFixed(),
+        price: d(p.avgPrice).times(f).toFixed(),
         grossAmount: delta.times(p.avgPrice).toFixed(),
         rawRowHash: rowHash(SNAPSHOT_SOURCE, `${latest.batchId}|${p.securityId}|opening`),
         notes: `Opening balance from your holdings statement of ${statement}: held before your trade history starts, at the broker's average price.`,

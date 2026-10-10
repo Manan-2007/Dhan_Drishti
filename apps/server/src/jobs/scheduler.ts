@@ -10,6 +10,7 @@ import { writeAllScopes } from "../domain/snapshots.js";
 import { pruneQuotesToLatest } from "../market/service.js";
 import { invalidateAllHoldings } from "../domain/holdings-cache.js";
 import { deleteExpiredSessions } from "../auth/service.js";
+import { fillAllMissingSplits, type SplitSources } from "../market/splits.js";
 
 /** Refresh quotes for every security anyone holds, in one deduplicated pass (shared master), so a
  *  nightly job keeps prices fresh without the dashboard ever opening stale. */
@@ -77,6 +78,8 @@ export async function settleAllExpiries(db: DB, index: BenchmarkProvider): Promi
 }
 
 export interface MaintenanceProviders {
+  /** Public stock splits, to fill in ones the files miss. */
+  splits?: SplitSources;
   fx?: FxProvider;
   index?: BenchmarkProvider;
   /** Keeps cached price history current for the charts. */
@@ -90,6 +93,7 @@ export async function runMaintenance(db: DB, provider: MarketDataProvider, extra
   if (extra.fx) await refreshAllFx(db, extra.fx);
   if (extra.index) await settleAllExpiries(db, extra.index);
   if (extra.history) await topUpHistory(db, extra.history).catch(() => undefined);
+  if (extra.splits) await fillAllMissingSplits(db, extra.splits).catch(() => undefined);
   await snapshotAllUsers(db);
   await deleteExpiredSessions(db).catch(() => undefined);
 }

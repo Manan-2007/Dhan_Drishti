@@ -33,6 +33,10 @@ import { CompositeProvider } from "./market/composite.js";
 import { FrankfurterProvider } from "./market/providers/frankfurter.js";
 import { YahooBenchmarkProvider } from "./market/providers/yahoo-benchmark.js";
 import { YahooSecurityHistoryProvider } from "./market/providers/yahoo-security-history.js";
+import { YahooSplitSource } from "./market/providers/yahoo-splits.js";
+import { fillMissingSplits, type SplitSources } from "./market/splits.js";
+import type { SplitSource } from "./market/types.js";
+import { authed } from "./lib/routes.js";
 import { registerFxRoutes } from "./domain/fx.js";
 import { registerNewsRoutes } from "./domain/news.js";
 import { NewsHub } from "./news/hub.js";
@@ -92,6 +96,8 @@ export interface AppOptions {
   /** Company fundamentals for the Research tab (Yahoo quoteSummary). Defaults to Yahoo with
    *  `backgroundFetch`, none otherwise; tests inject a fake. */
   fundamentalsProvider?: FundamentalsProvider | null;
+  /** Public stock splits, to fill in ones the broker files miss. Yahoo with `backgroundFetch`, else none. */
+  splitSource?: SplitSource | null;
   /** If set to a built web `dist` dir, the server also serves the SPA (single-service self-host). */
   webDir?: string;
 }
@@ -213,7 +219,14 @@ export function buildApp(db: DB, options: AppOptions = {}): FastifyInstance {
   registerSecurityRoutes(app, db);
   registerTransactionRoutes(app, db, fxProvider);
   registerHoldingsRoutes(app, db);
-  registerImportRoutes(app, db, options.backgroundFetch ? benchmarkProvider : undefined);
+  const splitSource = options.splitSource !== undefined ? options.splitSource : options.backgroundFetch ? new YahooSplitSource() : null;
+  const splitSources: SplitSources | undefined = splitSource ? { splits: splitSource, history: historyProvider } : undefined;
+  registerImportRoutes(app, db, options.backgroundFetch ? benchmarkProvider : undefined, options.backgroundFetch ? splitSources : undefined);
+  // Fill in stock splits the files miss, from public data (also runs after imports and in the background).
+  app.post("/api/splits/check", authed(app), async (req) => {
+    if (!splitSources) return { checked: 0, added: [], unconfirmed: 0 };
+    return fillMissingSplits(db, req.user!.id, splitSources);
+  });
   registerMarketRoutes(app, db, marketProvider);
   registerFxRoutes(app, db, fxProvider);
   const newsHub =

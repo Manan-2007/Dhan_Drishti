@@ -10,6 +10,7 @@ import { seedPricesFromHoldings } from "../import/seed-prices.js";
 import { commitMany, detectUpload } from "../import/batch.js";
 import type { BenchmarkProvider } from "../market/types.js";
 import { refreshExpirySettlements } from "../import/expiry.js";
+import { fillMissingSplits, type SplitSources } from "../market/splits.js";
 
 const mappingSchema = z.object({
   symbol: z.string().min(1),
@@ -86,10 +87,11 @@ const seedPricesSchema = z.object({
  * `settle`: after an import, fetch any expiry prices still missing and settle those contracts —
  * in the background, so the import answers at once. Off in tests (no network), on in the server.
  */
-export function registerImportRoutes(app: FastifyInstance, db: DB, settle?: BenchmarkProvider): void {
+export function registerImportRoutes(app: FastifyInstance, db: DB, settle?: BenchmarkProvider, splits?: SplitSources): void {
   const opts = authed(app);
   const settleLater = (userId: string) => {
     if (settle) void refreshExpirySettlements(db, userId, settle).catch(() => undefined);
+    if (splits) void fillMissingSplits(db, userId, splits).catch(() => undefined);
   };
 
   app.get("/api/imports/brokers", opts, async () => ({ brokers: listAdapters() }));

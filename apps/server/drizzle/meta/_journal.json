@@ -85,6 +85,13 @@
       "when": 1791009220233,
       "tag": "0011_asset_measures",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1791643475217,
+      "tag": "0012_split_events",
+      "breakpoints": true
     }
   ]
 }

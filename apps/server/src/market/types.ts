@@ -59,3 +59,20 @@ export interface SecurityHistoryProvider {
   id: string;
   getHistory(security: SecurityLike, fromISO: string, toISO: string): Promise<BenchmarkBar[]>;
 }
+
+/** A stock split (or bonus issue) as public data records it. */
+export interface SplitEvent {
+  exDate: string; // YYYY-MM-DD it took effect
+  ratio: string; // new shares per old share (10 for a 10-for-1 split, 0.1 for a 1-for-10 consolidation)
+  label: string; // as published, e.g. "10:1"
+}
+
+/**
+ * Every split a listed security has had, from public market data. Receives only the public ticker
+ * and exchange — never holdings. Returns null when the source couldn't be reached (try again later),
+ * [] when it has none.
+ */
+export interface SplitSource {
+  id: string;
+  getSplits(security: SecurityLike): Promise<SplitEvent[] | null>;
+}

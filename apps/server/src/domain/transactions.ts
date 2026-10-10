@@ -1,3 +1,4 @@
+import { SPLIT_SOURCE, dismissSplit } from "../market/splits.js";
 import { randomUUID } from "node:crypto";
 import { and, eq, gte, lte, desc, sql, inArray } from "drizzle-orm";
 import { z } from "zod";
@@ -318,6 +319,7 @@ export function registerTransactionRoutes(app: FastifyInstance, db: DB, fxProvid
     derivedGuard(existing);
     await db.transaction(async (trx) => {
       await trx.delete(transactions).where(and(eq(transactions.id, id), eq(transactions.userId, userId))).run();
+      if (existing.sourceBroker === SPLIT_SOURCE) await dismissSplit(trx as unknown as DB, existing);
       await refreshSnapshots(trx, [{ userId, portfolioId: existing.portfolioId, accountId: existing.accountId ?? null }]);
       await resettleExpired(trx, userId);
     });
